@@ -103,12 +103,17 @@ def apply_transition(
     ref_id: int | None = None,
     channel: str | None = None,
     pallet_id: int | None = None,
+    journal_to_site_id: int | None = None,
     mp_barcode: str | None = None,
     moment: datetime | None = None,
 ) -> Movement:
     """Перевести зеркало в новый статус и записать движение в одной транзакции.
 
     Единственное место в системе, где присваивается `unit.status`.
+
+    `to_site_id` меняет площадку зеркала, `journal_to_site_id` — только площадку
+    назначения в журнале (так пишется отправка на другую площадку: зеркало ещё
+    числится у отправителя, но в журнале видно, куда оно поехало).
     """
     from_status = unit.status
     if not is_allowed(from_status, to_status, movement_type):
@@ -140,7 +145,11 @@ def apply_transition(
         from_status=from_status,
         to_status=to_status,
         from_site_id=from_site_id,
-        to_site_id=to_site_id if to_site_id is not None else unit.site_id,
+        to_site_id=(
+            journal_to_site_id
+            if journal_to_site_id is not None
+            else (to_site_id if to_site_id is not None else unit.site_id)
+        ),
         user_id=user_id,
         shift_id=shift_id,
         note=note,

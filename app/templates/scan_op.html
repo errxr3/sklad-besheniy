@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block content %}
+<h1>{{ title }}</h1>
+{% if hint %}<p class="muted">{{ hint }}</p>{% endif %}
+{% if err %}<p class="msg err">{{ err }}</p>{% endif %}
+{% if blocked %}
+	<p class="msg warn">{{ blocked }}</p>
+{% else %}
+<div class="card">
+	{% if fields %}
+	<div class="row">
+		{% for field in fields %}
+		<div>
+			<label for="field-{{ field.name }}">{{ field.label }}</label>
+			{% if field.type == 'select' %}
+			<select class="op-field" id="field-{{ field.name }}" data-name="{{ field.name }}">
+				{% for value, text in field.options %}
+				<option value="{{ value }}" {% if field.value == value %}selected{% endif %}>{{ text }}</option>
+				{% endfor %}
+			</select>
+			{% else %}
+			<input type="text" class="op-field" id="field-{{ field.name }}" data-name="{{ field.name }}"
+			       value="{{ field.value or '' }}" placeholder="{{ field.placeholder or '' }}">
+			{% endif %}
+		</div>
+		{% endfor %}
+	</div>
+	{% endif %}
+
+	<div id="scan-result" class="scan-result mt" hidden></div>
+	<form id="scan-form" class="mt">
+		<input type="text" id="scan-input" class="scan-input" placeholder="Отсканируйте этикетку"
+		       autocomplete="off" autocapitalize="characters">
+		<div class="row tight mt">
+			<button type="submit" class="big">{{ button or 'Отсканировать' }}</button>
+			<button type="button" class="secondary" id="camera-btn">Камерой</button>
+		</div>
+	</form>
+	<div id="camera-box" class="mt" hidden></div>
+</div>
+
+<div class="card">
+	<h2>Последние сканы</h2>
+	<ul class="scan-history" id="scan-history"></ul>
+</div>
+{% endif %}
+{% block op_extra %}{% endblock %}
+{% endblock %}
+{% block scripts %}
+{% if not blocked %}
+<script src="/static/vendor/html5-qrcode.min.js"></script>
+<script src="/static/scan.js"></script>
+<script>
+(function () {
+	var screen = new window.Sklad.ScanScreen({
+		url: '{{ url }}',
+		csrf: '{{ csrf }}',
+		extra: function () {
+			var data = {};
+			Array.prototype.forEach.call(document.querySelectorAll('.op-field'), function (element) {
+				data[element.dataset.name] = element.value;
+			});
+			return data;
+		}
+	});
+	document.getElementById('scan-result').hidden = false;
+	var camera = new window.Sklad.CameraScan({ onCode: function (text) { screen.send(text); } });
+	document.getElementById('camera-btn').addEventListener('click', function () { camera.start(); });
+})();
+</script>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,85 @@
+{% extends "base.html" %}
+{% block title %}Погрузка{% endblock %}
+{% block content %}
+<h1>Погрузка</h1>
+<p class="muted">Площадка: <b>{{ site.name }}</b></p>
+{% if err %}<p class="msg err">{{ err }}</p>{% endif %}
+
+{% if not pallet %}
+<div class="card">
+	<h2>Новая паллета</h2>
+	<form method="post" action="/loading/new-pallet">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<label for="channel">Канал</label>
+		<select name="channel" id="channel" required>
+			{% for c in channels %}<option value="{{ c }}">{{ c }}</option>{% endfor %}
+		</select>
+		<button type="submit" class="big mt">Новая паллета</button>
+	</form>
+</div>
+{% else %}
+<div class="card">
+	<h2>Паллета {{ pallet.number }} · {{ pallet.channel }}</h2>
+	<p class="muted">На паллете: <b id="pallet-count">{{ count }}</b></p>
+	<div id="scan-result" class="scan-result" hidden></div>
+	<form id="scan-form">
+		<input type="text" id="scan-input" class="scan-input" placeholder="Отсканируйте этикетку зеркала"
+		       autocomplete="off" autocapitalize="characters">
+		<div class="row tight mt">
+			<button type="submit" class="big">Отсканировать</button>
+			<button type="button" class="secondary" id="camera-btn">Камерой</button>
+		</div>
+	</form>
+	<div id="camera-box" class="mt" hidden></div>
+	{% if require_mp %}
+	<p class="hint">Включён обязательный второй скан: после этикетки зеркала отсканируйте ШК маркетплейса.</p>
+	{% endif %}
+	<form method="post" action="/loading/close" class="mt">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<input type="hidden" name="pallet_id" value="{{ pallet.id }}">
+		<button type="submit" class="secondary big">Закрыть паллету</button>
+	</form>
+</div>
+
+<div class="card">
+	<h2>Последние сканы</h2>
+	<ul class="scan-history" id="scan-history"></ul>
+</div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if pallet %}
+<script src="/static/vendor/html5-qrcode.min.js"></script>
+<script src="/static/scan.js"></script>
+<script>
+(function () {
+	var pendingUnit = null;
+	var input = document.getElementById('scan-input');
+
+	var screen = new window.Sklad.ScanScreen({
+		url: '/loading/scan',
+		csrf: '{{ csrf }}',
+		extra: function () { return pendingUnit ? { unit_number: pendingUnit } : {}; },
+		onSuccess: function (data) {
+			if (data.await_mp) {
+				pendingUnit = data.number;
+				input.placeholder = 'Отсканируйте ШК маркетплейса';
+			} else {
+				pendingUnit = null;
+				input.placeholder = 'Отсканируйте этикетку зеркала';
+			}
+			if (typeof data.pallet_count === 'number') {
+				document.getElementById('pallet-count').textContent = data.pallet_count;
+			}
+		}
+	});
+	document.getElementById('scan-result').hidden = false;
+
+	var camera = new window.Sklad.CameraScan({
+		onCode: function (text) { screen.send(text); }
+	});
+	document.getElementById('camera-btn').addEventListener('click', function () { camera.start(); });
+})();
+</script>
+{% endif %}
+{% endblock %}

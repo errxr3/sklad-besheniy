@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block title %}Выработка{% endblock %}
+{% block content %}
+<h1>Выработка</h1>
+<div class="card">
+	<form method="get" action="/reports/output" class="row tight">
+		<input type="date" name="date_from" value="{{ date_from.isoformat() }}">
+		<input type="date" name="date_to" value="{{ date_to.isoformat() }}">
+		<select name="site_id">
+			<option value="0">все площадки</option>
+			{% for s in sites %}<option value="{{ s.id }}" {% if site_id == s.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+		</select>
+		<button type="submit" class="secondary">Показать</button>
+	</form>
+</div>
+<div class="card">
+	<table class="dense">
+		<tr><th>Сборщик</th><th>Артикул</th><th class="num">Сделано</th><th class="num">Брак</th><th class="num">% брака</th></tr>
+		{% for row in rows %}
+		<tr>
+			<td>{{ row.assembler }}</td><td>{{ row.article }}</td>
+			<td class="num">{{ row.made }}</td><td class="num">{{ row.scrapped }}</td>
+			<td class="num">{{ row.defect_percent }}</td>
+		</tr>
+		{% endfor %}
+		<tr><td colspan="2"><b>Итого</b></td><td class="num"><b>{{ total_made }}</b></td>
+			<td class="num"><b>{{ total_scrapped }}</b></td><td></td></tr>
+	</table>
+</div>
+{% endblock %}

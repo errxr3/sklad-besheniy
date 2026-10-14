@@ -72,12 +72,42 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("GET", "/reports/timesheet"): LEADS,
     ("GET", "/reports/timesheet.csv"): LEADS,
     ("GET", "/reports/plan-fact"): LEADS,
+    # Погрузка на паллету (грузчик)
+    ("GET", "/loading"): (*LEADS, ROLE_LOADER),
+    ("POST", "/loading/new-pallet"): (*LEADS, ROLE_LOADER),
+    ("POST", "/loading/scan"): (*LEADS, ROLE_LOADER),
+    ("POST", "/loading/close"): (*LEADS, ROLE_LOADER),
+    ("GET", "/loading/pallet/{pallet_id}"): (*LEADS, ROLE_LOADER),
+    # Складские операции начальника смены
+    ("GET", "/warehouse"): LEADS,
+    ("GET", "/transfer"): LEADS,
+    ("POST", "/transfer/scan"): LEADS,
+    ("GET", "/transfer/in"): LEADS,
+    ("POST", "/transfer/in/scan"): LEADS,
+    ("GET", "/warehouse/in-transit"): LEADS,
+    ("GET", "/writeoff"): LEADS,
+    ("POST", "/writeoff/scan"): LEADS,
+    ("GET", "/returns"): LEADS,
+    ("POST", "/returns/scan"): LEADS,
+    ("GET", "/ship-cancel"): LEADS,
+    ("POST", "/ship-cancel/scan"): LEADS,
+    ("GET", "/inventory"): LEADS,
+    ("POST", "/inventory/start"): LEADS,
+    ("GET", "/inventory/{inventory_id}"): LEADS,
+    ("POST", "/inventory/{inventory_id}/scan"): LEADS,
+    ("POST", "/inventory/{inventory_id}/finish"): LEADS,
+    # Журнал и отчёты
+    ("GET", "/journal"): LEADS,
+    ("GET", "/journal.csv"): LEADS,
+    ("GET", "/reports/output"): LEADS,
 }
 
 # Маршруты, требующие открытой смены у сборщика и грузчика (SPEC §4)
 NEEDS_OPEN_SHIFT: Final[set[tuple[str, str]]] = {
     ("POST", "/make/print"),
     ("POST", "/scan/accept"),
+    ("POST", "/loading/new-pallet"),
+    ("POST", "/loading/scan"),
 }
 
 

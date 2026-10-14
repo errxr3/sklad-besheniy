@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% block title %}Паллета {{ pallet.number }}{% endblock %}
+{% block content %}
+<h1>Паллета {{ pallet.number }}</h1>
+<div class="card">
+	<p>Канал: <b>{{ pallet.channel }}</b> · площадка: {{ pallet.site.name }}</p>
+	<p class="muted">Открыта {{ pallet.opened_at|dt }}{% if pallet.closed_at %}, закрыта {{ pallet.closed_at|dt }}{% endif %}</p>
+	<p>Всего зеркал: <b>{{ total }}</b></p>
+</div>
+<div class="card">
+	<h2>По артикулам</h2>
+	<table class="dense">
+		<tr><th>Артикул</th><th class="num">Количество</th></tr>
+		{% for name, count in rows %}
+		<tr><td>{{ name }}</td><td class="num">{{ count }}</td></tr>
+		{% endfor %}
+	</table>
+</div>
+<p><a class="btn" href="/loading">К погрузке</a></p>
+{% endblock %}

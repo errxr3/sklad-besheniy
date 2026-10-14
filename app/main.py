@@ -15,7 +15,18 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.config import get_settings
 from app.db import get_engine
 from app.logging_setup import setup_logging
-from app.routers import admin, auth, home, make, mirror, shifts, tasks
+from app.routers import (
+    admin,
+    auth,
+    home,
+    journal,
+    loading,
+    make,
+    mirror,
+    shifts,
+    tasks,
+    warehouse,
+)
 from app.scheduler import start_scheduler, stop_scheduler
 
 logger = logging.getLogger(__name__)
@@ -63,6 +74,9 @@ def create_app() -> FastAPI:
     app.include_router(mirror.router)
     app.include_router(shifts.router)
     app.include_router(tasks.router)
+    app.include_router(loading.router)
+    app.include_router(warehouse.router)
+    app.include_router(journal.router)
 
     @app.get("/health")
     def health() -> JSONResponse:

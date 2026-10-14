@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% block title %}Журнал{% endblock %}
+{% block content %}
+<h1>Журнал движений <span class="muted">({{ total }})</span></h1>
+<div class="card">
+	<form method="get" action="/journal" class="row">
+		<div><label>С даты</label><input type="date" name="date_from" value="{{ filters.date_from }}"></div>
+		<div><label>По дату</label><input type="date" name="date_to" value="{{ filters.date_to }}"></div>
+		<div><label>Номер</label><input type="text" name="number" value="{{ filters.number }}" placeholder="Z0000123"></div>
+		<div><label>Сотрудник</label>
+			<select name="user_id">
+				<option value="0">все</option>
+				{% for u in users %}<option value="{{ u.id }}" {% if filters.user_id == u.id %}selected{% endif %}>{{ u.name }}</option>{% endfor %}
+			</select></div>
+		<div><label>Операция</label>
+			<select name="movement_type">
+				<option value="">все</option>
+				{% for value, label in types %}<option value="{{ value }}" {% if filters.movement_type == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+			</select></div>
+		<div><label>Площадка</label>
+			<select name="site_id">
+				<option value="0">все</option>
+				{% for s in sites %}<option value="{{ s.id }}" {% if filters.site_id == s.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+			</select></div>
+		<div><label>Артикул</label>
+			<select name="article_id">
+				<option value="0">все</option>
+				{% for a in articles %}<option value="{{ a.id }}" {% if filters.article_id == a.id %}selected{% endif %}>{{ a.name }}</option>{% endfor %}
+			</select></div>
+	</form>
+	<div class="row tight mt">
+		<form method="get" action="/journal">
+			{% for key, value in filters.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}
+			<button type="submit">Показать</button>
+		</form>
+		<a class="btn secondary" href="/journal.csv?date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&number={{ filters.number }}&user_id={{ filters.user_id }}&movement_type={{ filters.movement_type }}&site_id={{ filters.site_id }}&article_id={{ filters.article_id }}">Скачать CSV</a>
+	</div>
+</div>
+
+<div class="card">
+	<table class="dense">
+		<tr><th>Когда</th><th>Номер</th><th>Артикул</th><th>Операция</th><th>Статус</th><th>Кто</th><th>Примечание</th></tr>
+		{% for m in rows %}
+		<tr>
+			<td>{{ m.created_at|dt }}</td>
+			<td><a href="/mirror/{{ m.unit.number }}">{{ m.unit.number }}</a></td>
+			<td>{{ m.unit.article.name if m.unit and m.unit.article else '' }}</td>
+			<td>{{ MOVEMENT_LABELS.get(m.type, m.type) }}</td>
+			<td>{{ STATUS_LABELS.get(m.from_status, '—') }} → {{ STATUS_LABELS.get(m.to_status, m.to_status) }}</td>
+			<td>{{ m.user.name if m.user else '' }}</td>
+			<td>{{ m.note or '' }}</td>
+		</tr>
+		{% endfor %}
+	</table>
+	{% if pages > 1 %}
+	<div class="row tight mt">
+		{% if page_number > 1 %}<a class="btn secondary" href="?page_number={{ page_number - 1 }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&number={{ filters.number }}&user_id={{ filters.user_id }}&movement_type={{ filters.movement_type }}&site_id={{ filters.site_id }}&article_id={{ filters.article_id }}">Назад</a>{% endif %}
+		<span class="muted">Страница {{ page_number }} из {{ pages }}</span>
+		{% if page_number < pages %}<a class="btn secondary" href="?page_number={{ page_number + 1 }}&date_from={{ filters.date_from }}&date_to={{ filters.date_to }}&number={{ filters.number }}&user_id={{ filters.user_id }}&movement_type={{ filters.movement_type }}&site_id={{ filters.site_id }}&article_id={{ filters.article_id }}">Вперёд</a>{% endif %}
+	</div>
+	{% endif %}
+</div>
+{% endblock %}

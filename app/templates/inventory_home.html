@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}Инвентаризация{% endblock %}
+{% block content %}
+<h1>Инвентаризация</h1>
+{% if err %}<p class="msg err">{{ err }}</p>{% endif %}
+<div class="card">
+	<p class="muted">Площадка: <b>{{ site.name }}</b></p>
+	{% if current %}
+		<p class="msg warn">Инвентаризация идёт с {{ current.started_at|dt }}</p>
+		<a class="btn big" href="/inventory/{{ current.id }}">Продолжить пересчёт</a>
+	{% else %}
+		<form method="post" action="/inventory/start">
+			<input type="hidden" name="csrf_token" value="{{ csrf }}">
+			<button type="submit" class="big">Начать инвентаризацию площадки</button>
+		</form>
+		<p class="hint">Пока идёт инвентаризация, отгрузки и перемещения разрешены: зеркала,
+			прошедшие через них после старта, в расхождения не попадут.</p>
+	{% endif %}
+</div>
+
+{% if history %}
+<div class="card">
+	<h2>Прошлые инвентаризации</h2>
+	<table class="dense">
+		<tr><th>Начата</th><th>Завершена</th><th>Итог</th></tr>
+		{% for item in history %}
+		<tr>
+			<td><a href="/inventory/{{ item.id }}">{{ item.started_at|dt }}</a></td>
+			<td>{{ item.finished_at|dt }}</td>
+			<td>{{ item.note or '' }}</td>
+		</tr>
+		{% endfor %}
+	</table>
+</div>
+{% endif %}
+{% endblock %}
