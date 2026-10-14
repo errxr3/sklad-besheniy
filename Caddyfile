@@ -1,0 +1,19 @@
+# Адрес сайта задаётся переменной SITE_ADDRESS в .env
+# Для продакшена: SITE_ADDRESS=sklad.example.com  (HTTPS выдаётся автоматически)
+# Для локального запуска: SITE_ADDRESS=:80
+{$SITE_ADDRESS} {
+	encode zstd gzip
+
+	# Камера в браузере требует HTTPS; Caddy сам получает сертификат Let's Encrypt.
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "same-origin"
+		-Server
+	}
+
+	reverse_proxy app:8000 {
+		health_uri /health
+	}
+}
