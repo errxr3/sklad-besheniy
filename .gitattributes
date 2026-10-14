@@ -1,0 +1,4 @@
+# Windows-файлы запуска должны иметь переводы строк CRLF
+*.bat text eol=crlf
+*.sh text eol=lf
+*.py text eol=lf
