@@ -7,7 +7,7 @@ from datetime import date, datetime, timedelta
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -27,7 +27,7 @@ from app.services.shifts import (
 )
 from app.services.tasks import tasks_progress
 from app.statuses import ROLE_ASSEMBLER, ROLE_LOADER
-from app.timeutil import MOSCOW, fmt_dt, now_utc, to_moscow, today_msk
+from app.timeutil import MOSCOW, fmt_dt, msk_day_bounds, now_utc, to_moscow, today_msk
 from app.web import GuardedRoute, page, read_json
 
 logger = logging.getLogger(__name__)
@@ -133,11 +133,32 @@ async def shift_end(request: Request, db: Session = Depends(get_db)) -> JSONResp
     return JSONResponse({"ok": True, "message": f"Смена закончена {ended}", "redirect": "/"})
 
 
+def _default_board_site(db: Session, user: User) -> Site:
+    """Площадка табло по умолчанию: своя, иначе та, где сегодня есть смены."""
+    if user.home_site_id:
+        site = db.get(Site, user.home_site_id)
+        if site is not None and site.active:
+            return site
+    start, end = msk_day_bounds(today_msk())
+    busiest = db.execute(
+        select(Shift.site_id, func.count())
+        .where(Shift.started_at >= start, Shift.started_at < end)
+        .group_by(Shift.site_id)
+        .order_by(func.count().desc())
+        .limit(1)
+    ).first()
+    if busiest is not None:
+        site = db.get(Site, int(busiest[0]))
+        if site is not None and site.active:
+            return site
+    return current_site(db, user)
+
+
 @router.get("/board", response_class=HTMLResponse)
 def board(request: Request, db: Session = Depends(get_db), site_id: int = 0, day: str = "") -> Response:
     """Табло «Кто на смене» (SPEC §5.5)."""
     sites = list(db.scalars(select(Site).where(Site.active.is_(True)).order_by(Site.sort_order)).all())
-    chosen = db.get(Site, site_id) if site_id else current_site(db, request.state.user)
+    chosen = db.get(Site, site_id) if site_id else _default_board_site(db, request.state.user)
     target_day = date.fromisoformat(day) if day else today_msk()
     rows = board_rows(db, site_id=chosen.id, day=target_day) if chosen else []
     return page(

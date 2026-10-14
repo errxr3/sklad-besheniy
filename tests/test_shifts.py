@@ -330,3 +330,62 @@ def test_shift_code_pdf_contains_qr(client: TestClient, db: Session) -> None:
     db.expire_all()
     site_fresh = site_by_name(db)
     assert check_code(db, codes[0]).id == site_fresh.id
+
+
+def test_board_counts_only_chosen_site(db: Session) -> None:
+    """Табло показывает смены и выработку выбранной площадки (SPEC §5.5)."""
+    from app.services.shifts import board_rows
+    from app.services.units import accept_unit, create_printed_units
+    from app.timeutil import today_msk
+
+    site, code = _site_with_code(db)
+    other, other_code = _site_with_code(db, "Учительская")
+    here = make_user(db, name="Работает здесь", role=ROLE_ASSEMBLER)
+    there = make_user(db, name="Работает там", role=ROLE_ASSEMBLER)
+    nobody = make_user(db, name="Не вышел совсем", role=ROLE_LOADER)
+
+    start_shift(db, user=here, code=code)
+    start_shift(db, user=there, code=other_code)
+    db.commit()
+
+    article = make_article(db)
+    units = create_printed_units(
+        db, article_id=article.id, qty=2, site_id=site.id, assembler_id=here.id, actor_id=here.id
+    )
+    db.commit()
+    for unit in units:
+        accept_unit(db, code=unit.number, actor=here)
+    db.commit()
+
+    rows = {row.user.name: row for row in board_rows(db, site_id=site.id, day=today_msk())}
+
+    assert "Работает там" not in rows, "сотрудник со сменой на другой площадке сюда не попадает"
+    assert rows["Работает здесь"].state == "на смене"
+    assert rows["Работает здесь"].accepted == 2
+    assert rows[nobody.name].state == "не вышел"
+    assert rows[nobody.name].accepted == 0
+
+
+def test_board_ignores_other_site_movements(db: Session) -> None:
+    """Выработка на другой площадке не попадает в табло этой."""
+    from app.services.shifts import board_rows
+    from app.services.units import accept_unit, create_printed_units
+    from app.timeutil import today_msk
+
+    site, code = _site_with_code(db)
+    other = site_by_name(db, "Учительская")
+    worker = make_user(db, name="Сборщик двух площадок", role=ROLE_ASSEMBLER)
+    start_shift(db, user=worker, code=code)
+    db.commit()
+
+    article = make_article(db)
+    units = create_printed_units(
+        db, article_id=article.id, qty=3, site_id=other.id, assembler_id=worker.id, actor_id=worker.id
+    )
+    db.commit()
+    for unit in units:
+        accept_unit(db, code=unit.number, actor=worker)
+    db.commit()
+
+    rows = {row.user.name: row for row in board_rows(db, site_id=site.id, day=today_msk())}
+    assert rows["Сборщик двух площадок"].accepted == 0

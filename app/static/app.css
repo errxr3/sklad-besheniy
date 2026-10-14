@@ -157,6 +157,10 @@ td.zero { background: var(--zero); }
 .stock-controls .card { padding: 10px; }
 
 .hint { font-size: 15px; color: var(--muted); margin-top: 4px; }
+
+/* Компактная форма закрытия смены прямо в табло */
+.inline-form input, .inline-form select { min-height: 34px; font-size: 14px; padding: 4px 8px; }
+.inline-form button { min-height: 34px; font-size: 14px; padding: 4px 10px; }
 .grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; }
 ul.plain { list-style: none; padding: 0; margin: 0; }
 ul.plain li { padding: 8px 0; border-bottom: 1px solid var(--line); }

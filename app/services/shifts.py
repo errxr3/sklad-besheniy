@@ -228,32 +228,44 @@ def board_rows(session: Session, site_id: int, day: date) -> list[BoardRow]:
     start, end = msk_day_bounds(day)
     users = session.scalars(
         select(User)
-        .where(User.active.is_(True), User.role.in_((ROLE_ASSEMBLER, ROLE_LOADER)))
+        .where(
+            User.active.is_(True),
+            User.is_service.is_(False),
+            User.role.in_((ROLE_ASSEMBLER, ROLE_LOADER)),
+        )
         .order_by(User.name)
     ).all()
 
-    shifts = {
-        shift.user_id: shift
-        for shift in session.scalars(
+    # Смены за день по всем площадкам: нужно отличать «не вышел» от «работает на другой»
+    todays_shifts = list(
+        session.scalars(
             select(Shift)
-            .where(Shift.site_id == site_id, Shift.started_at >= start, Shift.started_at < end)
+            .where(Shift.started_at >= start, Shift.started_at < end)
             .order_by(Shift.started_at)
         ).all()
-    }
+    )
+    here = {shift.user_id: shift for shift in todays_shifts if shift.site_id == site_id}
+    elsewhere = {shift.user_id for shift in todays_shifts if shift.site_id != site_id}
 
+    # Движения считаем только по выбранной площадке
     counts: dict[tuple[int | None, str], int] = {
         (user_id, movement_type): int(count)
         for user_id, movement_type, count in session.execute(
             select(Movement.user_id, Movement.type, func.count())
-            .where(Movement.created_at >= start, Movement.created_at < end)
+            .where(
+                Movement.created_at >= start,
+                Movement.created_at < end,
+                (Movement.to_site_id == site_id) | (Movement.from_site_id == site_id),
+            )
             .group_by(Movement.user_id, Movement.type)
         ).all()
     }
 
     rows: list[BoardRow] = []
     for user in users:
-        shift = shifts.get(user.id)
-        if shift is None and user.home_site_id not in (None, site_id):
+        shift = here.get(user.id)
+        # Сегодня работает на другой площадке или приписан к другой — здесь не показываем
+        if shift is None and (user.id in elsewhere or user.home_site_id not in (None, site_id)):
             continue
         progress = tasks_progress(session, user_id=user.id, day=day)
         rows.append(
