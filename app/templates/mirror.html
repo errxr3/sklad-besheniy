@@ -1,0 +1,66 @@
+{% extends "base.html" %}
+{% block title %}{{ unit.number }}{% endblock %}
+{% block content %}
+<h1>{{ unit.number }}</h1>
+{% if ok %}<p class="msg ok">{{ ok }}</p>{% endif %}
+{% if err %}<p class="msg err">{{ err }}</p>{% endif %}
+
+<div class="card">
+	<table>
+		<tr><th>Артикул</th><td>{{ unit.article.name }}</td></tr>
+		<tr><th>Статус</th><td><span class="badge">{{ STATUS_LABELS[unit.status] }}</span></td></tr>
+		<tr><th>Площадка</th><td>{{ unit.site.name }}</td></tr>
+		<tr><th>Сборщик</th><td>{{ unit.assembler.name if unit.assembler else '—' }}</td></tr>
+		<tr><th>Изготовлено</th><td>{{ unit.made_at|dt }}</td></tr>
+		<tr><th>Принято</th><td>{{ unit.accepted_at|dt or '—' }}</td></tr>
+		<tr><th>Канал</th><td>{{ unit.channel or '—' }}</td></tr>
+		<tr><th>Паллета</th><td>{{ unit.pallet.number if unit.pallet else '—' }}</td></tr>
+		<tr><th>ШК маркетплейса</th><td>{{ unit.mp_barcode or '—' }}</td></tr>
+	</table>
+</div>
+
+<div class="card">
+	<div class="row tight">
+		{% if can_reprint %}
+		<a class="btn secondary" href="/make/reprint/{{ unit.number }}" target="_blank">Перепечатать этикетку</a>
+		{% endif %}
+	</div>
+	{% if user.role in (ROLE_ADMIN, ROLE_SHIFT_LEAD) %}
+	<h2>Изменить сборщика</h2>
+	<form method="post" action="/mirror/{{ unit.number }}/assembler" class="row tight">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<select name="assembler_id">
+			{% for a in assemblers %}
+			<option value="{{ a.id }}" {% if unit.assembler_id == a.id %}selected{% endif %}>{{ a.name }}</option>
+			{% endfor %}
+		</select>
+		<button type="submit" class="secondary">Сохранить</button>
+	</form>
+	<h2>Списать</h2>
+	<form method="post" action="/mirror/{{ unit.number }}/writeoff" class="row tight">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<select name="reason">
+			{% for r in reasons %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+		</select>
+		<input type="text" name="note" placeholder="комментарий" style="min-width:180px">
+		<button type="submit" class="danger">Списать</button>
+	</form>
+	{% endif %}
+</div>
+
+<div class="card">
+	<h2>История</h2>
+	<table class="dense">
+		<tr><th>Когда</th><th>Что</th><th>Статус</th><th>Кто</th><th>Примечание</th></tr>
+		{% for m in movements %}
+		<tr>
+			<td>{{ m.created_at|dt }}</td>
+			<td>{{ MOVEMENT_LABELS.get(m.type, m.type) }}</td>
+			<td>{{ STATUS_LABELS.get(m.from_status, '—') }} → {{ STATUS_LABELS.get(m.to_status, m.to_status) }}</td>
+			<td>{{ m.user.name if m.user else '—' }}</td>
+			<td>{{ m.note or '' }}</td>
+		</tr>
+		{% endfor %}
+	</table>
+</div>
+{% endblock %}

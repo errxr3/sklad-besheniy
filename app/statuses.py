@@ -20,6 +20,7 @@ STATUS_LABELS: Final[dict[str, str]] = {
 }
 
 # --- Типы движений (SPEC §3, §6) ---
+MV_PRINT: Final = "print"
 MV_ACCEPT: Final = "accept"
 MV_LABEL_VOID: Final = "label_void"
 MV_TRANSFER_OUT: Final = "transfer_out"
@@ -30,8 +31,10 @@ MV_WRITE_OFF: Final = "write_off"
 MV_RETURN_OK: Final = "return_ok"
 MV_RETURN_BAD: Final = "return_bad"
 MV_INVENTORY_FIX: Final = "inventory_fix"
+MV_ASSEMBLER_CHANGE: Final = "assembler_change"
 
 ALL_MOVEMENT_TYPES: Final[tuple[str, ...]] = (
+    MV_PRINT,
     MV_ACCEPT,
     MV_LABEL_VOID,
     MV_TRANSFER_OUT,
@@ -42,9 +45,11 @@ ALL_MOVEMENT_TYPES: Final[tuple[str, ...]] = (
     MV_RETURN_OK,
     MV_RETURN_BAD,
     MV_INVENTORY_FIX,
+    MV_ASSEMBLER_CHANGE,
 )
 
 MOVEMENT_LABELS: Final[dict[str, str]] = {
+    MV_PRINT: "Этикетка напечатана",
     MV_ACCEPT: "Приёмка после изготовления",
     MV_LABEL_VOID: "Списание этикетки",
     MV_TRANSFER_OUT: "Отправка на площадку",
@@ -55,6 +60,7 @@ MOVEMENT_LABELS: Final[dict[str, str]] = {
     MV_RETURN_OK: "Возврат (годное)",
     MV_RETURN_BAD: "Возврат (негодное)",
     MV_INVENTORY_FIX: "Исправление по инвентаризации",
+    MV_ASSEMBLER_CHANGE: "Смена сборщика",
 }
 
 # --- Роли (SPEC §4) ---

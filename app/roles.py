@@ -37,10 +37,25 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("POST", "/admin/articles/color"): ADMIN_ONLY,
     ("GET", "/admin/settings"): ADMIN_ONLY,
     ("POST", "/admin/settings"): ADMIN_ONLY,
+    # Изготовление и печать этикеток
+    ("GET", "/make"): NOT_LOADER,
+    ("POST", "/make/print"): NOT_LOADER,
+    ("GET", "/make/reprint/{number}"): NOT_LOADER,
+    ("POST", "/scan/accept"): NOT_LOADER,
+    ("GET", "/api/articles"): NOT_LOADER,
+    ("GET", "/warehouse/printed-old"): LEADS,
+    # Карточка зеркала
+    ("GET", "/mirror"): NOT_LOADER,
+    ("GET", "/mirror/{number}"): NOT_LOADER,
+    ("POST", "/mirror/{number}/assembler"): LEADS,
+    ("POST", "/mirror/{number}/writeoff"): LEADS,
 }
 
 # Маршруты, требующие открытой смены у сборщика и грузчика (SPEC §4)
-NEEDS_OPEN_SHIFT: Final[set[tuple[str, str]]] = set()
+NEEDS_OPEN_SHIFT: Final[set[tuple[str, str]]] = {
+    ("POST", "/make/print"),
+    ("POST", "/scan/accept"),
+}
 
 
 def roles_for(method: str, path: str) -> tuple[str, ...] | None:

@@ -18,14 +18,9 @@ class MenuItem:
 MENU: tuple[MenuItem, ...] = (
     MenuItem("Мой день", "/", (ROLE_ASSEMBLER, ROLE_LOADER)),
     MenuItem("Табло смены", "/", LEADS),
-    MenuItem("Погрузка", "/loading", (ROLE_LOADER,)),
     MenuItem("Сделал зеркало", "/make", (*LEADS, ROLE_ASSEMBLER)),
-    MenuItem("Задачи", "/tasks", LEADS),
-    MenuItem("Остатки", "/stock", NOT_LOADER),
     MenuItem("Зеркало", "/mirror", NOT_LOADER),
-    MenuItem("Склад", "/warehouse", LEADS),
-    MenuItem("Журнал", "/journal", LEADS),
-    MenuItem("Отчёты", "/reports", LEADS),
+    MenuItem("Напечатано вчера", "/warehouse/printed-old", LEADS),
     MenuItem("Настройки", "/admin", ADMIN_ONLY),
 )
 

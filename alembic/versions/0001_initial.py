@@ -243,7 +243,7 @@ def upgrade() -> None:
     sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False),
     sa.Column('note', sa.Text(), nullable=True),
     sa.Column('ref_id', sa.Integer(), nullable=True),
-    sa.CheckConstraint("type IN ('accept', 'label_void', 'transfer_out', 'transfer_in', 'ship', 'ship_cancel', 'write_off', 'return_ok', 'return_bad', 'inventory_fix')", name='ck_movements_type'),
+    sa.CheckConstraint("type IN ('print', 'accept', 'label_void', 'transfer_out', 'transfer_in', 'ship', 'ship_cancel', 'write_off', 'return_ok', 'return_bad', 'inventory_fix', 'assembler_change')", name='ck_movements_type'),
     sa.ForeignKeyConstraint(['from_site_id'], ['sites.id'], ),
     sa.ForeignKeyConstraint(['shift_id'], ['shifts.id'], ),
     sa.ForeignKeyConstraint(['to_site_id'], ['sites.id'], ),

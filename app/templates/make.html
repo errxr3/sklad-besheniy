@@ -1,0 +1,101 @@
+{% extends "base.html" %}
+{% block title %}Сделал зеркало{% endblock %}
+{% block content %}
+<h1>Сделал зеркало</h1>
+<p class="muted">Площадка: <b>{{ site.name }}</b></p>
+{% if err %}<p class="msg err">{{ err }}</p>{% endif %}
+
+<div class="card">
+	<h2>1. Печать этикеток</h2>
+	<form method="post" action="/make/print" target="_blank" id="print-form">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<label for="article-search">Артикул</label>
+		<input type="search" id="article-search" placeholder="часть названия, например 60x160"
+		       value="{{ chosen.name if chosen else '' }}" autocomplete="off">
+		<select name="article_id" id="article-select" size="6" required>
+			{% if chosen %}<option value="{{ chosen.id }}" selected>{{ chosen.name }}</option>{% endif %}
+		</select>
+		{% if can_choose_assembler %}
+		<label for="assembler">Сборщик</label>
+		<select name="assembler_id" id="assembler">
+			{% for a in assemblers %}<option value="{{ a.id }}">{{ a.name }}</option>{% endfor %}
+		</select>
+		{% endif %}
+		<label for="qty">Количество (1–50)</label>
+		<input type="number" name="qty" id="qty" value="1" min="1" max="50" required>
+		<div class="row tight mt">
+			{% for n in [1, 2, 5, 10, 20] %}
+			<button type="button" class="secondary qty-btn" data-qty="{{ n }}">{{ n }}</button>
+			{% endfor %}
+		</div>
+		<button type="submit" class="big mt">Печать</button>
+	</form>
+	<p class="hint">PDF откроется в новой вкладке. Наклейте этикетку и отсканируйте её ниже.</p>
+</div>
+
+<div class="card">
+	<h2>2. Скан приёмки</h2>
+	<div id="scan-result" class="scan-result" hidden></div>
+	<form id="scan-form">
+		<input type="text" id="scan-input" class="scan-input" placeholder="Отсканируйте этикетку"
+		       autocomplete="off" autocapitalize="characters" inputmode="text">
+		<div class="row tight mt">
+			<button type="submit">Принять</button>
+			<button type="button" class="secondary" id="camera-btn">Сканировать камерой</button>
+		</div>
+	</form>
+	<div id="camera-box" class="mt" hidden></div>
+	<h2>Последние сканы</h2>
+	<ul class="scan-history" id="scan-history"></ul>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/vendor/html5-qrcode.min.js"></script>
+<script src="/static/scan.js"></script>
+<script>
+(function () {
+	var search = document.getElementById('article-search');
+	var select = document.getElementById('article-select');
+	var timer = null;
+
+	function load(query) {
+		fetch('/api/articles?q=' + encodeURIComponent(query), {
+			headers: { 'X-Requested-With': 'fetch' }
+		}).then(function (r) { return r.json(); }).then(function (data) {
+			select.innerHTML = '';
+			data.articles.forEach(function (article, index) {
+				var option = document.createElement('option');
+				option.value = article.id;
+				option.textContent = article.name;
+				if (index === 0) option.selected = true;
+				select.appendChild(option);
+			});
+		});
+	}
+
+	search.addEventListener('input', function () {
+		clearTimeout(timer);
+		timer = setTimeout(function () { load(search.value); }, 200);
+	});
+	if (!select.options.length) load('');
+
+	Array.prototype.forEach.call(document.querySelectorAll('.qty-btn'), function (button) {
+		button.addEventListener('click', function () {
+			document.getElementById('qty').value = button.dataset.qty;
+		});
+	});
+
+	var screen = new window.Sklad.ScanScreen({
+		url: '/scan/accept',
+		csrf: '{{ csrf }}',
+		onSuccess: function () {}
+	});
+	document.getElementById('scan-result').hidden = false;
+
+	var camera = new window.Sklad.CameraScan({
+		onCode: function (text) { screen.send(text); }
+	});
+	document.getElementById('camera-btn').addEventListener('click', function () { camera.start(); });
+})();
+</script>
+{% endblock %}

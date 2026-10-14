@@ -229,15 +229,15 @@ def test_menu_differs_by_role(client: TestClient, db: Session) -> None:
     with TestClient(client.app) as loader_client:
         login(loader_client, loader)
         text = loader_client.get("/").text
-        assert "Погрузка" in text
-        assert "Остатки" not in text
+        assert "Мой день" in text
+        assert "Зеркало" not in text
         assert "Настройки" not in text
 
     assembler = make_user(db, name="Сборщик", role=ROLE_ASSEMBLER, pin="1234")
     with TestClient(client.app) as asm_client:
         login(asm_client, assembler)
         text = asm_client.get("/").text
-        assert "Остатки" in text
+        assert "Сделал зеркало" in text
         assert "Настройки" not in text
 
     _admin(client, db)

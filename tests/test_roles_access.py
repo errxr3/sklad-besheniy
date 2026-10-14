@@ -5,9 +5,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.main import app
-from app.roles import PUBLIC, ROUTE_ROLES
+from app.roles import NEEDS_OPEN_SHIFT, PUBLIC, ROUTE_ROLES
 from app.statuses import ALL_ROLES
-from tests.helpers import get_csrf, login, make_user
+from tests.helpers import get_csrf, login, make_user, open_shift
 
 # Подстановка значений вместо параметров пути: маршрут должен отвечать проверкой доступа,
 # а не падать на разборе пути.
@@ -83,6 +83,9 @@ def test_forbidden_roles_get_403(method: str, path: str, client: TestClient, db:
 
     for index, role in enumerate(ALL_ROLES):
         user = make_user(db, name=f"Сотрудник {role} {index}", role=role, pin="1234")
+        if (method, path) in NEEDS_OPEN_SHIFT:
+            # Маршрут требует открытой смены — иначе сборщик и грузчик получат 403 по другой причине
+            open_shift(db, user)
         with TestClient(app) as role_client:
             login(role_client, user)
             token = get_csrf(role_client, "/")

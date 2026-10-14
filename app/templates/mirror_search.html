@@ -1,0 +1,14 @@
+{% extends "base.html" %}
+{% block title %}Зеркало{% endblock %}
+{% block content %}
+<h1>Зеркало</h1>
+{% if err %}<p class="msg err">{{ err }}</p>{% endif %}
+<div class="card">
+	<form method="get" action="/mirror">
+		<label for="code">Номер этикетки или ШК маркетплейса</label>
+		<input type="text" id="code" name="code" class="scan-input" autocomplete="off" autofocus
+		       placeholder="например Z0000123">
+		<button type="submit" class="mt">Найти</button>
+	</form>
+</div>
+{% endblock %}

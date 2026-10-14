@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% block title %}Напечатано больше суток назад{% endblock %}
+{% block content %}
+<h1>Напечатано больше суток назад</h1>
+<p class="muted">Эти этикетки выданы, но зеркала не приняты на склад. Примите их сканом или спишите.</p>
+<div class="card">
+	{% if not units %}
+		<p class="msg ok">Все напечатанные этикетки приняты.</p>
+	{% else %}
+	<table class="dense">
+		<tr><th>Номер</th><th>Артикул</th><th>Площадка</th><th>Сборщик</th><th>Напечатано</th><th></th></tr>
+		{% for u in units %}
+		<tr>
+			<td><a href="/mirror/{{ u.number }}">{{ u.number }}</a></td>
+			<td>{{ u.article.name }}</td>
+			<td>{{ u.site.name }}</td>
+			<td>{{ u.assembler.name if u.assembler else '—' }}</td>
+			<td>{{ u.made_at|dt }}</td>
+			<td><a class="btn secondary" href="/mirror/{{ u.number }}">Открыть</a></td>
+		</tr>
+		{% endfor %}
+	</table>
+	{% endif %}
+</div>
+{% endblock %}

@@ -13,6 +13,7 @@ from app.models import Site, User
 from app.security import validate_pin_format
 from app.seed import apply_seed
 from app.services.admin import AdminError, create_user
+from app.services.verify import verify_stock
 from app.statuses import ROLE_ADMIN
 
 
@@ -92,6 +93,22 @@ def cmd_list_users(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_verify_stock(args: argparse.Namespace) -> int:
+    """Пересчитать остатки по журналу движений и сравнить с таблицей зеркал."""
+    with session_scope() as session:
+        report = verify_stock(session)
+    print(f"Проверено зеркал: {report.units_checked}")
+    if report.ok:
+        print("Расхождений нет")
+        return 0
+    print(f"Найдено расхождений: {len(report.problems)}", file=sys.stderr)
+    for problem in report.problems[: args.limit]:
+        print(f"  ! {problem}", file=sys.stderr)
+    if len(report.problems) > args.limit:
+        print(f"  ... и ещё {len(report.problems) - args.limit}", file=sys.stderr)
+    return 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Разбор аргументов командной строки."""
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="Управление системой склада")
@@ -116,6 +133,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_users = sub.add_parser("list-users", help="показать сотрудников")
     p_users.set_defaults(func=cmd_list_users)
+
+    p_verify = sub.add_parser("verify-stock", help="сверить остатки с журналом движений")
+    p_verify.add_argument("--limit", type=int, default=20, help="сколько расхождений показать")
+    p_verify.set_defaults(func=cmd_verify_stock)
 
     return parser
 
