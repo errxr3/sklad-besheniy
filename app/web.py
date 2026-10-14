@@ -14,7 +14,7 @@ from sqlalchemy import select
 from app.db import get_session_factory
 from app.menu import menu_for
 from app.models import User
-from app.roles import NEEDS_OPEN_SHIFT, PUBLIC, roles_for
+from app.roles import API_KEY, NEEDS_OPEN_SHIFT, PUBLIC, roles_for
 from app.security import check_csrf, csrf_token, open_shift_for, session_user_id
 from app.statuses import (
     MOVEMENT_LABELS,
@@ -50,6 +50,13 @@ templates.env.filters.update(
     date=fmt_date,
     day_month=fmt_day_month,
 )
+
+
+class BadApiKey(HTTPException):
+    """Неверный или отсутствующий ключ API."""
+
+    def __init__(self) -> None:
+        super().__init__(status_code=401, detail="Нужен действующий ключ в заголовке X-API-Key")
 
 
 class AccessDenied(HTTPException):
@@ -100,6 +107,16 @@ def check_access(request: Request, method: str, path: str) -> None:
         logger.error("Маршрут без описания в таблице ролей", extra={"path": path, "method": method})
         raise AccessDenied("Маршрут не настроен")
     if allowed == PUBLIC:
+        return
+
+    if allowed == API_KEY:
+        from app.services.apikeys import verify_key
+
+        with get_session_factory()() as session:
+            record = verify_key(session, request.headers.get("x-api-key"))
+            if record is None:
+                raise BadApiKey
+            session.commit()
         return
 
     user = load_user(request)
@@ -162,12 +179,16 @@ class GuardedRoute(APIRoute):
                 if wants_json(request):
                     return JSONResponse({"ok": False, "error": exc.detail}, status_code=403)
                 return error_page(request, exc.detail, 403)
+            except BadApiKey as exc:
+                return JSONResponse({"ok": False, "error": exc.detail}, status_code=401)
             except AccessDenied as exc:
                 if wants_json(request):
                     return JSONResponse({"ok": False, "error": exc.detail}, status_code=403)
                 return error_page(request, exc.detail, 403)
 
-            if request.method.upper() in UNSAFE_METHODS and not await csrf_ok(request):
+            # У внешнего API свой ключ, CSRF-токена у программы отгрузок нет
+            is_api = path.startswith("/api/v1")
+            if not is_api and request.method.upper() in UNSAFE_METHODS and not await csrf_ok(request):
                 message = "Форма устарела, обновите страницу и повторите"
                 logger.warning("Запрос без CSRF-токена", extra={"path": path, "method": request.method})
                 if wants_json(request):

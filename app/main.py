@@ -17,6 +17,7 @@ from app.db import get_engine
 from app.logging_setup import setup_logging
 from app.routers import (
     admin,
+    api_v1,
     auth,
     home,
     journal,
@@ -79,6 +80,7 @@ def create_app() -> FastAPI:
     app.include_router(warehouse.router)
     app.include_router(journal.router)
     app.include_router(stock.router)
+    app.include_router(api_v1.router)
 
     @app.get("/health")
     def health() -> JSONResponse:

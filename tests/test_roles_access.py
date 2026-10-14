@@ -5,7 +5,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.main import app
-from app.roles import NEEDS_OPEN_SHIFT, PUBLIC, ROUTE_ROLES
+from app.roles import API_KEY, NEEDS_OPEN_SHIFT, PUBLIC, ROUTE_ROLES
 from app.statuses import ALL_ROLES
 from tests.helpers import get_csrf, login, make_user, open_shift
 
@@ -65,9 +65,14 @@ def test_anonymous_cannot_open_protected_routes(
     method: str, path: str, client: TestClient
 ) -> None:
     """Без входа закрыты все маршруты, кроме /login и /health (SPEC §4)."""
-    if ROUTE_ROLES[(method, path)] == PUBLIC:
+    allowed = ROUTE_ROLES[(method, path)]
+    if allowed == PUBLIC:
         return
     response = client.request(method, fill_path(path), follow_redirects=False)
+    if allowed == API_KEY:
+        # Внешнее API отвечает 401: нужен ключ в заголовке X-API-Key
+        assert response.status_code == 401, f"{method} {path} -> {response.status_code}"
+        return
     assert response.status_code in (303, 401), f"{method} {path} -> {response.status_code}"
     if response.status_code == 303:
         assert response.headers["location"].startswith("/login")
@@ -77,7 +82,8 @@ def test_anonymous_cannot_open_protected_routes(
 def test_forbidden_roles_get_403(method: str, path: str, client: TestClient, db: Session) -> None:
     """Запрещённой роли маршрут отвечает 403, разрешённой — нет."""
     allowed = ROUTE_ROLES[(method, path)]
-    if allowed == PUBLIC:
+    if allowed in (PUBLIC, API_KEY):
+        # Доступ к внешнему API определяется ключом, а не ролью — см. test_api_v1.py
         return
     url = fill_path(path)
 

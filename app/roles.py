@@ -7,6 +7,9 @@ from app.statuses import ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_LOADER, ROLE_SHIFT_LEA
 # Доступно без входа
 PUBLIC: Final[tuple[str, ...]] = ("*public*",)
 
+# Доступно по ключу API в заголовке X-API-Key (SPEC §10)
+API_KEY: Final[tuple[str, ...]] = ("*api-key*",)
+
 ALL_LOGGED_IN: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_SHIFT_LEAD, ROLE_ASSEMBLER, ROLE_LOADER)
 LEADS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_SHIFT_LEAD)
 ADMIN_ONLY: Final[tuple[str, ...]] = (ROLE_ADMIN,)
@@ -105,6 +108,10 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("GET", "/stock.csv"): NOT_LOADER,
     ("GET", "/stock.xlsx"): NOT_LOADER,
     ("POST", "/stock/sync"): LEADS,
+    # API для BLAGO OTGRUZKI (ключ в заголовке X-API-Key)
+    ("GET", "/api/v1/stock"): API_KEY,
+    ("POST", "/api/v1/shipments"): API_KEY,
+    ("GET", "/api/v1/ping"): API_KEY,
 }
 
 # Маршруты, требующие открытой смены у сборщика и грузчика (SPEC §4)

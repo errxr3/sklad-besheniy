@@ -371,7 +371,8 @@ class MpShipment(Base):
     mp_barcode: Mapped[str] = mapped_column(String(64))
     article_name_norm: Mapped[str] = mapped_column(String(200))
     article_name: Mapped[str | None] = mapped_column(String(200))
-    date: Mapped[date | None] = mapped_column(Date)
+    # nullable указан явно: имя поля `date` затеняет тип `date` в аннотации
+    date: Mapped[date | None] = mapped_column(Date, nullable=True)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 
