@@ -57,9 +57,9 @@ def test_unit_number_sequence_unique_and_growing() -> None:
 
 def _make_unit(db: Session) -> Unit:
     """Площадка, артикул и одно зеркало с движением — для проверки триггера."""
-    site = Site(name="Коминтерна")
+    site = db.query(Site).filter(Site.name == "Коминтерна").one()
     article = Article(name="Zerkalo_60x160", name_norm="zerkalo_60x160", group="Полотна", prefix="Z")
-    db.add_all([site, article])
+    db.add(article)
     db.flush()
     unit = Unit(number="Z0000001", article_id=article.id, status=PRINTED, site_id=site.id)
     db.add(unit)

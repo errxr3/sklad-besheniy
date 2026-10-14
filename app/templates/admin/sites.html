@@ -1,0 +1,44 @@
+{% extends "base.html" %}
+{% block title %}Площадки{% endblock %}
+{% block content %}
+<h1>Площадки</h1>
+{% include "admin/_msg.html" %}
+
+<div class="card">
+	<h2>Новая площадка</h2>
+	<form method="post" action="/admin/sites/create" class="row tight">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<input type="text" name="name" placeholder="Название" required style="min-width:220px">
+		<button type="submit">Добавить</button>
+	</form>
+</div>
+
+{% for s in sites %}
+<div class="card">
+	<h2>{{ s.name }} {% if not s.active %}<span class="badge err">отключена</span>{% endif %}</h2>
+	<form method="post" action="/admin/sites/update">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<input type="hidden" name="site_id" value="{{ s.id }}">
+		<div class="row">
+			<div><label>Название</label><input type="text" name="name" value="{{ s.name }}"></div>
+			<div><label>Порядок в «Остатках»</label><input type="number" name="sort_order" value="{{ s.sort_order }}"></div>
+			<div><label>Активна</label>
+				<select name="active"><option value="1" {% if s.active %}selected{% endif %}>да</option>
+					<option value="0" {% if not s.active %}selected{% endif %}>нет</option></select></div>
+			<div><label>Маркировка остатка завершена</label>
+				<select name="labeling_done"><option value="1" {% if s.labeling_done %}selected{% endif %}>да</option>
+					<option value="0" {% if not s.labeling_done %}selected{% endif %}>нет</option></select></div>
+		</div>
+		<div class="row">
+			<div><label>Проверка геолокации</label>
+				<select name="geo_check_enabled"><option value="0" {% if not s.geo_check_enabled %}selected{% endif %}>выключена</option>
+					<option value="1" {% if s.geo_check_enabled %}selected{% endif %}>включена</option></select></div>
+			<div><label>Широта</label><input type="text" name="geo_lat" value="{{ s.geo_lat if s.geo_lat is not none else '' }}"></div>
+			<div><label>Долгота</label><input type="text" name="geo_lon" value="{{ s.geo_lon if s.geo_lon is not none else '' }}"></div>
+			<div><label>Радиус, м</label><input type="number" name="geo_radius_m" value="{{ s.geo_radius_m }}"></div>
+		</div>
+		<button type="submit" class="mt">Сохранить</button>
+	</form>
+</div>
+{% endfor %}
+{% endblock %}

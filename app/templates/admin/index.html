@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% block title %}Настройки{% endblock %}
+{% block content %}
+<h1>Настройки</h1>
+<div class="grid2">
+	<a class="card" href="/admin/employees"><h2>Сотрудники</h2><p class="muted">Создать, сменить роль, сбросить PIN, деактивировать</p></a>
+	<a class="card" href="/admin/sites"><h2>Площадки</h2><p class="muted">Список, геопроверка, код смены, маркировка остатка</p></a>
+	<a class="card" href="/admin/articles"><h2>Артикулы</h2><p class="muted">Импорт TOP.xlsx, цвета подгрупп, активность</p></a>
+	<a class="card" href="/admin/settings"><h2>Параметры</h2><p class="muted">Размер этикетки, этапы внедрения</p></a>
+</div>
+{% endblock %}

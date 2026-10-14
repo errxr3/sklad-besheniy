@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Параметры{% endblock %}
+{% block content %}
+<h1>Параметры</h1>
+{% include "admin/_msg.html" %}
+<div class="card">
+	<form method="post" action="/admin/settings">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<h2>Этикетка</h2>
+		<div class="row">
+			<div><label>Ширина, мм</label><input type="number" name="label_width_mm" value="{{ label_width_mm }}" min="20" max="210"></div>
+			<div><label>Высота, мм</label><input type="number" name="label_height_mm" value="{{ label_height_mm }}" min="20" max="297"></div>
+		</div>
+		<h2>Этапы внедрения</h2>
+		<div class="row">
+			<div><label>Обязательный скан ШК маркетплейса (этап 3)</label>
+				<select name="require_mp_barcode">
+					<option value="0" {% if not require_mp_barcode %}selected{% endif %}>нет</option>
+					<option value="1" {% if require_mp_barcode %}selected{% endif %}>да</option>
+				</select></div>
+			<div><label>Сверка с заказом из BLAGO OTGRUZKI (этап 3)</label>
+				<select name="verify_order">
+					<option value="0" {% if not verify_order %}selected{% endif %}>нет</option>
+					<option value="1" {% if verify_order %}selected{% endif %}>да</option>
+				</select></div>
+			<div><label>Отмена отгрузки, минут</label>
+				<input type="number" name="ship_cancel_minutes" value="{{ ship_cancel_minutes }}" min="1" max="120"></div>
+		</div>
+		<button type="submit" class="mt">Сохранить</button>
+	</form>
+</div>
+{% endblock %}

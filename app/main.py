@@ -15,6 +15,7 @@ from starlette.middleware.sessions import SessionMiddleware
 from app.config import get_settings
 from app.db import get_engine
 from app.logging_setup import setup_logging
+from app.routers import admin, auth, home
 
 logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent
@@ -51,6 +52,10 @@ def create_app() -> FastAPI:
     static_dir = BASE_DIR / "static"
     static_dir.mkdir(exist_ok=True)
     app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    app.include_router(auth.router)
+    app.include_router(home.router)
+    app.include_router(admin.router)
 
     @app.get("/health")
     def health() -> JSONResponse:

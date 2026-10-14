@@ -2,10 +2,12 @@
 
 import os
 import subprocess
+import sys
 from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
+from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
@@ -82,7 +84,7 @@ def _prepare_database() -> Iterator[str]:
 
     env = dict(os.environ, DATABASE_URL=url, PYTHONPATH=str(PROJECT_ROOT))
     result = subprocess.run(
-        [os.environ.get("ALEMBIC", "alembic"), "upgrade", "head"],
+        [sys.executable, "-m", "alembic", "upgrade", "head"],
         cwd=PROJECT_ROOT,
         env=env,
         capture_output=True,
@@ -112,7 +114,25 @@ def clean_db(_prepare_database: str) -> Iterator[None]:
         conn.execute(text("ALTER TABLE movements ENABLE TRIGGER USER"))
         conn.execute(text("ALTER SEQUENCE unit_number_seq RESTART WITH 1"))
         conn.commit()
+
+    # Начальные данные (площадки, служебный сборщик, настройки) — как после миграций
+    from app.db import session_scope
+    from app.seed import apply_seed
+
+    with session_scope() as session:
+        apply_seed(session)
     yield
+
+
+@pytest.fixture
+def client() -> Iterator["TestClient"]:
+    """HTTP-клиент приложения."""
+    from fastapi.testclient import TestClient
+
+    from app.main import app
+
+    with TestClient(app) as test_client:
+        yield test_client
 
 
 @pytest.fixture

@@ -1,0 +1,67 @@
+{% extends "base.html" %}
+{% block title %}Артикулы{% endblock %}
+{% block content %}
+<h1>Артикулы <span class="muted">({{ total }} шт.)</span></h1>
+{% include "admin/_msg.html" %}
+
+<div class="card">
+	<h2>Импорт TOP.xlsx</h2>
+	<form method="post" action="/admin/articles/import" enctype="multipart/form-data" class="row tight">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<input type="file" name="file" accept=".xlsx" required>
+		<button type="submit">Загрузить</button>
+	</form>
+	<p class="hint">Повторный импорт не создаёт дублей: новые артикулы добавляются, существующие
+		обновляют порядок и цвет, отсутствующие в файле остаются (их можно отключить вручную).</p>
+</div>
+
+<div class="card">
+	<h2>Цвета подгрупп</h2>
+	<table class="dense">
+		<tr><th>Группа</th><th>Подгруппа</th><th>Строк</th><th>Цвет</th></tr>
+		{% for group, subgroup, color, count in subgroups %}
+		<tr>
+			<td>{{ group }}</td><td>{{ subgroup or '—' }}</td><td class="num">{{ count }}</td>
+			<td>
+				<form method="post" action="/admin/articles/color" class="row tight">
+					<input type="hidden" name="csrf_token" value="{{ csrf }}">
+					<input type="hidden" name="group" value="{{ group }}">
+					<input type="hidden" name="subgroup" value="{{ subgroup or '' }}">
+					<input type="color" name="color_hex" value="{{ color or '#FFFFFF' }}" style="min-height:40px;width:64px">
+					<button type="submit" class="secondary">Применить</button>
+				</form>
+			</td>
+		</tr>
+		{% endfor %}
+	</table>
+</div>
+
+<div class="card">
+	<h2>Справочник</h2>
+	<form method="get" action="/admin/articles" class="row tight">
+		<input type="search" name="q" value="{{ q }}" placeholder="поиск по названию" style="min-width:220px">
+		<button type="submit" class="secondary">Найти</button>
+	</form>
+	<table class="dense mt">
+		<tr><th>№</th><th>Артикул</th><th>Группа</th><th>Подгруппа</th><th>Префикс</th><th>Цвет</th><th>Активен</th></tr>
+		{% for a in articles %}
+		<tr {% if a.kind == 'header' %}class="header-row"{% endif %}>
+			<td class="num">{{ a.sort_order }}</td>
+			<td {% if a.color_hex %}style="background:{{ a.color_hex }}"{% endif %}>{{ a.name }}</td>
+			<td>{{ a.group }}</td><td>{{ a.subgroup or '' }}</td><td>{{ a.prefix or '' }}</td>
+			<td>{{ a.color_hex or '' }}</td>
+			<td>
+				{% if a.kind == 'article' %}
+				<form method="post" action="/admin/articles/toggle" class="row tight">
+					<input type="hidden" name="csrf_token" value="{{ csrf }}">
+					<input type="hidden" name="article_id" value="{{ a.id }}">
+					<input type="hidden" name="active" value="{{ '0' if a.active else '1' }}">
+					<button type="submit" class="secondary">{{ 'отключить' if a.active else 'включить' }}</button>
+				</form>
+				{% endif %}
+			</td>
+		</tr>
+		{% endfor %}
+	</table>
+</div>
+{% endblock %}

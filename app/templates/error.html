@@ -1,0 +1,9 @@
+{% extends "base.html" %}
+{% block title %}Ошибка {{ status_code }}{% endblock %}
+{% block content %}
+<div class="card">
+	<h1>{% if status_code == 403 %}Доступ закрыт{% else %}Ошибка {{ status_code }}{% endif %}</h1>
+	<p class="msg err">{{ message }}</p>
+	<p><a class="btn" href="/">На главную</a></p>
+</div>
+{% endblock %}

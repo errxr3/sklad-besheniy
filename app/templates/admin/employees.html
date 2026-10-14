@@ -1,0 +1,75 @@
+{% extends "base.html" %}
+{% block title %}Сотрудники{% endblock %}
+{% block content %}
+<h1>Сотрудники</h1>
+{% include "admin/_msg.html" %}
+
+<div class="card">
+	<h2>Новый сотрудник</h2>
+	<form method="post" action="/admin/employees/create">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<div class="row">
+			<div><label>Имя</label><input type="text" name="name" required maxlength="120"></div>
+			<div><label>Роль</label>
+				<select name="role" required>
+					{% for r in roles %}<option value="{{ r }}">{{ ROLE_LABELS[r] }}</option>{% endfor %}
+				</select>
+			</div>
+			<div><label>PIN (4–6 цифр)</label>
+				<input type="text" name="pin" inputmode="numeric" pattern="[0-9]{4,6}" required></div>
+			<div><label>Площадка по умолчанию</label>
+				<select name="home_site_id">
+					<option value="">—</option>
+					{% for s in sites %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+				</select>
+			</div>
+		</div>
+		<button type="submit" class="mt">Создать</button>
+	</form>
+</div>
+
+<div class="card">
+	<h2>Список</h2>
+	<table>
+		<tr><th>Имя</th><th>Роль</th><th>Площадка</th><th>Статус</th><th>Действия</th></tr>
+		{% for u in users %}
+		<tr>
+			<td>{{ u.name }}{% if u.is_service %} <span class="badge">служебный</span>{% endif %}</td>
+			<td>{{ ROLE_LABELS[u.role] }}</td>
+			<td>{{ u.home_site.name if u.home_site else '—' }}</td>
+			<td>
+				{% if u.active %}<span class="badge ok">активен</span>{% else %}<span class="badge err">отключён</span>{% endif %}
+				{% if u.locked_until %}<span class="badge warn">вход заблокирован до {{ u.locked_until|time }}</span>{% endif %}
+			</td>
+			<td>
+				{% if not u.is_service %}
+				<form method="post" action="/admin/employees/update" class="row tight">
+					<input type="hidden" name="csrf_token" value="{{ csrf }}">
+					<input type="hidden" name="user_id" value="{{ u.id }}">
+					<input type="text" name="name" value="{{ u.name }}" style="min-width:160px">
+					<select name="role">
+						{% for r in roles %}<option value="{{ r }}" {% if r == u.role %}selected{% endif %}>{{ ROLE_LABELS[r] }}</option>{% endfor %}
+					</select>
+					<select name="home_site_id">
+						<option value="">—</option>
+						{% for s in sites %}<option value="{{ s.id }}" {% if u.home_site_id == s.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+					</select>
+					<select name="active">
+						<option value="1" {% if u.active %}selected{% endif %}>активен</option>
+						<option value="0" {% if not u.active %}selected{% endif %}>отключён</option>
+					</select>
+					<button type="submit" class="secondary">Сохранить</button>
+				</form>
+				<form method="post" action="/admin/employees/reset-pin" class="row tight mt">
+					<input type="hidden" name="csrf_token" value="{{ csrf }}">
+					<input type="hidden" name="user_id" value="{{ u.id }}">
+					<input type="text" name="pin" placeholder="новый PIN" inputmode="numeric" pattern="[0-9]{4,6}" required style="max-width:140px">
+					<button type="submit" class="secondary">Сбросить PIN</button>
+				</form>
+				{% else %}<span class="muted">вход запрещён</span>{% endif %}
+			</td>
+		</tr>
+		{% endfor %}
+	</table>
+</div>
+{% endblock %}
