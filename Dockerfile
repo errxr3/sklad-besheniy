@@ -6,9 +6,9 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-RUN apt-get update \
-    && apt-get install -y --no-install-recommends postgresql-client curl \
-    && rm -rf /var/lib/apt/lists/*
+# Образу не нужны системные пакеты: проверка живости делается самим Python,
+# а бэкапы снимает контейнер postgres. Это ускоряет сборку и убирает зависимость
+# от зеркал Debian.
 
 COPY requirements.txt requirements-dev.txt ./
 ARG INSTALL_DEV=0
