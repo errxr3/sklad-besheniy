@@ -103,6 +103,10 @@ def test_forbidden_roles_get_403(method: str, path: str, client: TestClient, db:
                 assert response.status_code != 403, (
                     f"{role} должен иметь доступ к {method} {path}, получил 403"
                 )
+                # 500 здесь означал бы ошибку в обработчике или шаблоне
+                assert response.status_code != 500, (
+                    f"{method} {path} для роли {role} ответил 500"
+                )
             else:
                 assert response.status_code == 403, (
                     f"{role} не должен иметь доступ к {method} {path}, "

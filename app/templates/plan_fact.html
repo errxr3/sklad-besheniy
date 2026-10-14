@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Задачи: план и факт{% endblock %}
+{% block content %}
+<h1>Задачи: план и факт</h1>
+<div class="card">
+	<form method="get" action="/reports/plan-fact" class="row tight">
+		<input type="date" name="date_from" value="{{ date_from.isoformat() }}">
+		<input type="date" name="date_to" value="{{ date_to.isoformat() }}">
+		<select name="site_id">
+			<option value="0">все площадки</option>
+			{% for s in sites %}<option value="{{ s.id }}" {% if site_id == s.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+		</select>
+		<button type="submit" class="secondary">Показать</button>
+	</form>
+</div>
+<div class="card">
+	<table class="dense">
+		<tr><th>Сотрудник</th><th>Артикул</th><th class="num">План</th><th class="num">Факт</th><th class="num">%</th></tr>
+		{% for row in rows %}
+		<tr>
+			<td>{{ row.user_name }}</td><td>{{ row.article_name }}</td>
+			<td class="num">{{ row.plan }}</td><td class="num">{{ row.done }}</td><td class="num">{{ row.percent }}</td>
+		</tr>
+		{% endfor %}
+		<tr><td colspan="2"><b>Итого</b></td><td class="num"><b>{{ total_plan }}</b></td>
+			<td class="num"><b>{{ total_done }}</b></td><td></td></tr>
+	</table>
+</div>
+{% endblock %}

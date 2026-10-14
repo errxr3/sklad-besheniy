@@ -1,0 +1,24 @@
+{% extends "base.html" %}
+{% block title %}Открытые смены{% endblock %}
+{% block content %}
+<h1>Открытые смены</h1>
+<p class="muted">Смены, которые ещё не закончены. После 00:05 по Москве забытые смены закрываются автоматически.</p>
+<div class="card">
+	{% if not shifts %}<p class="msg ok">Все смены закрыты.</p>{% endif %}
+	{% for shift in shifts %}
+	<div class="task {% if shift.id in stale_ids %}done{% endif %}">
+		<div class="line">
+			<span class="name">{{ shift.user.name }} · {{ shift.site.name }}</span>
+			<span>с {{ shift.started_at|dt }}</span>
+		</div>
+		<form method="post" action="/board/close-shift" class="row tight mt">
+			<input type="hidden" name="csrf_token" value="{{ csrf }}">
+			<input type="hidden" name="shift_id" value="{{ shift.id }}">
+			<input type="datetime-local" name="ended_at" style="min-width:200px">
+			<input type="text" name="note" placeholder="причина правки" required style="min-width:160px">
+			<button type="submit" class="secondary">Закрыть</button>
+		</form>
+	</div>
+	{% endfor %}
+</div>
+{% endblock %}

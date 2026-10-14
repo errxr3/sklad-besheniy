@@ -49,6 +49,29 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("GET", "/mirror/{number}"): NOT_LOADER,
     ("POST", "/mirror/{number}/assembler"): LEADS,
     ("POST", "/mirror/{number}/writeoff"): LEADS,
+    # Смены
+    ("GET", "/shift/start"): ALL_LOGGED_IN,
+    ("POST", "/shift/start"): ALL_LOGGED_IN,
+    ("GET", "/shift/end"): ALL_LOGGED_IN,
+    ("POST", "/shift/end"): ALL_LOGGED_IN,
+    ("GET", "/board"): LEADS,
+    ("GET", "/board/data"): LEADS,
+    ("POST", "/board/close-shift"): LEADS,
+    ("GET", "/warehouse/open-shifts"): LEADS,
+    ("GET", "/my-day/data"): ALL_LOGGED_IN,
+    ("POST", "/admin/sites/{site_id}/rotate-code"): ADMIN_ONLY,
+    ("GET", "/admin/sites/{site_id}/code.pdf"): ADMIN_ONLY,
+    # Задачи и отчёты
+    ("GET", "/tasks"): LEADS,
+    ("POST", "/tasks/create"): LEADS,
+    ("POST", "/tasks/update"): LEADS,
+    ("POST", "/tasks/delete"): LEADS,
+    ("POST", "/tasks/copy"): LEADS,
+    ("POST", "/tasks/done"): ALL_LOGGED_IN,
+    ("GET", "/reports"): LEADS,
+    ("GET", "/reports/timesheet"): LEADS,
+    ("GET", "/reports/timesheet.csv"): LEADS,
+    ("GET", "/reports/plan-fact"): LEADS,
 }
 
 # Маршруты, требующие открытой смены у сборщика и грузчика (SPEC §4)

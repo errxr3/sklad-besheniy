@@ -176,6 +176,15 @@ class GuardedRoute(APIRoute):
         return guarded
 
 
+async def read_json(request: Request) -> dict[str, Any]:
+    """Тело запроса как словарь. Пустой словарь, если тело не JSON."""
+    try:
+        data = await request.json()
+    except Exception:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
 def error_page(request: Request, message: str, status_code: int) -> HTMLResponse:
     """Страница с понятной ошибкой."""
     response = templates.TemplateResponse(

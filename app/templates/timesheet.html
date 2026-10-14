@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% block title %}Табель{% endblock %}
+{% block content %}
+<h1>Табель</h1>
+<div class="card">
+	<form method="get" action="/reports/timesheet" class="row tight">
+		<select name="user_id">
+			{% for u in users %}<option value="{{ u.id }}" {% if chosen and u.id == chosen.id %}selected{% endif %}>{{ u.name }}</option>{% endfor %}
+		</select>
+		<input type="date" name="date_from" value="{{ date_from.isoformat() }}">
+		<input type="date" name="date_to" value="{{ date_to.isoformat() }}">
+		<button type="submit" class="secondary">Показать</button>
+		{% if chosen %}
+		<a class="btn secondary" href="/reports/timesheet.csv?user_id={{ chosen.id }}&date_from={{ date_from.isoformat() }}&date_to={{ date_to.isoformat() }}">Скачать CSV</a>
+		{% endif %}
+	</form>
+</div>
+<div class="card">
+	<table class="dense">
+		<tr><th>Дата</th><th>Начало</th><th>Окончание</th><th class="num">Часы</th><th>Как закрыта</th></tr>
+		{% for row in rows %}
+		<tr>
+			<td>{{ row.day|date }}</td>
+			<td>{{ row.started_at|time }}</td>
+			<td>{{ row.ended_at|time if row.ended_at else '—' }}</td>
+			<td class="num">{{ row.hours }}</td>
+			<td>{{ row.closed_label }}</td>
+		</tr>
+		{% endfor %}
+		<tr><td colspan="3"><b>Итого</b></td><td class="num"><b>{{ total_hours }}</b></td><td></td></tr>
+	</table>
+</div>
+{% endblock %}

@@ -4,7 +4,6 @@ import logging
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
-from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -21,17 +20,10 @@ from app.services.units import (
 )
 from app.settings_store import get_int
 from app.statuses import PRINTED, ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_SHIFT_LEAD
-from app.web import GuardedRoute, page
+from app.web import GuardedRoute, page, read_json
 
 logger = logging.getLogger(__name__)
 router = APIRouter(route_class=GuardedRoute)
-
-
-class ScanBody(BaseModel):
-    """Тело запроса скана."""
-
-    code: str
-    csrf_token: str | None = None
 
 
 def _assemblers(db: Session) -> list[User]:
@@ -135,10 +127,13 @@ def make_print(
 @router.post("/scan/accept")
 async def scan_accept(request: Request, db: Session = Depends(get_db)) -> JSONResponse:
     """Приёмка отсканированной этикетки: «Напечатано» → «На складе»."""
-    body = ScanBody.model_validate(await request.json())
+    payload = await read_json(request)
+    code = str(payload.get("code") or "").strip()
+    if not code:
+        return JSONResponse({"ok": False, "message": "Пустой скан"}, status_code=400)
     user = request.state.user
     site, shift_id = site_and_shift(db, user)
-    result = accept_unit(db, code=body.code, actor=user, shift_id=shift_id, site_id=site.id)
+    result = accept_unit(db, code=code, actor=user, shift_id=shift_id, site_id=site.id)
     return JSONResponse(
         {
             "ok": result.ok,

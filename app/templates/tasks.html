@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+{% block title %}Задачи{% endblock %}
+{% block content %}
+<h1>Задачи на {{ day|date }}</h1>
+{% include "admin/_msg.html" %}
+
+<div class="card">
+	<form method="get" action="/tasks" class="row tight">
+		<input type="date" name="day" value="{{ day.isoformat() }}">
+		<select name="site_id">
+			{% for s in sites %}<option value="{{ s.id }}" {% if site and s.id == site.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+		</select>
+		<button type="submit" class="secondary">Показать</button>
+	</form>
+	{% if editable and site %}
+	<form method="post" action="/tasks/copy" class="row tight mt">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<input type="hidden" name="day" value="{{ day.isoformat() }}">
+		<input type="hidden" name="site_id" value="{{ site.id }}">
+		<input type="hidden" name="source_day" value="{{ today.isoformat() }}">
+		<button type="submit" class="secondary">Скопировать остаток с сегодняшнего дня</button>
+	</form>
+	{% else %}
+	<p class="muted">Прошедший день — только просмотр.</p>
+	{% endif %}
+</div>
+
+{% for worker in workers %}
+<div class="card">
+	<h2>{{ worker.name }} <span class="muted">{{ ROLE_LABELS[worker.role] }}</span></h2>
+	{% set items = by_user.get(worker.id, []) %}
+	{% if not items %}<p class="muted">Задач нет</p>{% endif %}
+	{% for item in items %}
+	<div class="task">
+		<div class="line">
+			<span class="name">
+				{% if item.task.kind == 'article' %}{{ item.task.article.name }}{% else %}{{ item.task.text }}{% endif %}
+			</span>
+			<span>{% if item.task.kind == 'article' %}{{ item.done }} / {{ item.task.qty_plan }}{% endif %}</span>
+		</div>
+		{% if editable %}
+		<div class="row tight mt">
+			<form method="post" action="/tasks/update" class="row tight">
+				<input type="hidden" name="csrf_token" value="{{ csrf }}">
+				<input type="hidden" name="task_id" value="{{ item.task.id }}">
+				<input type="hidden" name="day" value="{{ day.isoformat() }}">
+				<input type="hidden" name="site_id" value="{{ site.id }}">
+				{% if item.task.kind == 'article' %}
+					<input type="number" name="qty_plan" value="{{ item.task.qty_plan }}" min="1" style="max-width:110px">
+				{% else %}
+					<input type="text" name="text" value="{{ item.task.text }}" style="min-width:220px">
+				{% endif %}
+				<button type="submit" class="secondary">Сохранить</button>
+			</form>
+			<form method="post" action="/tasks/delete">
+				<input type="hidden" name="csrf_token" value="{{ csrf }}">
+				<input type="hidden" name="task_id" value="{{ item.task.id }}">
+				<input type="hidden" name="day" value="{{ day.isoformat() }}">
+				<input type="hidden" name="site_id" value="{{ site.id }}">
+				<button type="submit" class="danger">Удалить</button>
+			</form>
+		</div>
+		{% endif %}
+	</div>
+	{% endfor %}
+
+	{% if editable and site %}
+	<form method="post" action="/tasks/create" class="row tight mt">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<input type="hidden" name="day" value="{{ day.isoformat() }}">
+		<input type="hidden" name="site_id" value="{{ site.id }}">
+		<input type="hidden" name="user_id" value="{{ worker.id }}">
+		{% if worker.role == ROLE_ASSEMBLER %}
+		<input type="hidden" name="kind" value="article">
+		<input type="search" class="article-search" data-target="article-{{ worker.id }}"
+		       placeholder="артикул" style="min-width:200px">
+		<select name="article_id" id="article-{{ worker.id }}" style="min-width:220px"></select>
+		<input type="number" name="qty_plan" placeholder="кол-во" min="1" style="max-width:110px" required>
+		{% else %}
+		<input type="hidden" name="kind" value="text">
+		<input type="text" name="text" placeholder="поручение" style="min-width:260px" required>
+		{% endif %}
+		<button type="submit">Добавить</button>
+	</form>
+	{% endif %}
+</div>
+{% endfor %}
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+	Array.prototype.forEach.call(document.querySelectorAll('.article-search'), function (input) {
+		var select = document.getElementById(input.dataset.target);
+		var timer = null;
+		function load(query) {
+			fetch('/api/articles?q=' + encodeURIComponent(query), { headers: { 'X-Requested-With': 'fetch' } })
+				.then(function (r) { return r.json(); })
+				.then(function (data) {
+					select.innerHTML = '';
+					data.articles.forEach(function (article, index) {
+						var option = document.createElement('option');
+						option.value = article.id;
+						option.textContent = article.name;
+						if (index === 0) option.selected = true;
+						select.appendChild(option);
+					});
+				});
+		}
+		input.addEventListener('input', function () {
+			clearTimeout(timer);
+			timer = setTimeout(function () { load(input.value); }, 200);
+		});
+		load('');
+	});
+})();
+</script>
+{% endblock %}

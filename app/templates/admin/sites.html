@@ -39,6 +39,18 @@
 		</div>
 		<button type="submit" class="mt">Сохранить</button>
 	</form>
+	<h2>Код смены</h2>
+	<p class="hint">
+		{% if s.shift_code_rotated_at %}Выпущен {{ s.shift_code_rotated_at|dt }}{% else %}Ещё не выпускался{% endif %}
+	</p>
+	<div class="row tight">
+		<a class="btn secondary" href="/admin/sites/{{ s.id }}/code.pdf" target="_blank">Распечатать код смены</a>
+		<form method="post" action="/admin/sites/{{ s.id }}/rotate-code">
+			<input type="hidden" name="csrf_token" value="{{ csrf }}">
+			<button type="submit" class="danger">Перевыпустить код</button>
+		</form>
+	</div>
+	<p class="hint">Перевыпуск сразу ломает старый лист — повесьте в цеху новый.</p>
 </div>
 {% endfor %}
 {% endblock %}

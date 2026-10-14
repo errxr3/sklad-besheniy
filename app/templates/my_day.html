@@ -2,8 +2,80 @@
 {% block title %}Мой день{% endblock %}
 {% block content %}
 <h1>Мой день</h1>
+{% if err %}<p class="msg err">{{ err }}</p>{% endif %}
+
 <div class="card">
-	<h2>Смена</h2>
-	<p class="muted">Начало и окончание смены — по скану QR-кода в цеху.</p>
+	{% if shift %}
+		<p class="msg ok">На смене с {{ shift.started_at|time }} · {{ site.name if site else '' }}</p>
+		<a class="btn secondary big" href="/shift/end">Закончить смену</a>
+	{% else %}
+		<p class="msg warn">Смена не начата</p>
+		<a class="btn big" href="/shift/start">Начать смену</a>
+		<p class="hint">Нажмите и наведите камеру на QR-код, который висит в цеху.</p>
+	{% endif %}
 </div>
+
+{% if user.role == ROLE_ASSEMBLER %}
+<div class="card">
+	<h2>Задачи на сегодня</h2>
+	{% if not progress.views %}
+		<p class="muted">На сегодня задач нет, уточните у начальника смены.</p>
+	{% else %}
+		<p class="muted">Сделано {{ progress.done }} из {{ progress.plan }}</p>
+		{% for view in progress.views %}
+		<div class="task {% if view.is_done %}done{% endif %}">
+			{% if view.task.kind == 'article' %}
+			<a href="/make?article_id={{ view.task.article_id }}" style="text-decoration:none;color:inherit">
+				<div class="line">
+					<span class="name">{{ view.task.article.name }}</span>
+					<span>{% if view.is_done %}✓ {% endif %}{{ view.done }} / {{ view.plan }}</span>
+				</div>
+				<div class="progress mt"><span style="width: {{ view.percent }}%"></span></div>
+			</a>
+			{% else %}
+			<div class="line">
+				<span class="name">{{ view.task.text }}</span>
+				{% if view.is_done %}
+					<span class="badge ok">готово</span>
+				{% else %}
+				<form method="post" action="/tasks/done">
+					<input type="hidden" name="csrf_token" value="{{ csrf }}">
+					<input type="hidden" name="task_id" value="{{ view.task.id }}">
+					<button type="submit" class="secondary">Готово</button>
+				</form>
+				{% endif %}
+			</div>
+			{% endif %}
+		</div>
+		{% endfor %}
+	{% endif %}
+</div>
+<div class="card">
+	<a class="btn big" href="/make">Сделал зеркало</a>
+</div>
+{% else %}
+<div class="card">
+	<h2>Задачи на сегодня</h2>
+	{% if not progress.views %}
+		<p class="muted">На сегодня задач нет, уточните у начальника смены.</p>
+	{% else %}
+		{% for view in progress.views %}
+		<div class="task {% if view.is_done %}done{% endif %}">
+			<div class="line">
+				<span class="name">{{ view.task.text or (view.task.article.name if view.task.article else '') }}</span>
+				{% if view.is_done %}
+					<span class="badge ok">готово</span>
+				{% else %}
+				<form method="post" action="/tasks/done">
+					<input type="hidden" name="csrf_token" value="{{ csrf }}">
+					<input type="hidden" name="task_id" value="{{ view.task.id }}">
+					<button type="submit" class="secondary">Готово</button>
+				</form>
+				{% endif %}
+			</div>
+		</div>
+		{% endfor %}
+	{% endif %}
+</div>
+{% endif %}
 {% endblock %}

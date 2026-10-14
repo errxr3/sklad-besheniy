@@ -17,10 +17,11 @@ class MenuItem:
 
 MENU: tuple[MenuItem, ...] = (
     MenuItem("Мой день", "/", (ROLE_ASSEMBLER, ROLE_LOADER)),
-    MenuItem("Табло смены", "/", LEADS),
+    MenuItem("Табло смены", "/board", LEADS),
     MenuItem("Сделал зеркало", "/make", (*LEADS, ROLE_ASSEMBLER)),
+    MenuItem("Задачи", "/tasks", LEADS),
     MenuItem("Зеркало", "/mirror", NOT_LOADER),
-    MenuItem("Напечатано вчера", "/warehouse/printed-old", LEADS),
+    MenuItem("Отчёты", "/reports", LEADS),
     MenuItem("Настройки", "/admin", ADMIN_ONLY),
 )
 

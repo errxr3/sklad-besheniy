@@ -109,6 +109,16 @@ def cmd_verify_stock(args: argparse.Namespace) -> int:
     return 1
 
 
+def cmd_close_shifts(args: argparse.Namespace) -> int:
+    """Закрыть забытые смены (то же делает планировщик в 00:05 по Москве)."""
+    from app.services.shifts import auto_close_shifts
+
+    with session_scope() as session:
+        closed = auto_close_shifts(session)
+    print(f"Закрыто смен: {closed}")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Разбор аргументов командной строки."""
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="Управление системой склада")
@@ -133,6 +143,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_users = sub.add_parser("list-users", help="показать сотрудников")
     p_users.set_defaults(func=cmd_list_users)
+
+    p_shifts = sub.add_parser("close-shifts", help="закрыть забытые смены")
+    p_shifts.set_defaults(func=cmd_close_shifts)
 
     p_verify = sub.add_parser("verify-stock", help="сверить остатки с журналом движений")
     p_verify.add_argument("--limit", type=int, default=20, help="сколько расхождений показать")

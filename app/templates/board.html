@@ -3,6 +3,75 @@
 {% block content %}
 <h1>Табло смены</h1>
 <div class="card">
-	<p class="muted">Кто на смене, выработка и прогресс по задачам.</p>
+	<form method="get" action="/board" class="row tight">
+		<select name="site_id">
+			{% for s in sites %}<option value="{{ s.id }}" {% if site and s.id == site.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+		</select>
+		<input type="date" name="day" value="{{ day.isoformat() }}">
+		<button type="submit" class="secondary">Показать</button>
+	</form>
+	<p class="hint" id="updated">Обновляется каждые 30 секунд</p>
 </div>
+
+<div class="card">
+	<table id="board-table">
+		<tr><th>Сотрудник</th><th>Роль</th><th>Состояние</th><th>С</th><th>По</th>
+			<th class="num">Принято</th><th class="num">Отгружено</th><th>Задачи</th><th></th></tr>
+		{% for row in rows %}
+		<tr>
+			<td>{{ row.user.name }}</td>
+			<td>{{ ROLE_LABELS[row.user.role] }}</td>
+			<td>
+				{% if row.state == 'на смене' %}<span class="badge ok">на смене</span>
+				{% elif row.state == 'смена закончена' %}<span class="badge">смена закончена</span>
+				{% else %}<span class="badge err">не вышел</span>{% endif %}
+			</td>
+			<td>{{ row.shift.started_at|time if row.shift else '' }}</td>
+			<td>{{ row.shift.ended_at|time if row.shift and row.shift.ended_at else '' }}</td>
+			<td class="num">{{ row.accepted }}</td>
+			<td class="num">{{ row.shipped }}</td>
+			<td>{% if row.tasks_plan %}{{ row.tasks_done }} / {{ row.tasks_plan }}{% endif %}</td>
+			<td>
+				{% if row.shift and not row.shift.ended_at %}
+				<form method="post" action="/board/close-shift" class="row tight">
+					<input type="hidden" name="csrf_token" value="{{ csrf }}">
+					<input type="hidden" name="shift_id" value="{{ row.shift.id }}">
+					<input type="datetime-local" name="ended_at" style="min-width:190px">
+					<input type="text" name="note" placeholder="причина" required style="min-width:140px">
+					<button type="submit" class="secondary">Закрыть смену</button>
+				</form>
+				{% endif %}
+			</td>
+		</tr>
+		{% endfor %}
+	</table>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+	var siteId = {{ site.id if site else 0 }};
+	setInterval(function () {
+		fetch('/board/data?site_id=' + siteId, { headers: { 'X-Requested-With': 'fetch' } })
+			.then(function (r) { return r.json(); })
+			.then(function (data) {
+				document.getElementById('updated').textContent = 'Обновлено ' + data.updated;
+				var table = document.getElementById('board-table');
+				var rows = table.querySelectorAll('tr');
+				data.rows.forEach(function (item, index) {
+					var row = rows[index + 1];
+					if (!row) return;
+					var cells = row.querySelectorAll('td');
+					if (cells.length < 8) return;
+					cells[3].textContent = item.from;
+					cells[4].textContent = item.to;
+					cells[5].textContent = item.accepted;
+					cells[6].textContent = item.shipped;
+					cells[7].textContent = item.tasks;
+				});
+			})
+			.catch(function () { /* связь пропала — покажем старые данные */ });
+	}, 30000);
+})();
+</script>
 {% endblock %}
