@@ -41,7 +41,10 @@ templates.env.globals.update(
     ROLE_ASSEMBLER=ROLE_ASSEMBLER,
     ROLE_LOADER=ROLE_LOADER,
 )
+from app.services.stock import site_locative  # noqa: E402
+
 templates.env.filters.update(
+    locative=site_locative,
     dt=fmt_dt,
     time=fmt_time,
     date=fmt_date,

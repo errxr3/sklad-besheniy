@@ -100,6 +100,11 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("GET", "/journal"): LEADS,
     ("GET", "/journal.csv"): LEADS,
     ("GET", "/reports/output"): LEADS,
+    # Остатки и выгрузки
+    ("GET", "/stock"): NOT_LOADER,
+    ("GET", "/stock.csv"): NOT_LOADER,
+    ("GET", "/stock.xlsx"): NOT_LOADER,
+    ("POST", "/stock/sync"): LEADS,
 }
 
 # Маршруты, требующие открытой смены у сборщика и грузчика (SPEC §4)

@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Остатки{% endblock %}
+{% block content %}
+<h1>Остатки</h1>
+{% if ok %}<p class="msg ok">{{ ok }}</p>{% endif %}
+{% if err %}<p class="msg err">{{ err }}</p>{% endif %}
+{% if unmarked %}
+<p class="msg warn">Остатки площадки ещё не достоверны:
+	{% for s in unmarked %}{{ s.name }}{% if not loop.last %}, {% endif %}{% endfor %} —
+	маркировка остатка не завершена.</p>
+{% endif %}
+{% if sheets_warning %}<p class="msg warn">{{ sheets_warning }}</p>{% endif %}
+
+<div class="card stock-controls">
+	<form method="get" action="/stock" class="row tight">
+		<div>
+			<label for="day">Задачи на дату</label>
+			<input type="date" id="day" name="day" value="{{ day.isoformat() }}">
+		</div>
+		<div>
+			<label for="hide_inactive">Скрыть отключённые артикулы</label>
+			<select name="hide_inactive" id="hide_inactive">
+				<option value="0" {% if not hide_inactive %}selected{% endif %}>нет</option>
+				<option value="1" {% if hide_inactive %}selected{% endif %}>да</option>
+			</select>
+		</div>
+		<div><label>&nbsp;</label><button type="submit" class="secondary">Обновить</button></div>
+	</form>
+	<p class="hint">Данные на момент загрузки: <b>{{ table.built_at }}</b>. Строк: {{ table.row_count }}.
+		Страница не обновляется сама, чтобы цифры не менялись во время копирования.</p>
+	<div class="row tight mt">
+		<button type="button" class="secondary" data-copy="both">Копировать {{ table.sites[0].name if table.sites }}{% if table.sites|length > 1 %} + {{ table.sites[1].name }}{% endif %}</button>
+		<a class="btn secondary" href="/stock.csv?day={{ day.isoformat() }}">Скачать CSV</a>
+		<a class="btn secondary" href="/stock.xlsx?day={{ day.isoformat() }}">Скачать XLSX</a>
+		{% if user.role in (ROLE_ADMIN, ROLE_SHIFT_LEAD) %}
+		<form method="post" action="/stock/sync">
+			<input type="hidden" name="csrf_token" value="{{ csrf }}">
+			<button type="submit" class="secondary">Выгрузить сейчас</button>
+		</form>
+		{% endif %}
+	</div>
+	{% if sheets_status %}<p class="hint">Гугл-таблица: {{ sheets_status }}</p>{% endif %}
+</div>
+
+<div class="table-wrap">
+	<table class="dense">
+		<thead>
+			<tr>
+				<th class="sticky">Артикул</th>
+				{% for site in table.sites %}<th class="num">{{ site.name }}</th>{% endfor %}
+				{% for site in table.sites %}<th class="num">Задачи на {{ site.name|locative }} <span class="muted">{{ day|day_month }}</span></th>{% endfor %}
+			</tr>
+			<tr>
+				<th class="sticky"><span class="muted">копировать столбец →</span></th>
+				{% for site in table.sites %}
+				<th class="num"><button type="button" class="secondary mini" data-copy="stock" data-index="{{ loop.index0 }}">копировать</button></th>
+				{% endfor %}
+				{% for site in table.sites %}
+				<th class="num"><button type="button" class="secondary mini" data-copy="tasks" data-index="{{ loop.index0 }}">копировать</button></th>
+				{% endfor %}
+			</tr>
+		</thead>
+		<tbody>
+		{% for row in table.rows %}
+			{% if row.is_header %}
+			<tr class="header-row"><td class="sticky" colspan="{{ 1 + table.sites|length * 2 }}">{{ row.name }}</td></tr>
+			{% else %}
+			<tr {% if row.color_hex %}style="background:{{ row.color_hex }}"{% endif %}>
+				<td class="sticky" {% if row.color_hex %}style="background:{{ row.color_hex }}"{% endif %}>
+					{{ row.name }}{% if not row.active %} <span class="badge">откл.</span>{% endif %}
+				</td>
+				{% for site in table.sites %}
+				<td class="num {% if row.stock[loop.index0] == 0 %}zero{% endif %}">{{ row.stock_text(loop.index0) }}</td>
+				{% endfor %}
+				{% for site in table.sites %}
+				<td class="num">{{ row.tasks_text(loop.index0) }}</td>
+				{% endfor %}
+			</tr>
+			{% endif %}
+		{% endfor %}
+		</tbody>
+	</table>
+</div>
+<div id="toast" class="msg ok" hidden style="position:fixed;bottom:16px;left:16px;right:16px;z-index:50"></div>
+{% endblock %}
+{% block scripts %}
+<script id="stock-data" type="application/json">{{ columns_json|safe }}</script>
+<script>
+(function () {
+	var data = JSON.parse(document.getElementById('stock-data').textContent);
+	var toast = document.getElementById('toast');
+
+	function show(message) {
+		toast.textContent = message;
+		toast.hidden = false;
+		setTimeout(function () { toast.hidden = true; }, 2500);
+	}
+
+	function copyText(text, rows) {
+		if (navigator.clipboard && navigator.clipboard.writeText) {
+			navigator.clipboard.writeText(text).then(function () {
+				show('Скопировано ' + rows + ' строк');
+			}).catch(function () { fallback(text, rows); });
+		} else {
+			fallback(text, rows);
+		}
+	}
+
+	function fallback(text, rows) {
+		var area = document.createElement('textarea');
+		area.value = text;
+		area.style.position = 'fixed';
+		area.style.opacity = '0';
+		document.body.appendChild(area);
+		area.select();
+		try {
+			document.execCommand('copy');
+			show('Скопировано ' + rows + ' строк');
+		} catch (e) {
+			show('Не удалось скопировать — выделите столбец вручную');
+		}
+		document.body.removeChild(area);
+	}
+
+	Array.prototype.forEach.call(document.querySelectorAll('[data-copy]'), function (button) {
+		button.addEventListener('click', function () {
+			var kind = button.dataset.copy;
+			var lines = [];
+			if (kind === 'both') {
+				var count = data.stock.length;
+				for (var row = 0; row < data.stock[0].length; row++) {
+					var parts = [];
+					for (var site = 0; site < count; site++) parts.push(data.stock[site][row]);
+					lines.push(parts.join('\t'));
+				}
+			} else {
+				var index = parseInt(button.dataset.index, 10);
+				lines = data[kind][index];
+			}
+			copyText(lines.join('\n'), lines.length);
+		});
+	});
+})();
+</script>
+{% endblock %}

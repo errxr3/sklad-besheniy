@@ -24,6 +24,7 @@ from app.routers import (
     make,
     mirror,
     shifts,
+    stock,
     tasks,
     warehouse,
 )
@@ -77,6 +78,7 @@ def create_app() -> FastAPI:
     app.include_router(loading.router)
     app.include_router(warehouse.router)
     app.include_router(journal.router)
+    app.include_router(stock.router)
 
     @app.get("/health")
     def health() -> JSONResponse:

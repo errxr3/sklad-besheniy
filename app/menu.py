@@ -21,6 +21,7 @@ MENU: tuple[MenuItem, ...] = (
     MenuItem("Табло смены", "/board", LEADS),
     MenuItem("Сделал зеркало", "/make", (*LEADS, ROLE_ASSEMBLER)),
     MenuItem("Задачи", "/tasks", LEADS),
+    MenuItem("Остатки", "/stock", NOT_LOADER),
     MenuItem("Зеркало", "/mirror", NOT_LOADER),
     MenuItem("Склад", "/warehouse", LEADS),
     MenuItem("Журнал", "/journal", LEADS),
