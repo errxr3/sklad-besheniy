@@ -52,7 +52,10 @@ def tasks_page(
     """Экран задач: по умолчанию — завтра (SPEC §6.2)."""
     target_day = date.fromisoformat(day) if day else today_msk() + timedelta(days=1)
     sites = list(db.scalars(select(Site).where(Site.active.is_(True)).order_by(Site.sort_order)).all())
-    site = db.get(Site, site_id) if site_id else (sites[0] if sites else None)
+    user = request.state.user
+    home = next((s for s in sites if s.id == user.home_site_id), None)
+    # По умолчанию — площадка начальника смены, иначе первая активная
+    site = db.get(Site, site_id) if site_id else (home or (sites[0] if sites else None))
     workers = list(
         db.scalars(
             select(User)
