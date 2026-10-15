@@ -66,7 +66,8 @@ services:
     volumes:
       - ./backups:/backups
       - ./scripts/backup.sh:/backup.sh:ro
-    entrypoint: ["/bin/sh", "/backup.sh", "loop"]
+    # Скрипт смонтирован с диска и может прийти с CRLF из Windows — убираем \r перед запуском
+    entrypoint: ["/bin/sh", "-c", "tr -d '\\r' < /backup.sh > /tmp/backup.sh && exec /bin/sh /tmp/backup.sh loop"]
     depends_on:
       postgres:
         condition: service_healthy

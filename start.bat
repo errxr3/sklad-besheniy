@@ -70,6 +70,7 @@ echo.
 docker compose run --rm app python -m app.cli list-users 2>nul | find "admin" >nul
 if errorlevel 1 (
 	echo Администраторов ещё нет — создадим первого.
+	echo ВНИМАНИЕ: PIN вводится скрытно, цифры на экране не появятся. Это нормально.
 	docker compose run --rm app python -m app.cli create-admin
 	echo.
 	echo Загружаю справочник артикулов из docs\input\TOP.xlsx

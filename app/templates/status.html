@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Состояние{% endblock %}
+{% block content %}
+<h1>Состояние системы</h1>
+<p class="muted">На {{ now }}</p>
+<div class="card">
+	<table>
+		{% for check in checks %}
+		<tr>
+			<td>{{ check.name }}</td>
+			<td>{% if check.state == 'ok' %}<span class="badge ok">в порядке</span>
+				{% elif check.state == 'warn' %}<span class="badge warn">внимание</span>
+				{% else %}<span class="badge err">проблема</span>{% endif %}</td>
+			<td class="muted">{{ check.detail }}</td>
+		</tr>
+		{% endfor %}
+	</table>
+</div>
+<div class="card">
+	<h2>Склад</h2>
+	<table>
+		{% for name, value in figures.items() %}
+		<tr><td>{{ name }}</td><td class="num"><b>{{ value }}</b></td></tr>
+		{% endfor %}
+	</table>
+	<div class="row tight mt">
+		<a class="btn secondary" href="/warehouse/printed-old">Напечатано больше суток</a>
+		<a class="btn secondary" href="/warehouse/in-transit">В пути больше суток</a>
+		<a class="btn secondary" href="/warehouse/open-shifts">Открытые смены</a>
+	</div>
+</div>
+{% endblock %}

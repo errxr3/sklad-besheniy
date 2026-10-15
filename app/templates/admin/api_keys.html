@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Ключи API{% endblock %}
+{% block content %}
+<h1>Ключи API</h1>
+{% include "admin/_msg.html" %}
+{% if new_key %}
+<div class="card">
+	<p class="msg warn">Скопируйте ключ сейчас — больше он показан не будет.</p>
+	<input type="text" value="{{ new_key }}" readonly onclick="this.select()" style="font-family:monospace">
+	<p class="hint">Программа отгрузок передаёт его в заголовке <code>X-API-Key</code>.</p>
+</div>
+{% endif %}
+<div class="card">
+	<h2>Новый ключ</h2>
+	<form method="post" action="/admin/api-keys/create" class="row tight">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<input type="text" name="name" placeholder="например, BLAGO OTGRUZKI" required style="min-width:240px">
+		<button type="submit">Создать</button>
+	</form>
+	<p class="hint">Методы: <code>GET /api/v1/stock</code> — остатки, <code>POST /api/v1/shipments</code> — список
+		отправлений дня. Подробно — <a href="/docs">документация API</a>.</p>
+</div>
+<div class="card">
+	<table class="dense">
+		<tr><th>Название</th><th>Создан</th><th>Последнее обращение</th><th>Состояние</th><th></th></tr>
+		{% for key in keys %}
+		<tr>
+			<td>{{ key.name }}</td>
+			<td>{{ key.created_at|dt }}</td>
+			<td>{{ key.last_used_at|dt or '—' }}</td>
+			<td>{% if key.active %}<span class="badge ok">действует</span>{% else %}<span class="badge err">отключён</span>{% endif %}</td>
+			<td>{% if key.active %}
+				<form method="post" action="/admin/api-keys/deactivate">
+					<input type="hidden" name="csrf_token" value="{{ csrf }}">
+					<input type="hidden" name="key_id" value="{{ key.id }}">
+					<button type="submit" class="secondary mini">Отключить</button>
+				</form>{% endif %}</td>
+		</tr>
+		{% endfor %}
+	</table>
+</div>
+{% endblock %}

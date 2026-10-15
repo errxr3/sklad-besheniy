@@ -74,3 +74,8 @@ def stop_scheduler() -> None:
     if _scheduler is not None:
         _scheduler.shutdown(wait=False)
         _scheduler = None
+
+
+def scheduler_running() -> bool:
+    """Запущен ли планировщик в этом процессе."""
+    return _scheduler is not None and bool(_scheduler.running)

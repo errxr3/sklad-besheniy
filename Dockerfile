@@ -17,5 +17,9 @@ RUN pip install -r requirements.txt \
 
 COPY . .
 
+# На Windows git может выдать скрипты с переводами строк CRLF, и Linux их не запустит
+# («exec /app/scripts/entrypoint.sh: no such file or directory»). Чистим при сборке.
+RUN sed -i 's/\r$//' /app/scripts/*.sh && chmod +x /app/scripts/*.sh
+
 EXPOSE 8000
 CMD ["/app/scripts/entrypoint.sh"]

@@ -4,6 +4,7 @@ from datetime import UTC, date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 MOSCOW = ZoneInfo("Europe/Moscow")
+UTC_FROM_TIMESTAMP = UTC
 
 
 def now_utc() -> datetime:

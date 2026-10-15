@@ -14,10 +14,10 @@
 	}
 
 	reverse_proxy app:8000 {
-		# Частая проверка, чтобы сайт поднимался сразу после старта приложения,
-		# а не ждал следующей проверки полминуты
+		# Проверка раз в 5 секунд с запасом по времени: на медленных машинах
+		# (Docker Desktop под Windows) приложение может отвечать не мгновенно
 		health_uri /health
-		health_interval 3s
-		health_timeout 2s
+		health_interval 5s
+		health_timeout 15s
 	}
 }

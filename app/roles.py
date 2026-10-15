@@ -112,6 +112,13 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("GET", "/api/v1/stock"): API_KEY,
     ("POST", "/api/v1/shipments"): API_KEY,
     ("GET", "/api/v1/ping"): API_KEY,
+    # Ключи API, состояние системы и документация API
+    ("GET", "/admin/api-keys"): ADMIN_ONLY,
+    ("POST", "/admin/api-keys/create"): ADMIN_ONLY,
+    ("POST", "/admin/api-keys/deactivate"): ADMIN_ONLY,
+    ("GET", "/status"): LEADS,
+    ("GET", "/docs"): ADMIN_ONLY,
+    ("GET", "/openapi.json"): ADMIN_ONLY,
 }
 
 # Маршруты, требующие открытой смены у сборщика и грузчика (SPEC §4)

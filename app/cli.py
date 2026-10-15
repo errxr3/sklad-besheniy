@@ -42,10 +42,25 @@ def cmd_seed(args: argparse.Namespace) -> int:
     return 0
 
 
+def _ask_pin() -> str:
+    """Спросить PIN скрытым вводом.
+
+    Цифры намеренно не отображаются на экране, поэтому об этом предупреждаем:
+    иначе кажется, что клавиатура не работает.
+    """
+    print("PIN вводится скрытно — цифры на экране не появятся.")
+    print("Наберите 4–6 цифр и нажмите Enter.")
+    try:
+        return getpass.getpass("PIN (4–6 цифр): ").strip()
+    except Exception:
+        # Терминал без скрытого ввода — спрашиваем обычным способом
+        return input("PIN (4–6 цифр, будет виден): ").strip()
+
+
 def cmd_create_admin(args: argparse.Namespace) -> int:
     """Создать администратора (первый вход в систему)."""
     name = args.name or input("Имя администратора: ").strip()
-    pin = args.pin or getpass.getpass("PIN (4–6 цифр): ").strip()
+    pin = args.pin or _ask_pin()
     try:
         validate_pin_format(pin)
     except Exception as exc:

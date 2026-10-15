@@ -71,15 +71,29 @@
 		});
 	}
 
+	var needGeo = {{ 'true' if need_geo else 'false' }};
+
 	function withGeo(code) {
-		if (!navigator.geolocation) { send(code, null, null); return; }
+		// Геопозиция нужна только площадкам с включённой проверкой
+		if (!needGeo || !navigator.geolocation) { send(code, null, null); return; }
+		var done = false;
+		function finish(lat, lon) {
+			if (done) return;
+			done = true;
+			send(code, lat, lon);
+		}
+		// Пока человек не ответил на запрос разрешения, timeout геолокации не идёт —
+		// поэтому страхуемся своим таймером
+		setTimeout(function () { finish(null, null); }, 8000);
 		navigator.geolocation.getCurrentPosition(
-			function (position) { send(code, position.coords.latitude, position.coords.longitude); },
-			function () { send(code, null, null); },
-			{ enableHighAccuracy: true, timeout: 4000, maximumAge: 10000 }
+			function (position) { finish(position.coords.latitude, position.coords.longitude); },
+			function () { finish(null, null); },
+			{ enableHighAccuracy: true, timeout: 6000, maximumAge: 10000 }
 		);
 	}
 
+	// Тот же обработчик, что вызывает камера, — им пользуется сквозной тест
+	window.Sklad.shiftCode = withGeo;
 	var camera = new window.Sklad.CameraScan({
 		onCode: function (text) { withGeo(text); }
 	});
