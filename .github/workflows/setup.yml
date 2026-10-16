@@ -1,0 +1,75 @@
+# Первая установка склада на новый сервер. Запуск вручную:
+# Actions → «Первая установка на сервер» → Run workflow.
+name: Первая установка на сервер
+
+on:
+  workflow_dispatch:
+    inputs:
+      domain:
+        description: "Домен (например sklad-zerkal.ru). Оставьте пустым, чтобы пока открывать по IP"
+        required: false
+        default: ""
+      admin_name:
+        description: "Имя первого администратора"
+        required: false
+        default: ""
+      admin_pin:
+        description: "PIN администратора, 4–6 цифр"
+        required: false
+        default: ""
+
+jobs:
+  setup:
+    name: Установка
+    runs-on: ubuntu-latest
+    env:
+      HOST: ${{ secrets.SERVER_HOST }}
+      SSHPASS: ${{ secrets.SERVER_PASSWORD }}
+      USER_NAME: ${{ secrets.SERVER_USER || 'root' }}
+    steps:
+      - name: Секреты заданы?
+        run: |
+          if [ -z "$HOST" ] || [ -z "$SSHPASS" ]; then
+            echo "Задайте секреты SERVER_HOST и SERVER_PASSWORD: Settings → Secrets and variables → Actions"
+            exit 1
+          fi
+      - name: Проверка введённых значений
+        env:
+          SITE_DOMAIN: ${{ github.event.inputs.domain }}
+          ADMIN_NAME: ${{ github.event.inputs.admin_name }}
+          ADMIN_PIN: ${{ github.event.inputs.admin_pin }}
+        run: |
+          if [ -n "$ADMIN_PIN" ]; then echo "::add-mask::$ADMIN_PIN"; fi
+          if ! printf '%s' "$SITE_DOMAIN" | grep -Eq '^[A-Za-z0-9.-]*$'; then
+            echo "Домен — только латиница, цифры, точки и дефисы, без http:// и слешей"; exit 1
+          fi
+          if [ -n "$ADMIN_PIN" ] && ! printf '%s' "$ADMIN_PIN" | grep -Eq '^[0-9]{4,6}$'; then
+            echo "PIN — от 4 до 6 цифр"; exit 1
+          fi
+          if printf '%s' "$ADMIN_NAME" | grep -q "['\"\\$\`]"; then
+            echo "В имени администратора не должно быть кавычек и спецсимволов"; exit 1
+          fi
+      - uses: actions/checkout@v4
+      - name: Загрузка кода на сервер
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          SSH="sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 $USER_NAME@$HOST"
+          tar czf - --exclude=.git --exclude=.env --exclude=backups --exclude=.venv . \
+            | $SSH "mkdir -p /opt/sklad && tar xzf - -C /opt/sklad"
+      - name: Установка Docker и запуск склада
+        env:
+          SITE_DOMAIN: ${{ github.event.inputs.domain }}
+          ADMIN_NAME: ${{ github.event.inputs.admin_name }}
+          ADMIN_PIN: ${{ github.event.inputs.admin_pin }}
+        run: |
+          SSH="sshpass -e ssh -o StrictHostKeyChecking=accept-new $USER_NAME@$HOST"
+          $SSH "cd /opt/sklad && SITE_DOMAIN='$SITE_DOMAIN' ADMIN_NAME='$ADMIN_NAME' ADMIN_PIN='$ADMIN_PIN' sh scripts/server-setup.sh"
+      - name: Адрес сайта
+        env:
+          SITE_DOMAIN: ${{ github.event.inputs.domain }}
+        run: |
+          if [ -n "$SITE_DOMAIN" ]; then
+            echo "Склад: https://$SITE_DOMAIN  (домен должен смотреть на IP сервера — A-запись)"
+          else
+            echo "Склад: http://$HOST"
+          fi
