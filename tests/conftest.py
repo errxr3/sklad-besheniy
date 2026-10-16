@@ -48,14 +48,14 @@ def _test_database_url() -> str:
     name = url.database or "sklad"
     if not name.endswith("_test"):
         name = f"{name}_test"
-    return str(url.set(database=name))
+    return url.set(database=name).render_as_string(hide_password=False)
 
 
 def _ensure_database(url_str: str) -> None:
     """Создать тестовую базу, если её нет."""
     url = make_url(url_str)
     admin_url = url.set(database="postgres")
-    engine = create_engine(str(admin_url), isolation_level="AUTOCOMMIT")
+    engine = create_engine(admin_url.render_as_string(hide_password=False), isolation_level="AUTOCOMMIT")
     with engine.connect() as conn:
         exists = conn.execute(
             text("SELECT 1 FROM pg_database WHERE datname = :n"), {"n": url.database}
