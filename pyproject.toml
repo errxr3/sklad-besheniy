@@ -33,6 +33,7 @@ exclude = "(alembic/versions|tests)"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["."]
 addopts = "-q --strict-markers"
 markers = ["slow: медленные тесты", "browser: сквозные тесты Playwright"]
 filterwarnings = ["ignore::DeprecationWarning"]
