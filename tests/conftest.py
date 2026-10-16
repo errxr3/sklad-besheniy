@@ -14,6 +14,12 @@ from sqlalchemy.orm import Session
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
+# До импорта приложения: настройки читаются один раз, а без .env (как в CI)
+# cookie по умолчанию с флагом Secure и не ходит по http://testserver
+os.environ["SESSION_COOKIE_SECURE"] = "0"
+os.environ["SCHEDULER_ENABLED"] = "0"
+os.environ.setdefault("SECRET_KEY", "test-secret-key")
+
 # Таблицы, которые чистятся между тестами (все, кроме alembic_version)
 TABLES = (
     "movements",
