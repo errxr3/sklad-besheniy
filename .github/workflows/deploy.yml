@@ -80,6 +80,8 @@ jobs:
           SSH="sshpass -e ssh -o StrictHostKeyChecking=accept-new $USER_NAME@$HOST"
           $SSH 'cd /opt/sklad && test -f .env || { echo "Сервер не установлен: сначала запустите «Первая установка»"; exit 1; }'
           $SSH 'cd /opt/sklad && docker compose up -d --build && docker image prune -f >/dev/null'
+          # Caddyfile подключён файлом: после замены Caddy видит новые настройки только после перезапуска
+          $SSH 'cd /opt/sklad && if ! cmp -s Caddyfile .caddyfile.deployed; then docker compose restart caddy && cp Caddyfile .caddyfile.deployed; fi'
       - name: Проверка, что сайт отвечает
         if: steps.check.outputs.ready == 'true'
         run: |
