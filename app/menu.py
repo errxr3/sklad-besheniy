@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from app.roles import ADMIN_ONLY, ALL_LOGGED_IN, LEADS, PRINTERS, VIEWERS
+from app.roles import ADMIN_ONLY, ALL_LOGGED_IN, LEADS, LOADERS, PRINTERS, RETURNS
 from app.statuses import ROLE_ASSEMBLER, ROLE_LOADER
 
 
@@ -16,14 +16,18 @@ class MenuItem:
 
 
 MENU: tuple[MenuItem, ...] = (
-    MenuItem("Мой день", "/", (ROLE_ASSEMBLER, ROLE_LOADER)),
-    MenuItem("Погрузка", "/loading", (ROLE_LOADER, *LEADS)),
+    MenuItem("Сканер", "/", (ROLE_ASSEMBLER,)),
+    MenuItem("Смена", "/", (ROLE_LOADER,)),
+    MenuItem("Погрузка", "/loading", LOADERS),
+    MenuItem("Перемещение", "/transfer", LOADERS),
+    MenuItem("Приёмка перемещения", "/transfer/in", LOADERS),
+    MenuItem("Возвраты", "/returns", RETURNS),
+    MenuItem("Печать ШК", "/returns/print", RETURNS),
     MenuItem("Табло смены", "/board", LEADS),
     MenuItem("Печать по задачам", "/labels", PRINTERS),
-    MenuItem("Сделал зеркало", "/make", LEADS),
     MenuItem("Задачи", "/tasks", LEADS),
-    MenuItem("Остатки", "/stock", VIEWERS),
-    MenuItem("Зеркало", "/mirror", VIEWERS),
+    MenuItem("Остатки", "/stock", LEADS),
+    MenuItem("Найти зеркало", "/mirror", LEADS),
     MenuItem("Склад", "/warehouse", LEADS),
     MenuItem("Журнал", "/journal", LEADS),
     MenuItem("Отчёты", "/reports", LEADS),

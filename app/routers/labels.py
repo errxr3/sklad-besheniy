@@ -1,4 +1,9 @@
-"""«Печать по задачам»: кладовщик печатает этикетки на план сборщиков и убирает висящие."""
+"""«Печать по задачам»: кладовщик печатает этикетки на план сборщиков и убирает висящие.
+
+Кладовщик видит только свою площадку (площадку по умолчанию в карточке сотрудника),
+начальник смены и админ выбирают площадку. Печать — на одного сборщика или на одну
+задачу, ровно сколько не хватает до плана (решение владельца 2026-10-20).
+"""
 
 import logging
 from datetime import date, timedelta
@@ -10,7 +15,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Site, Task, Unit
+from app.models import Site, Task, Unit, User
 from app.routers.make import labels_pdf_response
 from app.services.context import site_and_shift
 from app.services.task_labels import (
@@ -21,6 +26,7 @@ from app.services.task_labels import (
     void_units,
 )
 from app.services.units import UnitError, find_unit
+from app.statuses import ROLE_STOREKEEPER
 from app.timeutil import today_msk
 from app.web import GuardedRoute, page
 
@@ -44,14 +50,44 @@ def _parse_day(value: str) -> date:
         return today_msk()
 
 
+def _locked_site(db: Session, user: User) -> Site | None:
+    """Площадка кладовщика (None — не задана администратором)."""
+    if not user.home_site_id:
+        return None
+    site = db.get(Site, user.home_site_id)
+    return site if site is not None and site.active else None
+
+
 def _scope_tasks(
-    db: Session, *, day: date, site_id: int, task_id: int, user_id: int
+    db: Session,
+    *,
+    user: User,
+    day: date,
+    site_id: int,
+    task_id: int,
+    user_id: int,
+    all_day: bool = False,
 ) -> list[Task]:
-    """Задачи, к которым относится действие: одна задача, все у сборщика или все за день."""
+    """Задачи, к которым относится действие: одна задача, все задачи сборщика или (для
+    уборки висящих) все задачи дня.
+
+    Кладовщику доступны только задачи своей площадки.
+    """
+    if user.role == ROLE_STOREKEEPER:
+        locked = _locked_site(db, user)
+        if locked is None:
+            return []
+        site_id = locked.id
     if task_id:
         task = db.get(Task, task_id)
-        return [task] if task is not None and task.kind == "article" else []
-    return article_tasks(db, day=day, site_id=site_id, user_id=user_id or None)
+        if task is None or task.kind != "article" or task.site_id != site_id:
+            return []
+        return [task]
+    if all_day:
+        return article_tasks(db, day=day, site_id=site_id)
+    if not user_id:
+        return []
+    return article_tasks(db, day=day, site_id=site_id, user_id=user_id)
 
 
 @router.get("/labels", response_class=HTMLResponse)
@@ -65,16 +101,30 @@ def labels_page(
 ) -> Response:
     """План печати на день: задачи сборщиков, напечатано, сделано, висит."""
     target_day = _parse_day(day)
-    sites = list(db.scalars(select(Site).where(Site.active.is_(True)).order_by(Site.sort_order)).all())
     user = request.state.user
-    site = db.get(Site, site_id) if site_id else None
-    if site is None and not user.home_site_id:
-        # Без своей площадки — первая площадка, где на этот день есть задачи
-        site = next(
-            (s for s in sites if article_tasks(db, day=target_day, site_id=s.id)), None
+    if user.role == ROLE_STOREKEEPER:
+        site = _locked_site(db, user)
+        if site is None:
+            return page(
+                request,
+                "error.html",
+                {
+                    "message": "Не указана ваша площадка — администратор должен выбрать её "
+                    "в карточке сотрудника",
+                    "status_code": 400,
+                },
+            )
+        sites = [site]
+    else:
+        sites = list(
+            db.scalars(select(Site).where(Site.active.is_(True)).order_by(Site.sort_order)).all()
         )
-    if site is None:
-        site, _ = site_and_shift(db, user)
+        site = db.get(Site, site_id) if site_id else None
+        if site is None and not user.home_site_id:
+            # Без своей площадки — первая площадка, где на этот день есть задачи
+            site = next((s for s in sites if article_tasks(db, day=target_day, site_id=s.id)), None)
+        if site is None:
+            site, _ = site_and_shift(db, user)
     groups = labels_plan(db, day=target_day, site_id=site.id)
     return page(
         request,
@@ -85,7 +135,6 @@ def labels_page(
             "site": site,
             "sites": sites,
             "groups": groups,
-            "total_to_print": sum(g.to_print for g in groups),
             "total_hanging": sum(g.hanging for g in groups),
             "ok": ok,
             "err": err,
@@ -100,20 +149,19 @@ def labels_print(
     site_id: int = Form(0),
     task_id: int = Form(0),
     user_id: int = Form(0),
-    qty: str = Form(""),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Напечатать этикетки: на задачу, на сборщика или на весь день — сколько не хватает до плана."""
+    """Напечатать этикетки на сборщика или на одну задачу — сколько не хватает до плана."""
     user = request.state.user
     target_day = _parse_day(day)
-    tasks = _scope_tasks(db, day=target_day, site_id=site_id, task_id=task_id, user_id=user_id)
-    try:
-        amount = int(qty) if qty.strip() else None
-    except ValueError:
-        return _back(target_day, site_id, err="Количество — целое число")
+    tasks = _scope_tasks(
+        db, user=user, day=target_day, site_id=site_id, task_id=task_id, user_id=user_id
+    )
+    if not tasks:
+        return _back(target_day, site_id, err="Выберите сборщика или задачу своей площадки")
     _, shift_id = site_and_shift(db, user)
     try:
-        units = print_for_tasks(db, tasks=tasks, actor=user, qty=amount, shift_id=shift_id)
+        units = print_for_tasks(db, tasks=tasks, actor=user, shift_id=shift_id)
     except UnitError as exc:
         return _back(target_day, site_id, err=str(exc))
     logger.info(
@@ -130,11 +178,20 @@ def labels_void(
     site_id: int = Form(0),
     task_id: int = Form(0),
     user_id: int = Form(0),
+    all: str = Form(""),
     db: Session = Depends(get_db),
 ) -> Response:
     """Убрать висящие этикетки: зеркало не сделано, скан этих этикеток больше не пройдёт."""
     target_day = _parse_day(day)
-    tasks = _scope_tasks(db, day=target_day, site_id=site_id, task_id=task_id, user_id=user_id)
+    tasks = _scope_tasks(
+        db,
+        user=request.state.user,
+        day=target_day,
+        site_id=site_id,
+        task_id=task_id,
+        user_id=user_id,
+        all_day=all == "1",
+    )
     units = hanging_units(db, task_ids=[task.id for task in tasks])
     if not units:
         return _back(target_day, site_id, err="Висящих этикеток нет")

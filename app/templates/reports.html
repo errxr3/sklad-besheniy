@@ -3,11 +3,12 @@
 {% block content %}
 <h1>Отчёты</h1>
 <div class="grid2">
-	<a class="card" href="/reports/timesheet"><h2>Табель</h2><p class="muted">Смены по дням, часы, выгрузка в CSV</p></a>
-	<a class="card" href="/reports/plan-fact"><h2>Задачи: план и факт</h2><p class="muted">План и факт по сотрудникам и артикулам</p></a>
-	<a class="card" href="/reports/output"><h2>Выработка</h2><p class="muted">Сделано по сборщикам и артикулам, процент брака</p></a>
-	<a class="card" href="/warehouse/printed-old"><h2>Напечатано больше суток назад</h2><p class="muted">Этикетки выданы, но зеркала не приняты</p></a>
-	<a class="card" href="/status"><h2>Состояние системы</h2><p class="muted">Гугл-таблица, бэкапы, хвосты по складу</p></a>
-	<a class="card" href="/warehouse/open-shifts"><h2>Открытые смены</h2><p class="muted">Незакрытые смены сотрудников</p></a>
+	<a class="card tile" href="/reports/timesheet"><h2>Табель</h2><p class="muted">Смены по дням, часы, выгрузка в CSV</p></a>
+	<a class="card tile" href="/reports/plan-fact"><h2>Задачи: план и факт</h2><p class="muted">План и факт по сотрудникам и артикулам</p></a>
+	{% if can('/reports/output') %}
+	<a class="card tile" href="/reports/output"><h2>Выработка</h2><p class="muted">Сделано по сборщикам и артикулам, процент брака</p></a>
+	<a class="card tile" href="/status"><h2>Состояние системы</h2><p class="muted">Гугл-таблица, бэкапы, хвосты по складу</p></a>
+	<a class="card tile" href="/warehouse/open-shifts"><h2>Открытые смены</h2><p class="muted">Незакрытые смены сотрудников</p></a>
+	{% endif %}
 </div>
 {% endblock %}

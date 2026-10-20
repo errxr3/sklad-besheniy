@@ -107,6 +107,5 @@ def test_journal_page_through_http(client: TestClient, db: Session) -> None:
     assert csv_response.status_code == 200
     assert "text/csv" in csv_response.headers["content-type"]
 
-    output_response = client.get("/reports/output")
-    assert output_response.status_code == 200
-    assert "Выработка" in output_response.text
+    # «Выработка» — только администратору (решение владельца 2026-10-20)
+    assert client.get("/reports/output").status_code == 403

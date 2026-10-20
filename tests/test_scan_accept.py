@@ -6,8 +6,10 @@ from sqlalchemy.orm import Session
 
 from app.db import get_engine
 from app.models import Movement, Unit
+from app.services.tasks import create_task
 from app.services.units import accept_unit, create_printed_units, stock_count
 from app.statuses import IN_STOCK, PRINTED, ROLE_ASSEMBLER, ROLE_SHIFT_LEAD, ROLE_STOREKEEPER
+from app.timeutil import today_msk
 from tests.helpers import get_csrf, login, make_article, make_user, open_shift, site_by_name
 
 
@@ -106,23 +108,25 @@ def test_scan_is_case_insensitive_and_trimmed(db: Session) -> None:
 
 
 def test_scan_through_http(client: TestClient, db: Session) -> None:
-    """Полный путь: кладовщик печатает на сборщика, сборщик со сменой принимает сканом."""
+    """Полный путь: задача → кладовщик печатает на сборщика → сборщик со сменой принимает сканом."""
+    site = site_by_name(db)
     worker = make_user(db, name="Сборщик веб", role=ROLE_ASSEMBLER, pin="1234")
-    keeper = make_user(db, name="Кладовщик веб", role=ROLE_STOREKEEPER, pin="1234")
-    open_shift(db, worker)
+    keeper = make_user(db, name="Кладовщик веб", role=ROLE_STOREKEEPER, home_site_id=site.id)
+    lead = make_user(db, name="Начальник веб", role=ROLE_SHIFT_LEAD)
+    open_shift(db, worker, site)
     article = make_article(db)
+    create_task(
+        db, actor=lead, day=today_msk(), site_id=site.id, user_id=worker.id, kind="article",
+        article_id=article.id, qty_plan=2,
+    )
+    db.commit()
 
     with TestClient(client.app) as keeper_client:
         login(keeper_client, keeper)
-        keeper_token = get_csrf(keeper_client, "/make")
+        keeper_token = get_csrf(keeper_client, "/labels")
         pdf = keeper_client.post(
-            "/make/print",
-            data={
-                "csrf_token": keeper_token,
-                "article_id": str(article.id),
-                "qty": "2",
-                "assembler_id": str(worker.id),
-            },
+            "/labels/print",
+            data={"csrf_token": keeper_token, "user_id": str(worker.id), "day": today_msk().isoformat()},
         )
         assert pdf.status_code == 200
         assert pdf.headers["content-type"] == "application/pdf"
@@ -154,14 +158,13 @@ def test_assembler_cannot_print(client: TestClient, db: Session) -> None:
     """Сборщик не печатает этикетки: их заранее печатает кладовщик (решение владельца)."""
     worker = make_user(db, name="Сборщик без печати", role=ROLE_ASSEMBLER, pin="1234")
     open_shift(db, worker)
-    article = make_article(db)
     login(client, worker)
     token = get_csrf(client, "/")
-    assert client.get("/make").status_code == 403
-    response = client.post(
-        "/make/print", data={"csrf_token": token, "article_id": str(article.id), "qty": "1"}
-    )
+    assert client.get("/labels").status_code == 403
+    response = client.post("/labels/print", data={"csrf_token": token, "user_id": str(worker.id)})
     assert response.status_code == 403
+    # Экрана «Сделал зеркало» больше нет ни у кого
+    assert client.get("/make").status_code == 404
     assert db.scalar(select(func.count()).select_from(Unit)) == 0
 
 

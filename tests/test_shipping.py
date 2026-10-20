@@ -62,7 +62,7 @@ def test_pallet_number_format(db: Session) -> None:
     assert number.startswith(f"P{today_msk():%Y%m%d}-")
     loader, pallet = _loader_with_pallet(db)
     assert pallet.number == number
-    close_pallet(db, pallet_id=pallet.id, user=loader)
+    close_pallet(db, pallet_id=pallet.id, user=loader, note="Озон1")
     db.commit()
     second = open_new_pallet(db, user=loader, site=site_by_name(db), channel="WB")
     db.commit()
@@ -221,10 +221,10 @@ def test_close_pallet_and_summary(db: Session) -> None:
     summary = pallet_summary(db, pallet.id)
     assert summary == [(units[0].article.name, 2)]
 
-    close_pallet(db, pallet_id=pallet.id, user=loader)
+    close_pallet(db, pallet_id=pallet.id, user=loader, note="Озон1")
     db.commit()
     with pytest.raises(ShippingError):
-        close_pallet(db, pallet_id=pallet.id, user=loader)
+        close_pallet(db, pallet_id=pallet.id, user=loader, note="Озон1")
 
 
 def test_one_open_pallet_per_loader(db: Session) -> None:
@@ -232,7 +232,7 @@ def test_one_open_pallet_per_loader(db: Session) -> None:
     loader, _ = _loader_with_pallet(db)
     with pytest.raises(ShippingError) as err:
         open_new_pallet(db, user=loader, site=site_by_name(db), channel="WB")
-    assert "уже есть открытая" in str(err.value)
+    assert "уже открыт канал" in str(err.value)
 
 
 def test_cancel_ship_returns_unit_to_stock(db: Session) -> None:
@@ -304,11 +304,12 @@ def test_loading_through_http(client: TestClient, db: Session) -> None:
 
     closed = client.post(
         "/loading/close",
-        data={"csrf_token": token, "pallet_id": str(pallet.id)},
+        data={"csrf_token": token, "pallet_id": str(pallet.id), "note": "машина 7"},
         follow_redirects=True,
     )
     assert closed.status_code == 200
-    assert "Паллета" in closed.text
+    assert "Канал закрыт" in closed.text
+    assert "машина 7" in closed.text
     db.expire_all()
     pallet_fresh = db.get(Pallet, pallet.id)
     assert pallet_fresh is not None and pallet_fresh.closed_at is not None
@@ -344,3 +345,28 @@ def test_ship_movements_count(db: Session) -> None:
         select(func.count()).select_from(Movement).where(Movement.type == MV_SHIP)
     )
     assert count == 3
+
+
+def test_ozon_channel_closes_only_with_truck(db: Session) -> None:
+    """Канал Ozon закрывается только с машиной Озон1…Озон3 (решение владельца 2026-10-20)."""
+    loader, pallet = _loader_with_pallet(db)
+    assert pallet.channel == "Ozon"
+    with pytest.raises(ShippingError) as err:
+        close_pallet(db, pallet_id=pallet.id, user=loader, note="")
+    assert "машину" in str(err.value)
+    with pytest.raises(ShippingError):
+        close_pallet(db, pallet_id=pallet.id, user=loader, note="Озон9")
+    closed = close_pallet(db, pallet_id=pallet.id, user=loader, note="Озон3")
+    assert closed.note == "Озон3" and closed.closed_at is not None
+
+
+def test_all_channels_available(db: Session) -> None:
+    """Каналы погрузки: Ozon, WB, СГТ, КГТ, СДЭК; описание у не-Ozon — по желанию."""
+    site = site_by_name(db)
+    loader = make_user(db, name="Грузчик каналов", role=ROLE_LOADER)
+    for channel in ("WB", "СГТ", "КГТ", "СДЭК"):
+        pallet = open_new_pallet(db, user=loader, site=site, channel=channel)
+        closed = close_pallet(db, pallet_id=pallet.id, user=loader)
+        assert closed.channel == channel and closed.note is None
+    with pytest.raises(ShippingError):
+        open_new_pallet(db, user=loader, site=site, channel="Почта")

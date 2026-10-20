@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% block title %}Мой день{% endblock %}
 {% block content %}
-<h1>Мой день</h1>
+<h1>{% if user.role == ROLE_ASSEMBLER %}Сканер{% else %}Смена{% endif %}</h1>
 {% if err %}<p class="msg err">{{ err }}</p>{% endif %}
 
 <div class="card">
 	{% if shift %}
 		<p class="msg ok">На смене с {{ shift.started_at|time }} · {{ site.name if site else '' }}</p>
-		<a class="btn secondary big" href="/shift/end">Закончить смену</a>
+		<a class="btn secondary" href="/shift/end">Закончить смену</a>
 	{% else %}
 		<p class="msg warn">Смена не начата</p>
 		<a class="btn big" href="/shift/start">Начать смену</a>
@@ -36,62 +36,11 @@
 	<p class="muted">Сканировать можно после начала смены.</p>
 	{% endif %}
 </div>
-
-<div class="card">
-	<h2>Задачи на сегодня</h2>
-	{% if not progress.views %}
-		<p class="muted">На сегодня задач нет, уточните у начальника смены.</p>
-	{% else %}
-		<p class="muted">Сделано <b id="total-done">{{ progress.done }}</b> из {{ progress.plan }}</p>
-		{% for view in progress.views %}
-		<div class="task {% if view.is_done %}done{% endif %}" data-task-id="{{ view.task.id }}">
-			{% if view.task.kind == 'article' %}
-			<div class="line">
-				<span class="name">{{ view.task.article.name }}</span>
-				<span class="task-count">{% if view.is_done %}✓ {% endif %}{{ view.done }} / {{ view.plan }}</span>
-			</div>
-			<div class="progress mt"><span style="width: {{ view.percent }}%"></span></div>
-			{% else %}
-			<div class="line">
-				<span class="name">{{ view.task.text }}</span>
-				{% if view.is_done %}
-					<span class="badge ok">готово</span>
-				{% else %}
-				<form method="post" action="/tasks/done">
-					<input type="hidden" name="csrf_token" value="{{ csrf }}">
-					<input type="hidden" name="task_id" value="{{ view.task.id }}">
-					<button type="submit" class="secondary">Готово</button>
-				</form>
-				{% endif %}
-			</div>
-			{% endif %}
-		</div>
-		{% endfor %}
-	{% endif %}
-</div>
-{% else %}
-<div class="card">
-	<h2>Задачи на сегодня</h2>
-	{% if not progress.views %}
-		<p class="muted">На сегодня задач нет, уточните у начальника смены.</p>
-	{% else %}
-		{% for view in progress.views %}
-		<div class="task {% if view.is_done %}done{% endif %}">
-			<div class="line">
-				<span class="name">{{ view.task.text or (view.task.article.name if view.task.article else '') }}</span>
-				{% if view.is_done %}
-					<span class="badge ok">готово</span>
-				{% else %}
-				<form method="post" action="/tasks/done">
-					<input type="hidden" name="csrf_token" value="{{ csrf }}">
-					<input type="hidden" name="task_id" value="{{ view.task.id }}">
-					<button type="submit" class="secondary">Готово</button>
-				</form>
-				{% endif %}
-			</div>
-		</div>
-		{% endfor %}
-	{% endif %}
+{% elif shift %}
+<div class="grid2">
+	<a class="card tile" href="/loading"><h2>Погрузка</h2><p class="muted">Канал → скан зеркал → закрыть канал</p></a>
+	<a class="card tile" href="/transfer"><h2>Перемещение</h2><p class="muted">Отправить зеркала на другое производство</p></a>
+	<a class="card tile" href="/transfer/in"><h2>Приёмка перемещения</h2><p class="muted">Принять приехавшие зеркала</p></a>
 </div>
 {% endif %}
 {% endblock %}
@@ -101,29 +50,10 @@
 <script src="/static/scan.js?v={{ STATIC_VERSION }}"></script>
 <script>
 (function () {
-	// После удачного скана подтягиваем прогресс задач без перезагрузки страницы
-	function refresh() {
-		fetch('/my-day/data', { headers: { 'X-Requested-With': 'fetch' } })
-			.then(function (r) { return r.json(); })
-			.then(function (data) {
-				var total = document.getElementById('total-done');
-				if (total) total.textContent = data.done;
-				data.tasks.forEach(function (task) {
-					var box = document.querySelector('.task[data-task-id="' + task.id + '"]');
-					if (!box || task.kind !== 'article') return;
-					box.classList.toggle('done', task.is_done);
-					var count = box.querySelector('.task-count');
-					if (count) count.textContent = (task.is_done ? '✓ ' : '') + task.done + ' / ' + task.plan;
-					var bar = box.querySelector('.progress span');
-					if (bar) bar.style.width = task.percent + '%';
-				});
-			}).catch(function () {});
-	}
-
 	var screen = new window.Sklad.ScanScreen({
 		url: '/scan/accept',
 		csrf: '{{ csrf }}',
-		onSuccess: refresh
+		onSuccess: function () {}
 	});
 	var camera = new window.Sklad.CameraScan({
 		onCode: function (text) { screen.send(text); }

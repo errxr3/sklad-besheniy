@@ -1,15 +1,14 @@
 {% extends "base.html" %}
 {% block title %}Склад{% endblock %}
 {% block content %}
-<h1>Складские операции</h1>
+<h1>Склад</h1>
 <div class="grid2">
-	<a class="card" href="/transfer"><h2>Перемещение</h2><p class="muted">Отправка зеркал на другую площадку</p></a>
-	<a class="card" href="/transfer/in"><h2>Приёмка перемещения</h2><p class="muted">Приём приехавших зеркал</p></a>
-	<a class="card" href="/inventory"><h2>Инвентаризация</h2><p class="muted">Пересчёт склада и исправление расхождений</p></a>
-	<a class="card" href="/writeoff"><h2>Списание</h2><p class="muted">Брак, бой, потеря, ошибочная этикетка</p></a>
-	<a class="card" href="/returns"><h2>Возврат</h2><p class="muted">Возврат от покупателя</p></a>
-	<a class="card" href="/ship-cancel"><h2>Отмена отгрузки</h2><p class="muted">Вернуть ошибочно отгруженное</p></a>
-	<a class="card" href="/warehouse/in-transit"><h2>В пути больше суток</h2><p class="muted">{{ in_transit }} зеркал</p></a>
-	<a class="card" href="/warehouse/printed-old"><h2>Напечатано больше суток назад</h2><p class="muted">Этикетки без приёмки</p></a>
+	<a class="card tile" href="/warehouse/in-transit"><h2>В пути больше суток</h2><p class="muted">{{ in_transit }} зеркал</p></a>
+	<a class="card tile" href="/warehouse/printed-old"><h2>Напечатано больше суток</h2><p class="muted">Этикетки без приёмки</p></a>
+	{% if can('/inventory') %}
+	<a class="card tile" href="/inventory"><h2>Инвентаризация</h2><p class="muted">Пересчёт склада и исправление расхождений</p></a>
+	<a class="card tile" href="/writeoff"><h2>Списание</h2><p class="muted">Брак, бой, потеря, ошибочная этикетка</p></a>
+	<a class="card tile" href="/ship-cancel"><h2>Отмена отгрузки</h2><p class="muted">Вернуть ошибочно отгруженное</p></a>
+	{% endif %}
 </div>
 {% endblock %}

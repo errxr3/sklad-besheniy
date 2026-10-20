@@ -1,4 +1,9 @@
-"""Погрузка на паллету и отгрузка (SPEC §6.4)."""
+"""Погрузка по каналам и отгрузка (SPEC §6.4).
+
+Грузчик открывает канал (Ozon, WB, СГТ, КГТ, СДЭК), сканирует зеркала и закрывает канал
+с описанием (для Ozon — машина Озон1…Озон3). Внутри это по-прежнему запись `pallets`:
+одна «отгрузка канала» = одна запись (решение владельца 2026-10-20).
+"""
 
 from dataclasses import dataclass
 from datetime import timedelta
@@ -16,6 +21,9 @@ from app.statuses import (
     IN_STOCK,
     MV_SHIP,
     MV_SHIP_CANCEL,
+    OZON,
+    OZON_TRUCKS,
+    ROLE_ADMIN,
     SHIPPED,
     STATUS_LABELS,
 )
@@ -36,14 +44,14 @@ class LoadResult(ScanResult):
 
 
 def open_pallet_for(session: Session, user_id: int) -> Pallet | None:
-    """Открытая паллета грузчика."""
+    """Открытый канал (отгрузка) грузчика."""
     return session.scalars(
         select(Pallet).where(Pallet.opened_by == user_id, Pallet.closed_at.is_(None)).limit(1)
     ).first()
 
 
 def next_pallet_number(session: Session) -> str:
-    """Номер паллеты: P + дата + порядковый за день (напр. P20261013-03)."""
+    """Номер отгрузки: P + дата + порядковый за день (напр. P20261013-03)."""
     today = today_msk()
     prefix = f"P{today:%Y%m%d}"
     count = session.scalar(
@@ -56,11 +64,11 @@ def next_pallet_number(session: Session) -> str:
 
 
 def open_new_pallet(session: Session, *, user: User, site: Site, channel: str) -> Pallet:
-    """Открыть новую паллету выбранного канала."""
+    """Открыть канал погрузки."""
     if channel not in CHANNELS:
-        raise ShippingError("Выберите канал: Ozon, WB или СДЭК")
+        raise ShippingError("Выберите канал: " + ", ".join(CHANNELS))
     if open_pallet_for(session, user.id) is not None:
-        raise ShippingError("У вас уже есть открытая паллета — закройте её или продолжайте")
+        raise ShippingError("У вас уже открыт канал — закройте его или продолжайте")
     pallet = Pallet(
         number=next_pallet_number(session),
         site_id=site.id,
@@ -73,20 +81,29 @@ def open_new_pallet(session: Session, *, user: User, site: Site, channel: str) -
     return pallet
 
 
-def close_pallet(session: Session, *, pallet_id: int, user: User) -> Pallet:
-    """Закрыть паллету: дополнять её после этого нельзя."""
+def close_pallet(session: Session, *, pallet_id: int, user: User, note: str = "") -> Pallet:
+    """Закрыть канал: всё отсканировано и готово к отгрузке, дополнять больше нельзя.
+
+    Для Ozon обязательно указать машину (Озон1…Озон3), для остальных описание — по желанию.
+    """
     pallet = session.get(Pallet, pallet_id)
     if pallet is None:
-        raise ShippingError("Паллета не найдена")
+        raise ShippingError("Отгрузка не найдена")
     if pallet.closed_at is not None:
-        raise ShippingError("Паллета уже закрыта")
+        raise ShippingError("Канал уже закрыт")
+    if pallet.opened_by != user.id and user.role != ROLE_ADMIN:
+        raise ShippingError("Этот канал открыт другим сотрудником")
+    text = note.strip()
+    if pallet.channel == OZON and text not in OZON_TRUCKS:
+        raise ShippingError("Для Ozon выберите машину: " + ", ".join(OZON_TRUCKS))
+    pallet.note = text[:200] or None
     pallet.closed_at = now_utc()
     session.flush()
     return pallet
 
 
 def pallet_summary(session: Session, pallet_id: int) -> list[tuple[str, int]]:
-    """Итог паллеты: количество по артикулам."""
+    """Итог отгрузки: количество по артикулам."""
     rows = session.execute(
         select(Article.name, func.count())
         .join(Unit, Unit.article_id == Article.id)
@@ -98,7 +115,7 @@ def pallet_summary(session: Session, pallet_id: int) -> list[tuple[str, int]]:
 
 
 def pallet_count(session: Session, pallet_id: int) -> int:
-    """Сколько зеркал на паллете."""
+    """Сколько зеркал в отгрузке."""
     value = session.scalar(select(func.count()).select_from(Unit).where(Unit.pallet_id == pallet_id))
     return int(value or 0)
 
@@ -171,7 +188,7 @@ def _scan_unit_label(
     shift_id: int | None,
     require_mp: bool,
 ) -> LoadResult:
-    """Скан этикетки зеркала при укладке на паллету."""
+    """Скан этикетки зеркала при погрузке."""
     unit = lock_unit(session, number)
     if unit is None:
         return LoadResult(False, "Номер не найден", f"Этикетка {number} не выдавалась", number=number)
@@ -190,7 +207,7 @@ def _scan_unit_label(
         return LoadResult(
             False,
             f"Уже отгружено {when}",
-            f"паллета {pallet_number}",
+            f"отгрузка {pallet_number}",
             number=number,
             article=article_name,
         )
@@ -276,13 +293,13 @@ def _scan_mp_barcode(
         )
 
     if unit.status == SHIPPED and unit.pallet_id == pallet.id:
-        # Зеркало уже уехало на паллету первым сканом — просто привязываем код
+        # Зеркало уже отгружено первым сканом — просто привязываем код
         unit.mp_barcode = mp_barcode
         session.flush()
         return LoadResult(
             True,
             unit.article.name,
-            f"ШК привязан · на паллете: {pallet_count(session, pallet.id)}",
+            f"ШК привязан · в канале: {pallet_count(session, pallet.id)}",
             number=unit.number,
             article=unit.article.name,
             pallet_count=pallet_count(session, pallet.id),
@@ -305,7 +322,7 @@ def _do_ship(
     shift_id: int | None,
     mp_barcode: str | None = None,
 ) -> LoadResult:
-    """Перевести зеркало в «Отгружено» и привязать к паллете."""
+    """Перевести зеркало в «Отгружено» и привязать к отгрузке канала."""
     try:
         apply_transition(
             session,
@@ -318,7 +335,7 @@ def _do_ship(
             pallet_id=pallet.id,
             mp_barcode=mp_barcode,
             ref_id=pallet.id,
-            note=f"паллета {pallet.number}, канал {pallet.channel}",
+            note=f"канал {pallet.channel}, отгрузка {pallet.number}",
         )
     except TransitionError as exc:
         return LoadResult(False, str(exc), number=unit.number, article=unit.article.name)
@@ -327,7 +344,7 @@ def _do_ship(
     return LoadResult(
         True,
         unit.article.name,
-        f"На паллете: {count}",
+        f"В канале {pallet.channel}: {count}",
         number=unit.number,
         article=unit.article.name,
         stock=stock_count(session, unit.article_id, unit.site_id),
@@ -371,7 +388,7 @@ def cancel_ship(session: Session, *, number: str, actor: User, shift_id: int | N
         movement_type=MV_SHIP_CANCEL,
         user_id=actor.id,
         shift_id=shift_id,
-        note=f"отмена отгрузки, паллета {pallet_number}",
+        note=f"отмена отгрузки {pallet_number}",
     )
     return ScanResult(
         True,

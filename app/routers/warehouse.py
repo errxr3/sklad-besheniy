@@ -1,24 +1,27 @@
-"""Складские операции начальника смены: перемещения, инвентаризация, возвраты, брак."""
+"""Складские операции: перемещения (грузчик), возвраты, инвентаризация и брак (админ)."""
 
 import logging
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Inventory, Site
+from app.routers.make import labels_pdf_response
 from app.services.context import site_and_shift
 from app.services.shipping import cancel_ship
-from app.services.units import ScanResult, write_off_unit
+from app.services.units import ScanResult, UnitError, write_off_unit
 from app.services.warehouse import (
     WarehouseError,
     active_inventory,
     finish_inventory,
     inventory_diff,
+    print_unmarked_returns,
     return_unit,
+    returns_site,
     scan_inventory,
     start_inventory,
     transfer_in,
@@ -197,14 +200,16 @@ async def writeoff_scan(request: Request, db: Session = Depends(get_db)) -> JSON
 
 
 @router.get("/returns", response_class=HTMLResponse)
-def returns_page(request: Request) -> Response:
-    """Возврат от покупателя."""
+def returns_page(request: Request, db: Session = Depends(get_db)) -> Response:
+    """Приёмка возвратов: всегда на площадку возвратов (Коминтерна)."""
+    site = returns_site(db)
     return page(
         request,
         "scan_op.html",
         {
-            "title": "Возврат",
-            "hint": "Годное вернётся на склад, негодное будет списано.",
+            "title": "Приёмка возвратов",
+            "hint": f"Возвраты записываются на {site.name}. Годное вернётся на склад, негодное будет "
+            "списано. Зеркало без нашей этикетки — «Печать ШК».",
             "url": "/returns/scan",
             "button": "Принять возврат",
             "fields": [
@@ -221,19 +226,40 @@ def returns_page(request: Request) -> Response:
 
 @router.post("/returns/scan")
 async def returns_scan(request: Request, db: Session = Depends(get_db)) -> JSONResponse:
-    """Скан при возврате."""
+    """Скан при возврате: годное — на склад площадки возвратов, негодное — в списание."""
     payload = await read_json(request)
     user = request.state.user
-    site, shift_id = site_and_shift(db, user)
+    _, shift_id = site_and_shift(db, user)
     result = return_unit(
         db,
         code=str(payload.get("code") or ""),
         actor=user,
         good=str(payload.get("quality") or "good") == "good",
-        site_id=site.id,
+        site_id=returns_site(db).id,
         shift_id=shift_id,
     )
     return _json(result)
+
+
+@router.get("/returns/print", response_class=HTMLResponse)
+def returns_print_page(request: Request, db: Session = Depends(get_db), err: str = "") -> Response:
+    """Печать ШК для возврата без нашей этикетки."""
+    return page(request, "returns_print.html", {"site": returns_site(db), "err": err})
+
+
+@router.post("/returns/print")
+def returns_print(
+    request: Request,
+    article_id: int = Form(...),
+    qty: int = Form(...),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Выдать номера, поставить зеркала на склад возвратов и отдать PDF этикеток."""
+    try:
+        units = print_unmarked_returns(db, article_id=article_id, qty=qty, actor=request.state.user)
+    except (UnitError, WarehouseError) as exc:
+        return RedirectResponse(f"/returns/print?{urlencode({'err': str(exc)})}", status_code=303)
+    return labels_pdf_response(db, units)
 
 
 # --- Отмена ошибочной отгрузки ---

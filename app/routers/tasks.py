@@ -22,7 +22,7 @@ from app.services.tasks import (
     tasks_progress,
     update_task,
 )
-from app.statuses import ROLE_ASSEMBLER, ROLE_LOADER
+from app.statuses import ROLE_ASSEMBLER
 from app.timeutil import today_msk
 from app.web import GuardedRoute, page
 
@@ -59,8 +59,14 @@ def tasks_page(
     workers = list(
         db.scalars(
             select(User)
-            .where(User.active.is_(True), User.role.in_((ROLE_ASSEMBLER, ROLE_LOADER)))
-            .order_by(User.role, User.name)
+            # Задачи — только сборщикам: грузчик работает по каналам без задач,
+            # служебные «сборщики» (остаток, возвраты) задач не получают
+            .where(
+                User.active.is_(True),
+                User.role == ROLE_ASSEMBLER,
+                User.is_service.is_(False),
+            )
+            .order_by(User.name)
         ).all()
     )
 

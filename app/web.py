@@ -15,7 +15,7 @@ from sqlalchemy import select
 from app.db import get_session_factory
 from app.menu import menu_for
 from app.models import User
-from app.roles import API_KEY, NEEDS_OPEN_SHIFT, PUBLIC, roles_for
+from app.roles import API_KEY, NEEDS_OPEN_SHIFT, PUBLIC, can, roles_for
 from app.security import check_csrf, csrf_token, open_shift_for, session_user_id
 from app.statuses import (
     MOVEMENT_LABELS,
@@ -240,6 +240,8 @@ def page(request: Request, template: str, context: dict[str, Any] | None = None)
         "active_url": "/" + request.url.path.lstrip("/").split("/")[0],
         "csrf": csrf_token(request),
         "today": today_msk(),
+        # Показывать ссылку, только если у роли есть доступ к странице
+        "can": lambda path, method="GET": can(user.role if user else None, path, method),
     }
     data.update(context or {})
     return templates.TemplateResponse(request, template, data)

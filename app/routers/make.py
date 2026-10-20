@@ -1,69 +1,31 @@
-"""«Сделал зеркало»: печать этикеток и приёмка сканом (SPEC §6.3)."""
+"""Приёмка сканом, перепечатка этикетки и PDF этикеток (SPEC §6.3).
+
+Экрана «Сделал зеркало» больше нет: этикетки печатаются только по задачам
+(«Печать по задачам») и возвратами для зеркал без маркировки (решение владельца 2026-10-20).
+"""
 
 import logging
 
-from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
+from fastapi import APIRouter, Depends, Request
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.labels import LabelData, build_labels_pdf
-from app.models import Article, Unit, User
+from app.models import Article, Unit
 from app.services.context import site_and_shift
 from app.services.units import (
-    UnitError,
     accept_unit,
-    create_printed_units,
     label_rows,
     printed_older_than,
 )
 from app.settings_store import get_int
-from app.statuses import PRINTED, ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_SHIFT_LEAD, ROLE_STOREKEEPER
+from app.statuses import PRINTED, ROLE_ASSEMBLER
 from app.web import GuardedRoute, page, read_json
-
-# Кто печатает этикетки на любого сборщика
-PRINTER_ROLES = (ROLE_ADMIN, ROLE_SHIFT_LEAD, ROLE_STOREKEEPER)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(route_class=GuardedRoute)
-
-
-def _assemblers(db: Session) -> list[User]:
-    """Активные сборщики, включая служебного «Остаток на запуск»."""
-    return list(
-        db.scalars(
-            select(User)
-            .where(User.active.is_(True), User.role == ROLE_ASSEMBLER)
-            .order_by(User.is_service, User.name)
-        ).all()
-    )
-
-
-@router.get("/make", response_class=HTMLResponse)
-def make_page(
-    request: Request,
-    db: Session = Depends(get_db),
-    article_id: int = 0,
-    err: str = "",
-) -> Response:
-    """Экран изготовления: выбор артикула, печать и приёмка."""
-    user = request.state.user
-    site, _ = site_and_shift(db, user)
-    chosen = db.get(Article, article_id) if article_id else None
-    return page(
-        request,
-        "make.html",
-        {
-            "site": site,
-            "chosen": chosen,
-            "assemblers": _assemblers(db) if user.role in PRINTER_ROLES else [],
-            "can_choose_assembler": user.role in PRINTER_ROLES,
-            # Приёмку сканом делают сборщики (у себя в «Мой день»), начальник смены и админ
-            "can_accept": user.role in (ROLE_ADMIN, ROLE_SHIFT_LEAD),
-            "err": err,
-        },
-    )
 
 
 @router.get("/api/articles")
@@ -80,44 +42,6 @@ def api_articles(request: Request, db: Session = Depends(get_db), q: str = "") -
     return JSONResponse(
         {"articles": [{"id": a.id, "name": a.name, "group": a.group} for a in rows]}
     )
-
-
-@router.post("/make/print")
-def make_print(
-    request: Request,
-    article_id: int = Form(...),
-    qty: int = Form(...),
-    assembler_id: str = Form(""),
-    db: Session = Depends(get_db),
-) -> Response:
-    """Создать зеркала в статусе «Напечатано» и отдать PDF с этикетками."""
-    user = request.state.user
-    site, shift_id = site_and_shift(db, user)
-
-    target_assembler = user.id
-    if user.role in PRINTER_ROLES and assembler_id:
-        target_assembler = int(assembler_id)
-
-    try:
-        units = create_printed_units(
-            db,
-            article_id=article_id,
-            qty=qty,
-            site_id=site.id,
-            assembler_id=target_assembler,
-            actor_id=user.id,
-            shift_id=shift_id,
-        )
-    except UnitError as exc:
-        from urllib.parse import urlencode
-
-        return RedirectResponse(f"/make?{urlencode({'err': str(exc)})}", status_code=303)
-
-    logger.info(
-        "Напечатаны этикетки",
-        extra={"user_id": user.id, "unit_number": f"{units[0].number}+{len(units) - 1}"},
-    )
-    return labels_pdf_response(db, units)
 
 
 def labels_pdf_response(db: Session, units: list[Unit]) -> Response:

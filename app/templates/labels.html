@@ -1,46 +1,39 @@
 {% extends "base.html" %}
 {% block title %}Печать по задачам{% endblock %}
 {% block content %}
-<h1>Печать по задачам на {{ day|date }}</h1>
+<h1>Печать по задачам</h1>
+<p class="muted">{{ site.name }} · {{ day|date }}</p>
 {% include "admin/_msg.html" %}
 
 <div class="card">
 	<form method="get" action="/labels" class="row tight">
 		<input type="date" name="day" value="{{ day.isoformat() }}">
+		{% if sites|length > 1 %}
 		<select name="site_id">
 			{% for s in sites %}<option value="{{ s.id }}" {% if s.id == site.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
 		</select>
+		{% else %}
+		<input type="hidden" name="site_id" value="{{ site.id }}">
+		{% endif %}
 		<button type="submit" class="secondary">Показать</button>
 	</form>
 	<div class="row tight mt">
 		<a class="btn secondary" href="/labels?day={{ today.isoformat() }}&site_id={{ site.id }}">Сегодня</a>
 		<a class="btn secondary" href="/labels?day={{ tomorrow.isoformat() }}&site_id={{ site.id }}">Завтра</a>
 	</div>
-	{% if groups %}
-	<div class="row tight mt">
-		<form method="post" action="/labels/print" target="_blank" class="print-form">
-			<input type="hidden" name="csrf_token" value="{{ csrf }}">
-			<input type="hidden" name="day" value="{{ day.isoformat() }}">
-			<input type="hidden" name="site_id" value="{{ site.id }}">
-			<button type="submit" class="big" {% if not total_to_print %}disabled{% endif %}>
-				Печать всего на день ({{ total_to_print }})
-			</button>
-		</form>
-		{% if total_hanging %}
-		<form method="post" action="/labels/void" class="void-form"
-		      data-confirm="Убрать все висящие этикетки за день ({{ total_hanging }})? Их скан больше не пройдёт.">
-			<input type="hidden" name="csrf_token" value="{{ csrf }}">
-			<input type="hidden" name="day" value="{{ day.isoformat() }}">
-			<input type="hidden" name="site_id" value="{{ site.id }}">
-			<button type="submit" class="secondary">Убрать все висящие ({{ total_hanging }})</button>
-		</form>
-		{% endif %}
-	</div>
+	{% if total_hanging %}
+	<form method="post" action="/labels/void" class="void-form mt"
+	      data-confirm="Убрать все висящие этикетки за день ({{ total_hanging }})? Их скан больше не пройдёт.">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<input type="hidden" name="day" value="{{ day.isoformat() }}">
+		<input type="hidden" name="site_id" value="{{ site.id }}">
+		<input type="hidden" name="all" value="1">
+		<button type="submit" class="secondary">Убрать все висящие за день ({{ total_hanging }})</button>
+	</form>
 	{% endif %}
-	<p class="hint">Этикетки печатаются на недостающее до плана количество и сразу подписаны сборщиком.
-	«Висят» — напечатаны, но зеркало ещё не отсканировано. Если зеркало не сделают, уберите такие
-	этикетки — их скан больше не пройдёт. Этикетки вне задач — на странице <a href="/make">«Печать вручную»</a>,
-	старые неиспользованные — в списке <a href="/warehouse/printed-old">«Напечатано больше суток»</a>.</p>
+	<p class="hint">Печать — на каждого сборщика отдельно, ровно сколько не хватает до плана; этикетки
+	подписаны сборщиком. «Висят» — напечатаны, но зеркало ещё не отсканировано. Если зеркало не сделают,
+	уберите такие этикетки — их скан больше не пройдёт.</p>
 </div>
 
 {% if not groups %}
@@ -58,17 +51,17 @@
 		</div>
 		<p class="muted">План {{ row.plan }} · напечатано {{ row.issued }} · сделано {{ row.done }}</p>
 		<div class="row tight">
-			<form method="post" action="/labels/print" target="_blank" class="print-form row tight">
+			{% if row.to_print %}
+			<form method="post" action="/labels/print" target="_blank" class="print-form">
 				<input type="hidden" name="csrf_token" value="{{ csrf }}">
 				<input type="hidden" name="day" value="{{ day.isoformat() }}">
 				<input type="hidden" name="site_id" value="{{ site.id }}">
 				<input type="hidden" name="task_id" value="{{ row.task.id }}">
-				<input type="number" name="qty" min="1" max="200" value="{{ row.to_print or 1 }}"
-				       style="width: 5em" aria-label="Количество">
-				<button type="submit" {% if not row.to_print %}class="secondary"{% endif %}>
-					{% if row.to_print %}Печать{% else %}Допечатать{% endif %}
-				</button>
+				<button type="submit" class="secondary">Печать {{ row.to_print }}</button>
 			</form>
+			{% else %}
+			<span class="badge ok">напечатано</span>
+			{% endif %}
 			{% if row.hanging %}
 			<form method="post" action="/labels/void" class="void-form"
 			      data-confirm="Убрать висящие этикетки «{{ row.task.article.name }}» ({{ row.hanging }})? Их скан больше не пройдёт.">
@@ -88,8 +81,8 @@
 			<input type="hidden" name="day" value="{{ day.isoformat() }}">
 			<input type="hidden" name="site_id" value="{{ site.id }}">
 			<input type="hidden" name="user_id" value="{{ group.user.id }}">
-			<button type="submit" {% if not group.to_print %}disabled{% endif %}>
-				Печать всего для {{ group.user.name }} ({{ group.to_print }})
+			<button type="submit" class="big" {% if not group.to_print %}disabled{% endif %}>
+				{% if group.to_print %}Печать для {{ group.user.name }} ({{ group.to_print }}){% else %}Всё напечатано{% endif %}
 			</button>
 		</form>
 		{% if group.hanging %}

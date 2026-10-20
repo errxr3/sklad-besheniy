@@ -70,6 +70,8 @@ ROLE_ASSEMBLER: Final = "assembler"
 ROLE_LOADER: Final = "loader"
 # Кладовщик: печатает этикетки заранее по задачам сборщиков (решение владельца 2026-10-20)
 ROLE_STOREKEEPER: Final = "storekeeper"
+# Возвраты: приёмка возвратов и печать ШК для зеркал без нашей маркировки
+ROLE_RETURNS: Final = "returns"
 
 ALL_ROLES: Final[tuple[str, ...]] = (
     ROLE_ADMIN,
@@ -77,6 +79,7 @@ ALL_ROLES: Final[tuple[str, ...]] = (
     ROLE_STOREKEEPER,
     ROLE_ASSEMBLER,
     ROLE_LOADER,
+    ROLE_RETURNS,
 )
 
 ROLE_LABELS: Final[dict[str, str]] = {
@@ -85,13 +88,17 @@ ROLE_LABELS: Final[dict[str, str]] = {
     ROLE_ASSEMBLER: "Сборщик зеркал",
     ROLE_STOREKEEPER: "Кладовщик",
     ROLE_LOADER: "Грузчик",
+    ROLE_RETURNS: "Возвраты",
 }
 
 # Роли, которым нужна открытая смена для сканирующих операций (SPEC §4)
 ROLES_NEED_SHIFT: Final[tuple[str, ...]] = (ROLE_ASSEMBLER, ROLE_LOADER)
 
 # --- Каналы отгрузки (SPEC §6.4) ---
-CHANNELS: Final[tuple[str, ...]] = ("Ozon", "WB", "СДЭК")
+CHANNELS: Final[tuple[str, ...]] = ("Ozon", "WB", "СГТ", "КГТ", "СДЭК")
+OZON: Final = "Ozon"
+# Машины Ozon: при закрытии канала Ozon грузчик выбирает, в какую машину погружено
+OZON_TRUCKS: Final[tuple[str, ...]] = ("Озон1", "Озон2", "Озон3")
 
 # --- Причины списания (SPEC §6.7) ---
 WRITE_OFF_REASONS: Final[tuple[str, ...]] = (

@@ -14,7 +14,7 @@
 		<tr><th>Изготовлено</th><td>{{ unit.made_at|dt }}</td></tr>
 		<tr><th>Принято</th><td>{{ unit.accepted_at|dt or '—' }}</td></tr>
 		<tr><th>Канал</th><td>{{ unit.channel or '—' }}</td></tr>
-		<tr><th>Паллета</th><td>{{ unit.pallet.number if unit.pallet else '—' }}</td></tr>
+		<tr><th>Отгрузка</th><td>{% if unit.pallet %}{{ unit.pallet.channel }}{% if unit.pallet.note %} · {{ unit.pallet.note }}{% endif %} ({{ unit.pallet.number }}){% else %}—{% endif %}</td></tr>
 		<tr><th>ШК маркетплейса</th><td>{{ unit.mp_barcode or '—' }}</td></tr>
 	</table>
 </div>
@@ -36,6 +36,7 @@
 		</select>
 		<button type="submit" class="secondary">Сохранить</button>
 	</form>
+	{% if can('/mirror/{number}/writeoff', 'POST') %}
 	<h2>Списать</h2>
 	<form method="post" action="/mirror/{{ unit.number }}/writeoff" class="row tight">
 		<input type="hidden" name="csrf_token" value="{{ csrf }}">
@@ -45,6 +46,7 @@
 		<input type="text" name="note" placeholder="комментарий" style="min-width:180px">
 		<button type="submit" class="danger">Списать</button>
 	</form>
+	{% endif %}
 	{% endif %}
 </div>
 

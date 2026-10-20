@@ -149,6 +149,8 @@ class Pallet(Base):
     opened_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     opened_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     closed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Описание при закрытии канала (для Ozon — машина: Озон1…Озон3)
+    note: Mapped[str | None] = mapped_column(Text)
 
     site: Mapped[Site] = relationship(lazy="joined")
     opener: Mapped[User] = relationship(lazy="joined")

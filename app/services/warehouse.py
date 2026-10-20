@@ -8,10 +8,12 @@ from sqlalchemy.orm import Session
 
 from app.models import Article, Inventory, InventoryScan, Movement, Site, Unit, User
 from app.scan import clean_code, is_own_label
-from app.services.units import ScanResult, stock_count
+from app.seed import RETURNS_SERVICE_NAME, RETURNS_SITE_NAME
+from app.services.units import ScanResult, UnitError, create_printed_units, stock_count
 from app.statuses import (
     IN_STOCK,
     IN_TRANSIT,
+    MV_ACCEPT,
     MV_INVENTORY_FIX,
     MV_RETURN_BAD,
     MV_RETURN_OK,
@@ -196,6 +198,51 @@ def return_unit(
         article=unit.article.name,
         stock=stock_count(session, unit.article_id, unit.site_id),
     )
+
+
+def returns_site(session: Session) -> Site:
+    """Площадка, на которую всегда записываются возвраты (Коминтерна)."""
+    site = session.scalar(select(Site).where(Site.name == RETURNS_SITE_NAME, Site.active.is_(True)))
+    if site is None:
+        site = session.scalars(
+            select(Site).where(Site.active.is_(True)).order_by(Site.sort_order, Site.id).limit(1)
+        ).first()
+    if site is None:
+        raise WarehouseError("Нет ни одной активной площадки")
+    return site
+
+
+def print_unmarked_returns(
+    session: Session, *, article_id: int, qty: int, actor: User
+) -> list[Unit]:
+    """Возврат без нашей этикетки: выдать номера и сразу поставить зеркала на склад.
+
+    Зеркало записывается на площадку возвратов, «сборщиком» — служебный «Возврат без ШК»:
+    в карточке и журнале видно, что оно пришло с возвратов без личного ШК.
+    """
+    service = session.scalar(select(User).where(User.name == RETURNS_SERVICE_NAME))
+    if service is None:
+        raise UnitError("Нет служебного сотрудника «Возврат без ШК» — обратитесь к администратору")
+    site = returns_site(session)
+    units = create_printed_units(
+        session,
+        article_id=article_id,
+        qty=qty,
+        site_id=site.id,
+        assembler_id=service.id,
+        actor_id=actor.id,
+    )
+    for unit in units:
+        apply_transition(
+            session,
+            unit,
+            IN_STOCK,
+            movement_type=MV_ACCEPT,
+            user_id=actor.id,
+            to_site_id=site.id,
+            note="возврат без маркировки: ШК напечатан на возвратах",
+        )
+    return units
 
 
 # --- Инвентаризация (SPEC §6.6) ---

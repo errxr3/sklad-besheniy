@@ -1,8 +1,8 @@
 """Сквозной тест браузером (SPEC §12, последний абзац).
 
 Вход сборщика → начало смены (камера подменяется вызовом того же обработчика с кодом)
-→ задача видна → кладовщик печатает этикетку по задаче
-→ скан → прогресс задачи 1/N → вход грузчика → паллета → скан → остаток 0.
+→ кладовщик печатает этикетки на сборщика по задаче → сборщик сканирует
+→ вход грузчика → канал Ozon → скан → закрытие канала с машиной → остаток 0.
 """
 
 import os
@@ -19,13 +19,13 @@ from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
+from app.labels import LabelData, build_labels_pdf
 from app.models import Unit
 from app.services.shifts import make_shift_code
 from app.services.tasks import create_task
-from app.services.units import stock_count
+from app.services.units import create_printed_units, label_rows, stock_count
 from app.statuses import (
     IN_STOCK,
-    ROLE_ADMIN,
     ROLE_ASSEMBLER,
     ROLE_LABELS,
     ROLE_LOADER,
@@ -33,7 +33,7 @@ from app.statuses import (
     ROLE_STOREKEEPER,
 )
 from app.timeutil import today_msk
-from tests.helpers import make_article, make_user, site_by_name
+from tests.helpers import make_article, make_user, open_shift, site_by_name
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 CHROMIUM_CANDIDATES = (
@@ -118,7 +118,7 @@ def test_full_day_in_browser(server: str, db: Session) -> None:
     assembler = make_user(db, name="Иван Сборщик", role=ROLE_ASSEMBLER, pin="1111")
     make_user(db, name="Пётр Грузчик", role=ROLE_LOADER, pin="2222")
     lead = make_user(db, name="Ольга Начальник", role=ROLE_SHIFT_LEAD, pin="3333")
-    make_user(db, name="Мария Кладовщик", role=ROLE_STOREKEEPER, pin="4444")
+    make_user(db, name="Мария Кладовщик", role=ROLE_STOREKEEPER, pin="4444", home_site_id=site.id)
     create_task(
         db, actor=lead, day=today_msk(), site_id=site.id, user_id=assembler.id,
         kind="article", article_id=article.id, qty_plan=3,
@@ -135,25 +135,25 @@ def test_full_day_in_browser(server: str, db: Session) -> None:
         _start_shift(worker, server, code)
 
         worker.goto(f"{server}/")
-        assert "Zerkalo_60x160" in worker.inner_text("main")
-        assert "0 / 3" in worker.inner_text("main")
+        assert "Скан зеркала" in worker.inner_text("main")
 
-        # Печать: кладовщик заранее печатает этикетки по задаче (PDF уходит в новую вкладку)
+        # Печать: кладовщик заранее печатает этикетки на сборщика (PDF уходит в новую вкладку)
         keeper = browser.new_context().new_page()
         _login(keeper, server, "Мария Кладовщик — Кладовщик", "4444")
         keeper.goto(f"{server}/labels")
         assert "Иван Сборщик" in keeper.inner_text("main")
-        form = keeper.locator("form.print-form", has=keeper.locator("input[name=task_id]")).first
-        csrf = form.locator("input[name=csrf_token]").get_attribute("value")
-        task_id = form.locator("input[name=task_id]").get_attribute("value")
-        pdf = keeper.request.post(
-            f"{server}/labels/print",
-            form={"csrf_token": csrf or "", "task_id": task_id or "", "qty": "1"},
-        )
+        form = keeper.locator("form.print-form", has=keeper.locator("input[name=user_id]")).first
+        fields = {
+            name: form.locator(f"input[name={name}]").get_attribute("value") or ""
+            for name in ("csrf_token", "user_id", "day", "site_id")
+        }
+        pdf = keeper.request.post(f"{server}/labels/print", form=fields)
         assert pdf.ok and pdf.headers["content-type"] == "application/pdf"
 
         db.expire_all()
-        number = db.scalar(select(Unit.number).where(Unit.article_id == article.id))
+        number = db.scalar(
+            select(Unit.number).where(Unit.article_id == article.id).order_by(Unit.id).limit(1)
+        )
         assert number is not None
 
         worker.goto(f"{server}/")
@@ -163,21 +163,24 @@ def test_full_day_in_browser(server: str, db: Session) -> None:
         worker.wait_for_selector(".scan-result.ok", timeout=10000)
         assert "Zerkalo_60x160" in worker.inner_text("#scan-result")
 
-        worker.goto(f"{server}/")
-        assert "1 / 3" in worker.inner_text("main")
 
         # --- Грузчик ---
         carrier = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
         _login(carrier, server, "Пётр Грузчик — Грузчик", "2222")
         _start_shift(carrier, server, code)
         carrier.goto(f"{server}/loading")
-        carrier.select_option("#channel", "Ozon")
-        carrier.click("button:has-text(\"Новая паллета\")")
+        carrier.click("button.channel-btn:has-text(\"Ozon\")")
         carrier.wait_for_selector("#scan-input")
         carrier.fill("#scan-input", number)
         carrier.press("#scan-input", "Enter")
         carrier.wait_for_selector(".scan-result.ok", timeout=10000)
-        assert "На паллете: 1" in carrier.inner_text("#scan-result")
+        assert "В канале Ozon: 1" in carrier.inner_text("#scan-result")
+        # Закрыть канал Ozon с машиной
+        carrier.check("input[name=note][value=\"Озон2\"]")
+        carrier.once("dialog", lambda dialog: dialog.accept())
+        carrier.click("button:has-text(\"Закрыть канал Ozon\")")
+        carrier.wait_for_selector("text=Канал закрыт", timeout=10000)
+        assert "Озон2" in carrier.inner_text("main")
 
         browser.close()
 
@@ -204,23 +207,19 @@ def test_camera_reads_printed_label(server: str, db: Session, tmp_path: Path) ->
     pdfium = pytest.importorskip("pypdfium2")
 
     article = make_article(db, name="Zerkalo_100x200")
-    make_user(db, name="Анна Админ", role=ROLE_ADMIN, pin="4444")
+    worker = make_user(db, name="Сборщик Камера", role=ROLE_ASSEMBLER, pin="4444")
+    open_shift(db, worker)
+    units = create_printed_units(
+        db,
+        article_id=article.id,
+        qty=1,
+        site_id=site_by_name(db).id,
+        assembler_id=worker.id,
+        actor_id=worker.id,
+    )
     db.commit()
-    login_label = f"Анна Админ — {ROLE_LABELS[ROLE_ADMIN]}"
-
-    with sync_api.sync_playwright() as playwright:
-        browser = playwright.chromium.launch(executable_path=_chromium(), args=["--no-sandbox"])
-        page = browser.new_context().new_page()
-        _login(page, server, login_label, "4444")
-        page.goto(f"{server}/make?article_id={article.id}")
-        csrf = page.get_attribute("#print-form input[name=csrf_token]", "value")
-        pdf = page.request.post(
-            f"{server}/make/print",
-            form={"csrf_token": csrf or "", "article_id": str(article.id), "qty": "1"},
-        )
-        assert pdf.ok
-        pdf_bytes = pdf.body()
-        browser.close()
+    login_label = f"Сборщик Камера — {ROLE_LABELS[ROLE_ASSEMBLER]}"
+    pdf_bytes = build_labels_pdf([LabelData(*row) for row in label_rows(units)])
 
     label = pdfium.PdfDocument(pdf_bytes)[0].render(scale=4).to_pil().convert("RGB")
     frame = Image.new("RGB", (1280, 720), (170, 170, 170))
@@ -242,7 +241,7 @@ def test_camera_reads_printed_label(server: str, db: Session, tmp_path: Path) ->
         )
         page = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
         _login(page, server, login_label, "4444")
-        page.goto(f"{server}/make")
+        page.goto(f"{server}/")
         page.click("#camera-btn")
         page.wait_for_selector(".scan-result.ok", timeout=15000)
         assert "Zerkalo_100x200" in page.inner_text("#scan-result")

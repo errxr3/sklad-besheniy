@@ -118,25 +118,16 @@ def print_for_tasks(
     *,
     tasks: list[Task],
     actor: User,
-    qty: int | None = None,
     shift_id: int | None = None,
 ) -> list[Unit]:
-    """Напечатать этикетки под задачи: по умолчанию — сколько не хватает до плана.
-
-    `qty` задаёт количество явно (только для одной задачи — допечатать сверх плана
-    или меньше).
-    """
-    if qty is not None and len(tasks) != 1:
-        raise UnitError("Количество задаётся только для одной задачи")
-    if qty is not None and not 1 <= qty <= MAX_PRINT_QTY * 4:
-        raise UnitError(f"Количество — от 1 до {MAX_PRINT_QTY * 4}")
+    """Напечатать этикетки под задачи — ровно сколько не хватает до плана."""
     counts = _counts(session, [task.id for task in tasks])
     units: list[Unit] = []
     for task in tasks:
         if task.kind != "article" or task.article_id is None:
             continue
         issued = counts.get(task.id, (0, 0))[0]
-        need = qty if qty is not None else max(0, (task.qty_plan or 0) - issued)
+        need = max(0, (task.qty_plan or 0) - issued)
         while need > 0:
             chunk = min(need, MAX_PRINT_QTY)
             units += create_printed_units(

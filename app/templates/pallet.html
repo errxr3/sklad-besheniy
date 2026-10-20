@@ -1,11 +1,12 @@
 {% extends "base.html" %}
-{% block title %}Паллета {{ pallet.number }}{% endblock %}
+{% block title %}Отгрузка {{ pallet.channel }}{% endblock %}
 {% block content %}
-<h1>Паллета {{ pallet.number }}</h1>
+<h1>Канал {{ pallet.channel }}{% if pallet.note %} · {{ pallet.note }}{% endif %}</h1>
 <div class="card">
-	<p>Канал: <b>{{ pallet.channel }}</b> · площадка: {{ pallet.site.name }}</p>
-	<p class="muted">Открыта {{ pallet.opened_at|dt }}{% if pallet.closed_at %}, закрыта {{ pallet.closed_at|dt }}{% endif %}</p>
-	<p>Всего зеркал: <b>{{ total }}</b></p>
+	{% if pallet.closed_at %}<p class="msg ok">Канал закрыт — всё готово к отгрузке</p>{% endif %}
+	<p>Площадка: {{ pallet.site.name }} · отгрузка {{ pallet.number }}</p>
+	<p class="muted">Открыт {{ pallet.opened_at|dt }}{% if pallet.closed_at %}, закрыт {{ pallet.closed_at|dt }}{% endif %} · {{ pallet.opener.name }}</p>
+	<p class="counter">Всего зеркал: <b>{{ total }}</b></p>
 </div>
 <div class="card">
 	<h2>По артикулам</h2>
@@ -16,5 +17,5 @@
 		{% endfor %}
 	</table>
 </div>
-<p><a class="btn" href="/loading">К погрузке</a></p>
+{% if can('/loading') %}<p><a class="btn" href="/loading">К погрузке</a></p>{% endif %}
 {% endblock %}

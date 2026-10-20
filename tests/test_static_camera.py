@@ -3,8 +3,8 @@
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.statuses import ROLE_ADMIN
-from tests.helpers import login, make_user
+from app.statuses import ROLE_ASSEMBLER
+from tests.helpers import login, make_user, open_shift
 
 
 def test_wasm_served_with_wasm_type(client: TestClient) -> None:
@@ -15,9 +15,10 @@ def test_wasm_served_with_wasm_type(client: TestClient) -> None:
 
 
 def test_scan_page_uses_zxing_and_versioned_scripts(client: TestClient, db: Session) -> None:
-    admin = make_user(db, name="Админ", role=ROLE_ADMIN)
-    login(client, admin)
-    html = client.get("/make").text
+    worker = make_user(db, name="Сборщик", role=ROLE_ASSEMBLER)
+    open_shift(db, worker)
+    login(client, worker)
+    html = client.get("/").text
     assert "/static/vendor/zxing-reader.min.js?v=" in html
     assert "/static/scan.js?v=" in html
     assert "html5-qrcode" not in html

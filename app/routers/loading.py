@@ -1,4 +1,4 @@
-"""Погрузка на паллету — единственный рабочий экран грузчика (SPEC §6.4)."""
+"""Погрузка по каналам: канал → скан зеркал → закрыть канал с описанием (SPEC §6.4)."""
 
 import logging
 from urllib.parse import urlencode
@@ -20,7 +20,7 @@ from app.services.shipping import (
     scan_loading,
 )
 from app.settings_store import get_flag
-from app.statuses import CHANNELS
+from app.statuses import CHANNELS, OZON, OZON_TRUCKS
 from app.web import GuardedRoute, page, read_json
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ router = APIRouter(route_class=GuardedRoute)
 
 @router.get("/loading", response_class=HTMLResponse)
 def loading_page(request: Request, db: Session = Depends(get_db), err: str = "") -> Response:
-    """Экран погрузки: канал, паллета, скан."""
+    """Экран погрузки: выбор канала, скан, закрытие канала."""
     user = request.state.user
     site, _ = site_and_shift(db, user)
     pallet = open_pallet_for(db, user.id)
@@ -40,6 +40,8 @@ def loading_page(request: Request, db: Session = Depends(get_db), err: str = "")
             "site": site,
             "pallet": pallet,
             "channels": CHANNELS,
+            "ozon": OZON,
+            "ozon_trucks": OZON_TRUCKS,
             "count": pallet_count(db, pallet.id) if pallet else 0,
             "require_mp": get_flag(db, "require_mp_barcode"),
             "err": err,
@@ -51,20 +53,20 @@ def loading_page(request: Request, db: Session = Depends(get_db), err: str = "")
 def loading_new_pallet(
     request: Request, channel: str = Form(...), db: Session = Depends(get_db)
 ) -> Response:
-    """Открыть новую паллету выбранного канала."""
+    """Открыть канал погрузки."""
     user = request.state.user
     site, _ = site_and_shift(db, user)
     try:
         pallet = open_new_pallet(db, user=user, site=site, channel=channel)
     except ShippingError as exc:
         return RedirectResponse(f"/loading?{urlencode({'err': str(exc)})}", status_code=303)
-    logger.info("Открыта паллета", extra={"user_id": user.id, "status": pallet.number})
+    logger.info("Открыт канал погрузки", extra={"user_id": user.id, "status": pallet.number})
     return RedirectResponse("/loading", status_code=303)
 
 
 @router.post("/loading/scan")
 async def loading_scan(request: Request, db: Session = Depends(get_db)) -> JSONResponse:
-    """Скан зеркала (и, если нужно, ШК маркетплейса) при укладке на паллету."""
+    """Скан зеркала (и, если нужно, ШК маркетплейса) при погрузке."""
     payload = await read_json(request)
     code = str(payload.get("code") or "").strip()
     unit_number = payload.get("unit_number")
@@ -73,7 +75,7 @@ async def loading_scan(request: Request, db: Session = Depends(get_db)) -> JSONR
 
     pallet = open_pallet_for(db, user.id)
     if pallet is None:
-        return JSONResponse({"ok": False, "message": "Сначала откройте паллету"})
+        return JSONResponse({"ok": False, "message": "Сначала выберите канал"})
     if not code:
         return JSONResponse({"ok": False, "message": "Пустой скан"})
 
@@ -99,23 +101,28 @@ async def loading_scan(request: Request, db: Session = Depends(get_db)) -> JSONR
 
 
 @router.post("/loading/close")
-def loading_close(request: Request, pallet_id: int = Form(...), db: Session = Depends(get_db)) -> Response:
-    """Закрыть паллету и показать итог."""
+def loading_close(
+    request: Request,
+    pallet_id: int = Form(...),
+    note: str = Form(""),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Закрыть канал (всё отсканировано, готово к отгрузке) и показать итог."""
     user = request.state.user
     try:
-        pallet = close_pallet(db, pallet_id=pallet_id, user=user)
+        pallet = close_pallet(db, pallet_id=pallet_id, user=user, note=note)
     except ShippingError as exc:
         return RedirectResponse(f"/loading?{urlencode({'err': str(exc)})}", status_code=303)
-    logger.info("Паллета закрыта", extra={"user_id": user.id, "status": pallet.number})
+    logger.info("Канал закрыт", extra={"user_id": user.id, "status": pallet.number})
     return RedirectResponse(f"/loading/pallet/{pallet.id}", status_code=303)
 
 
 @router.get("/loading/pallet/{pallet_id}", response_class=HTMLResponse)
 def pallet_card(request: Request, pallet_id: int, db: Session = Depends(get_db)) -> Response:
-    """Итог паллеты: количество по артикулам."""
+    """Итог отгрузки канала: количество по артикулам."""
     pallet = db.get(Pallet, pallet_id)
     if pallet is None:
-        return page(request, "error.html", {"message": "Паллета не найдена", "status_code": 404})
+        return page(request, "error.html", {"message": "Отгрузка не найдена", "status_code": 404})
     return page(
         request,
         "pallet.html",
