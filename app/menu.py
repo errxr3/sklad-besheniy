@@ -2,7 +2,7 @@
 
 from dataclasses import dataclass
 
-from app.roles import ADMIN_ONLY, ALL_LOGGED_IN, LEADS, NOT_LOADER
+from app.roles import ADMIN_ONLY, ALL_LOGGED_IN, LEADS, PRINTERS, VIEWERS
 from app.statuses import ROLE_ASSEMBLER, ROLE_LOADER
 
 
@@ -19,10 +19,11 @@ MENU: tuple[MenuItem, ...] = (
     MenuItem("Мой день", "/", (ROLE_ASSEMBLER, ROLE_LOADER)),
     MenuItem("Погрузка", "/loading", (ROLE_LOADER, *LEADS)),
     MenuItem("Табло смены", "/board", LEADS),
-    MenuItem("Сделал зеркало", "/make", (*LEADS, ROLE_ASSEMBLER)),
+    MenuItem("Печать по задачам", "/labels", PRINTERS),
+    MenuItem("Сделал зеркало", "/make", LEADS),
     MenuItem("Задачи", "/tasks", LEADS),
-    MenuItem("Остатки", "/stock", NOT_LOADER),
-    MenuItem("Зеркало", "/mirror", NOT_LOADER),
+    MenuItem("Остатки", "/stock", VIEWERS),
+    MenuItem("Зеркало", "/mirror", VIEWERS),
     MenuItem("Склад", "/warehouse", LEADS),
     MenuItem("Журнал", "/journal", LEADS),
     MenuItem("Отчёты", "/reports", LEADS),

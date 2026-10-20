@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.db import get_engine
 from app.models import Movement, Unit
 from app.services.units import accept_unit, create_printed_units, stock_count
-from app.statuses import IN_STOCK, PRINTED, ROLE_ASSEMBLER, ROLE_SHIFT_LEAD
+from app.statuses import IN_STOCK, PRINTED, ROLE_ASSEMBLER, ROLE_SHIFT_LEAD, ROLE_STOREKEEPER
 from tests.helpers import get_csrf, login, make_article, make_user, open_shift, site_by_name
 
 
@@ -106,23 +106,32 @@ def test_scan_is_case_insensitive_and_trimmed(db: Session) -> None:
 
 
 def test_scan_through_http(client: TestClient, db: Session) -> None:
-    """Полный путь: сборщик со сменой печатает и принимает через веб."""
+    """Полный путь: кладовщик печатает на сборщика, сборщик со сменой принимает сканом."""
     worker = make_user(db, name="Сборщик веб", role=ROLE_ASSEMBLER, pin="1234")
+    keeper = make_user(db, name="Кладовщик веб", role=ROLE_STOREKEEPER, pin="1234")
     open_shift(db, worker)
     article = make_article(db)
-    login(client, worker)
 
-    token = get_csrf(client, "/make")
-    pdf = client.post(
-        "/make/print",
-        data={"csrf_token": token, "article_id": str(article.id), "qty": "2"},
-    )
-    assert pdf.status_code == 200
-    assert pdf.headers["content-type"] == "application/pdf"
+    with TestClient(client.app) as keeper_client:
+        login(keeper_client, keeper)
+        keeper_token = get_csrf(keeper_client, "/make")
+        pdf = keeper_client.post(
+            "/make/print",
+            data={
+                "csrf_token": keeper_token,
+                "article_id": str(article.id),
+                "qty": "2",
+                "assembler_id": str(worker.id),
+            },
+        )
+        assert pdf.status_code == 200
+        assert pdf.headers["content-type"] == "application/pdf"
 
     numbers = [u.number for u in db.scalars(select(Unit).order_by(Unit.id)).all()]
     assert len(numbers) == 2
 
+    login(client, worker)
+    token = get_csrf(client, "/")
     response = client.post(
         "/scan/accept",
         json={"code": numbers[0], "csrf_token": token},
@@ -139,6 +148,21 @@ def test_scan_through_http(client: TestClient, db: Session) -> None:
         headers={"X-CSRF-Token": token, "X-Requested-With": "fetch"},
     )
     assert again.json()["ok"] is False
+
+
+def test_assembler_cannot_print(client: TestClient, db: Session) -> None:
+    """Сборщик не печатает этикетки: их заранее печатает кладовщик (решение владельца)."""
+    worker = make_user(db, name="Сборщик без печати", role=ROLE_ASSEMBLER, pin="1234")
+    open_shift(db, worker)
+    article = make_article(db)
+    login(client, worker)
+    token = get_csrf(client, "/")
+    assert client.get("/make").status_code == 403
+    response = client.post(
+        "/make/print", data={"csrf_token": token, "article_id": str(article.id), "qty": "1"}
+    )
+    assert response.status_code == 403
+    assert db.scalar(select(func.count()).select_from(Unit)) == 0
 
 
 def test_scan_without_shift_refused(client: TestClient, db: Session) -> None:

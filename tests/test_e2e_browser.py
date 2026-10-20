@@ -1,7 +1,8 @@
 """Сквозной тест браузером (SPEC §12, последний абзац).
 
 Вход сборщика → начало смены (камера подменяется вызовом того же обработчика с кодом)
-→ задача видна → печать → скан → прогресс задачи 1/N → вход грузчика → паллета → скан → остаток 0.
+→ задача видна → кладовщик печатает этикетку по задаче
+→ скан → прогресс задачи 1/N → вход грузчика → паллета → скан → остаток 0.
 """
 
 import os
@@ -29,6 +30,7 @@ from app.statuses import (
     ROLE_LABELS,
     ROLE_LOADER,
     ROLE_SHIFT_LEAD,
+    ROLE_STOREKEEPER,
 )
 from app.timeutil import today_msk
 from tests.helpers import make_article, make_user, site_by_name
@@ -116,6 +118,7 @@ def test_full_day_in_browser(server: str, db: Session) -> None:
     assembler = make_user(db, name="Иван Сборщик", role=ROLE_ASSEMBLER, pin="1111")
     make_user(db, name="Пётр Грузчик", role=ROLE_LOADER, pin="2222")
     lead = make_user(db, name="Ольга Начальник", role=ROLE_SHIFT_LEAD, pin="3333")
+    make_user(db, name="Мария Кладовщик", role=ROLE_STOREKEEPER, pin="4444")
     create_task(
         db, actor=lead, day=today_msk(), site_id=site.id, user_id=assembler.id,
         kind="article", article_id=article.id, qty_plan=3,
@@ -135,12 +138,17 @@ def test_full_day_in_browser(server: str, db: Session) -> None:
         assert "Zerkalo_60x160" in worker.inner_text("main")
         assert "0 / 3" in worker.inner_text("main")
 
-        # Печать: та же форма, что и кнопка «Печать» (PDF уходит в новую вкладку)
-        worker.goto(f"{server}/make?article_id={article.id}")
-        csrf = worker.get_attribute("#print-form input[name=csrf_token]", "value")
-        pdf = worker.request.post(
-            f"{server}/make/print",
-            form={"csrf_token": csrf or "", "article_id": str(article.id), "qty": "1"},
+        # Печать: кладовщик заранее печатает этикетки по задаче (PDF уходит в новую вкладку)
+        keeper = browser.new_context().new_page()
+        _login(keeper, server, "Мария Кладовщик — Кладовщик", "4444")
+        keeper.goto(f"{server}/labels")
+        assert "Иван Сборщик" in keeper.inner_text("main")
+        form = keeper.locator("form.print-form", has=keeper.locator("input[name=task_id]")).first
+        csrf = form.locator("input[name=csrf_token]").get_attribute("value")
+        task_id = form.locator("input[name=task_id]").get_attribute("value")
+        pdf = keeper.request.post(
+            f"{server}/labels/print",
+            form={"csrf_token": csrf or "", "task_id": task_id or "", "qty": "1"},
         )
         assert pdf.ok and pdf.headers["content-type"] == "application/pdf"
 
@@ -148,6 +156,7 @@ def test_full_day_in_browser(server: str, db: Session) -> None:
         number = db.scalar(select(Unit.number).where(Unit.article_id == article.id))
         assert number is not None
 
+        worker.goto(f"{server}/")
         # Скан этикетки — как сканер-клавиатура: номер + Enter
         worker.fill("#scan-input", number)
         worker.press("#scan-input", "Enter")

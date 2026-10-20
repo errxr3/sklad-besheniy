@@ -2,7 +2,7 @@
 
 from typing import Final
 
-from app.statuses import ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_LOADER, ROLE_SHIFT_LEAD
+from app.statuses import ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_LOADER, ROLE_SHIFT_LEAD, ROLE_STOREKEEPER
 
 # Доступно без входа
 PUBLIC: Final[tuple[str, ...]] = ("*public*",)
@@ -10,11 +10,22 @@ PUBLIC: Final[tuple[str, ...]] = ("*public*",)
 # Доступно по ключу API в заголовке X-API-Key (SPEC §10)
 API_KEY: Final[tuple[str, ...]] = ("*api-key*",)
 
-ALL_LOGGED_IN: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_SHIFT_LEAD, ROLE_ASSEMBLER, ROLE_LOADER)
+ALL_LOGGED_IN: Final[tuple[str, ...]] = (
+    ROLE_ADMIN,
+    ROLE_SHIFT_LEAD,
+    ROLE_STOREKEEPER,
+    ROLE_ASSEMBLER,
+    ROLE_LOADER,
+)
 LEADS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_SHIFT_LEAD)
 ADMIN_ONLY: Final[tuple[str, ...]] = (ROLE_ADMIN,)
-# Все, кроме грузчика: ему доступен только экран погрузки (SPEC §4)
-NOT_LOADER: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_SHIFT_LEAD, ROLE_ASSEMBLER)
+# Печать этикеток: кладовщик печатает заранее по задачам; сборщик не печатает,
+# он только сканирует готовое зеркало (решение владельца 2026-10-20)
+PRINTERS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_SHIFT_LEAD, ROLE_STOREKEEPER)
+# Приёмка сканом после изготовления
+ACCEPTORS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_SHIFT_LEAD, ROLE_ASSEMBLER)
+# Просмотр остатков и карточки зеркала
+VIEWERS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_SHIFT_LEAD, ROLE_STOREKEEPER)
 WORKERS: Final[tuple[str, ...]] = (ROLE_ASSEMBLER, ROLE_LOADER)
 
 # (метод, путь) -> роли, которым маршрут разрешён.
@@ -41,15 +52,20 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("GET", "/admin/settings"): ADMIN_ONLY,
     ("POST", "/admin/settings"): ADMIN_ONLY,
     # Изготовление и печать этикеток
-    ("GET", "/make"): NOT_LOADER,
-    ("POST", "/make/print"): NOT_LOADER,
-    ("GET", "/make/reprint/{number}"): NOT_LOADER,
-    ("POST", "/scan/accept"): NOT_LOADER,
-    ("GET", "/api/articles"): NOT_LOADER,
-    ("GET", "/warehouse/printed-old"): LEADS,
+    ("GET", "/make"): PRINTERS,
+    ("POST", "/make/print"): PRINTERS,
+    ("GET", "/make/reprint/{number}"): PRINTERS,
+    ("POST", "/scan/accept"): ACCEPTORS,
+    ("GET", "/api/articles"): PRINTERS,
+    ("GET", "/warehouse/printed-old"): PRINTERS,
+    # Печать по задачам сборщиков и уборка висящих этикеток
+    ("GET", "/labels"): PRINTERS,
+    ("POST", "/labels/print"): PRINTERS,
+    ("POST", "/labels/void"): PRINTERS,
+    ("POST", "/labels/void-unit"): PRINTERS,
     # Карточка зеркала
-    ("GET", "/mirror"): NOT_LOADER,
-    ("GET", "/mirror/{number}"): NOT_LOADER,
+    ("GET", "/mirror"): VIEWERS,
+    ("GET", "/mirror/{number}"): VIEWERS,
     ("POST", "/mirror/{number}/assembler"): LEADS,
     ("POST", "/mirror/{number}/writeoff"): LEADS,
     # Смены
@@ -104,9 +120,9 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("GET", "/journal.csv"): LEADS,
     ("GET", "/reports/output"): LEADS,
     # Остатки и выгрузки
-    ("GET", "/stock"): NOT_LOADER,
-    ("GET", "/stock.csv"): NOT_LOADER,
-    ("GET", "/stock.xlsx"): NOT_LOADER,
+    ("GET", "/stock"): VIEWERS,
+    ("GET", "/stock.csv"): VIEWERS,
+    ("GET", "/stock.xlsx"): VIEWERS,
     ("POST", "/stock/sync"): LEADS,
     # API для BLAGO OTGRUZKI (ключ в заголовке X-API-Key)
     ("GET", "/api/v1/stock"): API_KEY,

@@ -68,13 +68,22 @@ ROLE_ADMIN: Final = "admin"
 ROLE_SHIFT_LEAD: Final = "shift_lead"
 ROLE_ASSEMBLER: Final = "assembler"
 ROLE_LOADER: Final = "loader"
+# Кладовщик: печатает этикетки заранее по задачам сборщиков (решение владельца 2026-10-20)
+ROLE_STOREKEEPER: Final = "storekeeper"
 
-ALL_ROLES: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_SHIFT_LEAD, ROLE_ASSEMBLER, ROLE_LOADER)
+ALL_ROLES: Final[tuple[str, ...]] = (
+    ROLE_ADMIN,
+    ROLE_SHIFT_LEAD,
+    ROLE_STOREKEEPER,
+    ROLE_ASSEMBLER,
+    ROLE_LOADER,
+)
 
 ROLE_LABELS: Final[dict[str, str]] = {
     ROLE_ADMIN: "Администратор",
     ROLE_SHIFT_LEAD: "Начальник смены",
     ROLE_ASSEMBLER: "Сборщик зеркал",
+    ROLE_STOREKEEPER: "Кладовщик",
     ROLE_LOADER: "Грузчик",
 }
 

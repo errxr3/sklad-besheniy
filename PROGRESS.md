@@ -87,6 +87,10 @@
 - [x] 6.9 README, docs/инструкция.md, итоговый DECISIONS.md, чек-лист §13
 
 ## Заметки для следующей сессии
+- Сервер: https://89-169-45-92.sslip.io (Timeweb Cloud, Москва). Каждый push в рабочую ветку
+  после зелёных тестов сам выкладывается (`.github/workflows/deploy.yml`).
+- 2026-10-20: роль «Кладовщик» и «Печать по задачам» (`/labels`, `app/services/task_labels.py`),
+  `units.task_id` (миграция 0005); сборщик только сканирует в «Мой день». Камера — zxing-wasm.
 - Тесты: `TEST_DATABASE_URL=postgresql+psycopg://postgres@127.0.0.1:5433/sklad_test pytest -q`
   (локальный кластер PostgreSQL 16; в докере — `docker compose run --rm -e INSTALL_DEV=1 app pytest -q`).
 - Входные файлы в `docs/input/`: `TOP.xlsx` (306 строк: 298 артикулов + 8 строк-заголовков), образец этикетки.

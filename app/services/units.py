@@ -64,6 +64,7 @@ def create_printed_units(
     assembler_id: int,
     actor_id: int,
     shift_id: int | None = None,
+    task_id: int | None = None,
 ) -> list[Unit]:
     """Выдать номера и создать зеркала в статусе «Напечатано» (SPEC §6.3).
 
@@ -98,6 +99,7 @@ def create_printed_units(
             site_id=site.id,
             assembler_id=assembler.id,
             made_at=moment,
+            task_id=task_id,
         )
         session.add(unit)
         units.append(unit)

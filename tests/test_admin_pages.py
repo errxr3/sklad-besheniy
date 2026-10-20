@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.models import AdminLog, Article, Site, User
 from app.settings_store import get_flag, get_int
-from app.statuses import ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_LOADER
+from app.statuses import ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_LOADER, ROLE_STOREKEEPER
 from tests.helpers import get_csrf, login, make_user
 
 TOP_PATH = Path(__file__).resolve().parent.parent / "docs" / "input" / "TOP.xlsx"
@@ -237,8 +237,21 @@ def test_menu_differs_by_role(client: TestClient, db: Session) -> None:
     with TestClient(client.app) as asm_client:
         login(asm_client, assembler)
         text = asm_client.get("/").text
-        assert "Сделал зеркало" in text
+        # Сборщику оставлен только «Мой день» со сканом зеркала (решение владельца 2026-10-20)
+        assert "Мой день" in text
+        assert 'href="/make"' not in text
+        assert 'href="/stock"' not in text
+        assert 'href="/mirror"' not in text
         assert "Настройки" not in text
+
+    keeper = make_user(db, name="Кладовщик", role=ROLE_STOREKEEPER, pin="1234")
+    with TestClient(client.app) as keeper_client:
+        login(keeper_client, keeper)
+        response = keeper_client.get("/")
+        assert str(response.url).endswith("/labels")
+        assert "Печать по задачам" in response.text
+        assert 'href="/tasks"' not in response.text
+        assert "Настройки" not in response.text
 
     _admin(client, db)
     admin_text = client.get("/").text

@@ -21,6 +21,7 @@ from app.routers import (
     auth,
     home,
     journal,
+    labels,
     loading,
     make,
     mirror,
@@ -74,6 +75,7 @@ def create_app() -> FastAPI:
     app.include_router(home.router)
     app.include_router(admin.router)
     app.include_router(make.router)
+    app.include_router(labels.router)
     app.include_router(mirror.router)
     app.include_router(shifts.router)
     app.include_router(tasks.router)

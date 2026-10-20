@@ -17,21 +17,40 @@
 
 {% if user.role == ROLE_ASSEMBLER %}
 <div class="card">
+	<h2>Скан зеркала</h2>
+	{% if shift %}
+	<p class="hint">Наклейте этикетку на готовое зеркало и отсканируйте её.</p>
+	<div id="scan-result" class="scan-result"></div>
+	<form id="scan-form">
+		<input type="text" id="scan-input" class="scan-input" placeholder="Отсканируйте этикетку"
+		       autocomplete="off" autocapitalize="characters" inputmode="text">
+		<div class="row tight mt">
+			<button type="submit">Принять</button>
+			<button type="button" class="secondary" id="camera-btn">Сканировать камерой</button>
+		</div>
+	</form>
+	<div id="camera-box" class="mt" hidden></div>
+	<h2>Последние сканы</h2>
+	<ul class="scan-history" id="scan-history"></ul>
+	{% else %}
+	<p class="muted">Сканировать можно после начала смены.</p>
+	{% endif %}
+</div>
+
+<div class="card">
 	<h2>Задачи на сегодня</h2>
 	{% if not progress.views %}
 		<p class="muted">На сегодня задач нет, уточните у начальника смены.</p>
 	{% else %}
-		<p class="muted">Сделано {{ progress.done }} из {{ progress.plan }}</p>
+		<p class="muted">Сделано <b id="total-done">{{ progress.done }}</b> из {{ progress.plan }}</p>
 		{% for view in progress.views %}
-		<div class="task {% if view.is_done %}done{% endif %}">
+		<div class="task {% if view.is_done %}done{% endif %}" data-task-id="{{ view.task.id }}">
 			{% if view.task.kind == 'article' %}
-			<a href="/make?article_id={{ view.task.article_id }}" style="text-decoration:none;color:inherit">
-				<div class="line">
-					<span class="name">{{ view.task.article.name }}</span>
-					<span>{% if view.is_done %}✓ {% endif %}{{ view.done }} / {{ view.plan }}</span>
-				</div>
-				<div class="progress mt"><span style="width: {{ view.percent }}%"></span></div>
-			</a>
+			<div class="line">
+				<span class="name">{{ view.task.article.name }}</span>
+				<span class="task-count">{% if view.is_done %}✓ {% endif %}{{ view.done }} / {{ view.plan }}</span>
+			</div>
+			<div class="progress mt"><span style="width: {{ view.percent }}%"></span></div>
 			{% else %}
 			<div class="line">
 				<span class="name">{{ view.task.text }}</span>
@@ -49,9 +68,6 @@
 		</div>
 		{% endfor %}
 	{% endif %}
-</div>
-<div class="card">
-	<a class="btn big" href="/make">Сделал зеркало</a>
 </div>
 {% else %}
 <div class="card">
@@ -77,5 +93,43 @@
 		{% endfor %}
 	{% endif %}
 </div>
+{% endif %}
+{% endblock %}
+{% block scripts %}
+{% if user.role == ROLE_ASSEMBLER and shift %}
+<script src="/static/vendor/zxing-reader.min.js?v={{ STATIC_VERSION }}"></script>
+<script src="/static/scan.js?v={{ STATIC_VERSION }}"></script>
+<script>
+(function () {
+	// После удачного скана подтягиваем прогресс задач без перезагрузки страницы
+	function refresh() {
+		fetch('/my-day/data', { headers: { 'X-Requested-With': 'fetch' } })
+			.then(function (r) { return r.json(); })
+			.then(function (data) {
+				var total = document.getElementById('total-done');
+				if (total) total.textContent = data.done;
+				data.tasks.forEach(function (task) {
+					var box = document.querySelector('.task[data-task-id="' + task.id + '"]');
+					if (!box || task.kind !== 'article') return;
+					box.classList.toggle('done', task.is_done);
+					var count = box.querySelector('.task-count');
+					if (count) count.textContent = (task.is_done ? '✓ ' : '') + task.done + ' / ' + task.plan;
+					var bar = box.querySelector('.progress span');
+					if (bar) bar.style.width = task.percent + '%';
+				});
+			}).catch(function () {});
+	}
+
+	var screen = new window.Sklad.ScanScreen({
+		url: '/scan/accept',
+		csrf: '{{ csrf }}',
+		onSuccess: refresh
+	});
+	var camera = new window.Sklad.CameraScan({
+		onCode: function (text) { screen.send(text); }
+	});
+	document.getElementById('camera-btn').addEventListener('click', function () { camera.start(); });
+})();
+</script>
 {% endif %}
 {% endblock %}

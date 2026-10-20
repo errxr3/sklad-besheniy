@@ -233,6 +233,7 @@ class Unit(Base):
         Index("ix_units_stock", "status", "site_id", "article_id"),
         Index("ix_units_assembler_made", "assembler_id", "made_at"),
         Index("ix_units_pallet", "pallet_id"),
+        Index("ix_units_task", "task_id"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True)
@@ -246,6 +247,8 @@ class Unit(Base):
     channel: Mapped[str | None] = mapped_column(String(20))
     pallet_id: Mapped[int | None] = mapped_column(ForeignKey("pallets.id"))
     mp_barcode: Mapped[str | None] = mapped_column(String(64))
+    # Задача, под которую кладовщик напечатал этикетку (NULL — напечатано вне задач)
+    task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"))
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
 
     article: Mapped[Article] = relationship(lazy="joined")

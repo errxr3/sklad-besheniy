@@ -30,9 +30,11 @@
 		</div>
 		<button type="submit" class="big mt">Печать</button>
 	</form>
-	<p class="hint">PDF откроется в новой вкладке. Наклейте этикетку и отсканируйте её ниже.</p>
+	<p class="hint">PDF откроется в новой вкладке.{% if can_accept %} Наклейте этикетку и отсканируйте её ниже.{% endif %}
+	Этикетки на задачи сборщиков удобнее печатать на странице <a href="/labels">«Печать по задачам»</a>.</p>
 </div>
 
+{% if can_accept %}
 <div class="card">
 	<h2>2. Скан приёмки</h2>
 	<div id="scan-result" class="scan-result" hidden></div>
@@ -48,6 +50,7 @@
 	<h2>Последние сканы</h2>
 	<ul class="scan-history" id="scan-history"></ul>
 </div>
+{% endif %}
 {% endblock %}
 {% block scripts %}
 <script src="/static/vendor/zxing-reader.min.js?v={{ STATIC_VERSION }}"></script>
@@ -85,6 +88,7 @@
 		});
 	});
 
+	{% if can_accept %}
 	var screen = new window.Sklad.ScanScreen({
 		url: '/scan/accept',
 		csrf: '{{ csrf }}',
@@ -96,6 +100,7 @@
 		onCode: function (text) { screen.send(text); }
 	});
 	document.getElementById('camera-btn').addEventListener('click', function () { camera.start(); });
+	{% endif %}
 })();
 </script>
 {% endblock %}

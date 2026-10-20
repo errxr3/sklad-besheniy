@@ -19,8 +19,11 @@ from app.services.units import (
     printed_older_than,
 )
 from app.settings_store import get_int
-from app.statuses import PRINTED, ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_SHIFT_LEAD
+from app.statuses import PRINTED, ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_SHIFT_LEAD, ROLE_STOREKEEPER
 from app.web import GuardedRoute, page, read_json
+
+# Кто печатает этикетки на любого сборщика
+PRINTER_ROLES = (ROLE_ADMIN, ROLE_SHIFT_LEAD, ROLE_STOREKEEPER)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(route_class=GuardedRoute)
@@ -54,8 +57,10 @@ def make_page(
         {
             "site": site,
             "chosen": chosen,
-            "assemblers": _assemblers(db) if user.role in (ROLE_ADMIN, ROLE_SHIFT_LEAD) else [],
-            "can_choose_assembler": user.role in (ROLE_ADMIN, ROLE_SHIFT_LEAD),
+            "assemblers": _assemblers(db) if user.role in PRINTER_ROLES else [],
+            "can_choose_assembler": user.role in PRINTER_ROLES,
+            # Приёмку сканом делают сборщики (у себя в «Мой день»), начальник смены и админ
+            "can_accept": user.role in (ROLE_ADMIN, ROLE_SHIFT_LEAD),
             "err": err,
         },
     )
@@ -90,7 +95,7 @@ def make_print(
     site, shift_id = site_and_shift(db, user)
 
     target_assembler = user.id
-    if user.role in (ROLE_ADMIN, ROLE_SHIFT_LEAD) and assembler_id:
+    if user.role in PRINTER_ROLES and assembler_id:
         target_assembler = int(assembler_id)
 
     try:
@@ -108,14 +113,19 @@ def make_print(
 
         return RedirectResponse(f"/make?{urlencode({'err': str(exc)})}", status_code=303)
 
+    logger.info(
+        "Напечатаны этикетки",
+        extra={"user_id": user.id, "unit_number": f"{units[0].number}+{len(units) - 1}"},
+    )
+    return labels_pdf_response(db, units)
+
+
+def labels_pdf_response(db: Session, units: list[Unit]) -> Response:
+    """PDF с этикетками в размере из настроек — открывается во вкладке для печати."""
     width = get_int(db, "label_width_mm")
     height = get_int(db, "label_height_mm")
     pdf = build_labels_pdf(
         [LabelData(*row) for row in label_rows(units)], width_mm=width, height_mm=height
-    )
-    logger.info(
-        "Напечатаны этикетки",
-        extra={"user_id": user.id, "unit_number": f"{units[0].number}+{len(units) - 1}"},
     )
     return Response(
         content=pdf,
@@ -177,7 +187,9 @@ def reprint_label(request: Request, number: str, db: Session = Depends(get_db)) 
 
 
 @router.get("/warehouse/printed-old", response_class=HTMLResponse)
-def printed_old(request: Request, db: Session = Depends(get_db)) -> Response:
-    """Этикетки «Напечатано» старше суток: принять или списать (SPEC §6.3)."""
+def printed_old(
+    request: Request, db: Session = Depends(get_db), ok: str = "", err: str = ""
+) -> Response:
+    """Этикетки «Напечатано» старше суток: принять или убрать (SPEC §6.3)."""
     units = printed_older_than(db, hours=24)
-    return page(request, "printed_old.html", {"units": units})
+    return page(request, "printed_old.html", {"units": units, "ok": ok, "err": err})

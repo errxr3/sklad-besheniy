@@ -2,7 +2,9 @@
 {% block title %}Напечатано больше суток назад{% endblock %}
 {% block content %}
 <h1>Напечатано больше суток назад</h1>
-<p class="muted">Эти этикетки выданы, но зеркала не приняты на склад. Примите их сканом или спишите.</p>
+<p class="muted">Эти этикетки выданы, но зеркала не приняты на склад. Примите их сканом или уберите,
+если зеркало не сделают — скан убранной этикетки больше не пройдёт.</p>
+{% include "admin/_msg.html" %}
 <div class="card">
 	{% if not units %}
 		<p class="msg ok">Все напечатанные этикетки приняты.</p>
@@ -16,7 +18,15 @@
 			<td>{{ u.site.name }}</td>
 			<td>{{ u.assembler.name if u.assembler else '—' }}</td>
 			<td>{{ u.made_at|dt }}</td>
-			<td><a class="btn secondary" href="/mirror/{{ u.number }}">Открыть</a></td>
+			<td class="row tight">
+				<a class="btn secondary" href="/mirror/{{ u.number }}">Открыть</a>
+				<form method="post" action="/labels/void-unit"
+				      onsubmit="return confirm('Убрать этикетку {{ u.number }}? Её скан больше не пройдёт.')">
+					<input type="hidden" name="csrf_token" value="{{ csrf }}">
+					<input type="hidden" name="number" value="{{ u.number }}">
+					<button type="submit" class="secondary">Убрать</button>
+				</form>
+			</td>
 		</tr>
 		{% endfor %}
 	</table>
