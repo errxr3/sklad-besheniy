@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 
 from app.roles import ADMIN_ONLY, ALL_LOGGED_IN, LEADS, LOADERS, PRINTERS, RETURNS
-from app.statuses import ROLE_ASSEMBLER, ROLE_LOADER
+from app.statuses import ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_LOADER
 
 
 @dataclass(frozen=True)
@@ -31,7 +31,7 @@ MENU: tuple[MenuItem, ...] = (
     MenuItem("Склад", "/warehouse", LEADS),
     MenuItem("Журнал", "/journal", LEADS),
     MenuItem("Отчёты", "/reports", LEADS),
-    MenuItem("Настройки", "/admin", ADMIN_ONLY),
+    MenuItem("Кабинет", "/admin", ADMIN_ONLY),
 )
 
 __all__ = ["ALL_LOGGED_IN", "MENU", "MenuItem", "menu_for"]
@@ -41,4 +41,7 @@ def menu_for(role: str | None) -> list[MenuItem]:
     """Пункты меню, доступные роли."""
     if not role:
         return []
+    if role == ROLE_ADMIN:
+        # У админа всё разложено по ролям в «Кабинете» — длинное меню не нужно
+        return [item for item in MENU if item.url == "/admin"]
     return [item for item in MENU if role in item.roles]

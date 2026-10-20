@@ -12,8 +12,8 @@ from app.services.warehouse import (
     active_inventory,
     finish_inventory,
     inventory_diff,
-    return_unit,
     scan_inventory,
+    scan_return,
     start_inventory,
     transfer_in,
     transfer_out,
@@ -25,6 +25,7 @@ from app.statuses import (
     MV_INVENTORY_FIX,
     ROLE_ASSEMBLER,
     ROLE_LOADER,
+    ROLE_RETURNS,
     ROLE_SHIFT_LEAD,
     SHIPPED,
     WRITTEN_OFF,
@@ -134,37 +135,31 @@ def test_in_transit_list(db: Session) -> None:
     assert len(units_in_transit(db)) == 1
 
 
-def test_return_good_and_bad(db: Session) -> None:
-    """Годный возврат возвращается на склад, негодный списывается (SPEC §6.7)."""
+def test_return_scan_puts_shipped_back_to_stock(db: Session) -> None:
+    """Возврат: скан отгруженного зеркала — снова на складе (площадка возвратов)."""
     units = _stocked(db, 2)
-    lead = make_user(db, name="Начальник возвратов", role=ROLE_SHIFT_LEAD)
+    returns = make_user(db, name="Возвраты", role=ROLE_RETURNS)
     loader = make_user(db, name="Грузчик возвратов", role=ROLE_LOADER)
     site = site_by_name(db)
-    pallet = open_new_pallet(db, user=loader, site=site, channel="Ozon")
+    pallet = open_new_pallet(db, user=loader, site=site, channel="WB")
     for unit in units:
         scan_loading(db, code=unit.number, pallet=pallet, actor=loader)
     db.commit()
 
-    good = return_unit(db, code=units[0].number, actor=lead, good=True, site_id=site.id)
-    bad = return_unit(db, code=units[1].number, actor=lead, good=False, site_id=site.id)
+    result = scan_return(db, code=units[0].number, actor=returns)
     db.commit()
     db.refresh(units[0])
-    db.refresh(units[1])
-
-    assert good.ok and units[0].status == IN_STOCK
-    assert bad.ok and units[1].status == WRITTEN_OFF
+    assert result.ok and units[0].status == IN_STOCK
     assert stock_count(db, units[0].article_id, site.id) == 1
 
 
-def test_return_only_for_shipped(db: Session) -> None:
-    """Возврат возможен только для отгруженного зеркала."""
+def test_return_only_for_shipped_or_returns_label(db: Session) -> None:
+    """Зеркало на складе нельзя «вернуть» повторно."""
     units = _stocked(db, 1)
-    lead = make_user(db, name="Начальник 5", role=ROLE_SHIFT_LEAD)
-    result = return_unit(
-        db, code=units[0].number, actor=lead, good=True, site_id=site_by_name(db).id
-    )
+    returns = make_user(db, name="Возвраты 5", role=ROLE_RETURNS)
+    result = scan_return(db, code=units[0].number, actor=returns)
     assert not result.ok
-    assert "только для отгруженного" in result.message
+    assert "Нельзя принять как возврат" in result.message
 
 
 def test_inventory_finds_missing_and_extra(db: Session) -> None:

@@ -50,14 +50,14 @@ def test_returns_user_sees_only_returns(client: TestClient, db: Session) -> None
     login(client, worker)
     response = client.get("/")
     assert str(response.url).endswith("/returns")
-    assert "Приёмка возвратов" in response.text
+    assert "Принять возврат" in response.text
     assert 'href="/returns/print"' in response.text
     for path in ("/board", "/labels", "/stock", "/loading", "/tasks"):
         assert client.get(path).status_code == 403, path
 
 
 def test_print_unmarked_return_goes_to_kominterna_stock(client: TestClient, db: Session) -> None:
-    """Возврат без нашей этикетки: печать ШК сразу ставит зеркало на склад Коминтерна."""
+    """Возврат без нашей этикетки: «Печать ШК» сразу ставит зеркало на склад Коминтерна."""
     worker = make_user(db, name="Анна Возвраты", role=ROLE_RETURNS)
     article = make_article(db, name="Zerkalo_50x130")
     login(client, worker)
@@ -71,14 +71,29 @@ def test_print_unmarked_return_goes_to_kominterna_stock(client: TestClient, db: 
     units = db.scalars(select(Unit).order_by(Unit.id)).all()
     service = db.scalar(select(User).where(User.name == RETURNS_SERVICE_NAME))
     assert service is not None and service.is_service
-    assert len(units) == 2
     kominterna = site_by_name(db, "Коминтерна")
+    assert len(units) == 2
     for unit in units:
         assert unit.status == IN_STOCK
         assert unit.site_id == kominterna.id
         assert unit.assembler_id == service.id
     accept = db.scalars(select(Movement).where(Movement.type == MV_ACCEPT)).all()
     assert len(accept) == 2 and all("возврат без маркировки" in (m.note or "") for m in accept)
+
+
+def test_assembler_label_is_not_accepted_on_returns(client: TestClient, db: Session) -> None:
+    """Обычная этикетка сборщика («Напечатано») не принимается как возврат."""
+    assembler = make_user(db, name="Сборщик", role=ROLE_ASSEMBLER)
+    article = make_article(db)
+    unit = create_printed_units(
+        db, article_id=article.id, qty=1, site_id=site_by_name(db).id,
+        assembler_id=assembler.id, actor_id=assembler.id,
+    )[0]
+    db.commit()
+    worker = make_user(db, name="Анна Возвраты", role=ROLE_RETURNS)
+    login(client, worker)
+    token = get_csrf(client, "/returns")
+    assert _post_scan(client, "/returns/scan", token, code=unit.number)["ok"] is False
 
 
 def test_return_scan_always_books_to_kominterna(client: TestClient, db: Session) -> None:
@@ -92,7 +107,7 @@ def test_return_scan_always_books_to_kominterna(client: TestClient, db: Session)
     worker = make_user(db, name="Анна Возвраты", role=ROLE_RETURNS)
     login(client, worker)
     token = get_csrf(client, "/returns")
-    result = _post_scan(client, "/returns/scan", token, code=unit.number, quality="good")
+    result = _post_scan(client, "/returns/scan", token, code=unit.number)
     assert result["ok"] is True
     db.expire_all()
     fresh = db.get(Unit, unit.id)

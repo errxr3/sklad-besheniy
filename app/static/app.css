@@ -271,3 +271,18 @@ details.close-shift summary {
 details.close-shift summary::-webkit-details-marker { display: none; }
 details.close-shift .inline-form { display: grid; gap: 6px; margin-top: 6px; min-width: 200px; }
 #board-table td { white-space: nowrap; }
+
+/* Кабинет администратора: действия по ролям */
+.admin-section { margin-bottom: 22px; }
+.admin-section h2 { display: flex; align-items: center; gap: 10px; }
+.admin-section h2::before { content: ""; width: 10px; height: 26px; border-radius: 4px; background: var(--accent); }
+.admin-section.keeper h2::before { background: #e08a00; }
+.admin-section.assembler h2::before { background: var(--teal); }
+.admin-section.loader h2::before { background: #2b7de9; }
+.admin-section.returns h2::before { background: #d6336c; }
+.admin-section.admin h2::before { background: var(--brand-from); }
+.admin-section.later h2::before { background: #9aa0b8; }
+.grid3 { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.grid3 .card { margin: 0; padding: 12px 14px; }
+.grid3 h3 { margin: 0 0 4px; font-size: 18px; color: var(--accent-dark); }
+.grid3 p { margin: 0; }

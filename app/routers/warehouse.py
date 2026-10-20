@@ -20,9 +20,9 @@ from app.services.warehouse import (
     finish_inventory,
     inventory_diff,
     print_unmarked_returns,
-    return_unit,
     returns_site,
     scan_inventory,
+    scan_return,
     start_inventory,
     transfer_in,
     transfer_out,
@@ -201,44 +201,28 @@ async def writeoff_scan(request: Request, db: Session = Depends(get_db)) -> JSON
 
 @router.get("/returns", response_class=HTMLResponse)
 def returns_page(request: Request, db: Session = Depends(get_db)) -> Response:
-    """Приёмка возвратов: всегда на площадку возвратов (Коминтерна)."""
+    """Возвраты: скан — и зеркало на складе площадки возвратов (Коминтерна)."""
     site = returns_site(db)
     return page(
         request,
         "scan_op.html",
         {
-            "title": "Приёмка возвратов",
-            "hint": f"Возвраты записываются на {site.name}. Годное вернётся на склад, негодное будет "
-            "списано. Зеркало без нашей этикетки — «Печать ШК».",
+            "title": "Возвраты",
+            "hint": f"Скан этикетки BLAGO — зеркало записывается на склад {site.name}. "
+            "Негодное не сканируйте. Зеркало без нашей этикетки — «Печать ШК».",
             "url": "/returns/scan",
             "button": "Принять возврат",
-            "fields": [
-                {
-                    "name": "quality",
-                    "label": "Состояние",
-                    "type": "select",
-                    "options": [("good", "годное"), ("bad", "негодное")],
-                }
-            ],
         },
     )
 
 
 @router.post("/returns/scan")
 async def returns_scan(request: Request, db: Session = Depends(get_db)) -> JSONResponse:
-    """Скан при возврате: годное — на склад площадки возвратов, негодное — в списание."""
+    """Скан возврата: отгруженное зеркало — на склад возвратов."""
     payload = await read_json(request)
     user = request.state.user
     _, shift_id = site_and_shift(db, user)
-    result = return_unit(
-        db,
-        code=str(payload.get("code") or ""),
-        actor=user,
-        good=str(payload.get("quality") or "good") == "good",
-        site_id=returns_site(db).id,
-        shift_id=shift_id,
-    )
-    return _json(result)
+    return _json(scan_return(db, code=str(payload.get("code") or ""), actor=user, shift_id=shift_id))
 
 
 @router.get("/returns/print", response_class=HTMLResponse)

@@ -15,7 +15,6 @@ from app.statuses import (
     IN_TRANSIT,
     MV_ACCEPT,
     MV_INVENTORY_FIX,
-    MV_RETURN_BAD,
     MV_RETURN_OK,
     MV_TRANSFER_IN,
     MV_TRANSFER_OUT,
@@ -160,46 +159,6 @@ def units_in_transit(session: Session, *, hours: int = 24) -> list[Unit]:
 # --- Возвраты (SPEC §6.7) ---
 
 
-def return_unit(
-    session: Session, *, code: str, actor: User, good: bool, site_id: int, shift_id: int | None = None
-) -> ScanResult:
-    """Возврат от покупателя: годное — на склад, негодное — в списание."""
-    number = clean_code(code)
-    if not is_own_label(number):
-        return ScanResult(False, "Это не этикетка BLAGO")
-    unit = lock_unit(session, number)
-    if unit is None:
-        return ScanResult(False, "Номер не найден", number=number)
-    if unit.status != SHIPPED:
-        current = STATUS_LABELS.get(unit.status, unit.status)
-        return ScanResult(
-            False,
-            f"Возврат возможен только для отгруженного (сейчас «{current}»)",
-            number=number,
-            article=unit.article.name,
-        )
-
-    target = IN_STOCK if good else WRITTEN_OFF
-    apply_transition(
-        session,
-        unit,
-        target,
-        movement_type=MV_RETURN_OK if good else MV_RETURN_BAD,
-        user_id=actor.id,
-        shift_id=shift_id,
-        to_site_id=site_id if good else None,
-        note="возврат от покупателя: годное" if good else "возврат от покупателя: негодное",
-    )
-    return ScanResult(
-        True,
-        unit.article.name,
-        "Возвращено на склад" if good else "Возврат списан",
-        number=number,
-        article=unit.article.name,
-        stock=stock_count(session, unit.article_id, unit.site_id),
-    )
-
-
 def returns_site(session: Session) -> Site:
     """Площадка, на которую всегда записываются возвраты (Коминтерна)."""
     site = session.scalar(select(Site).where(Site.name == RETURNS_SITE_NAME, Site.active.is_(True)))
@@ -243,6 +202,50 @@ def print_unmarked_returns(
             note="возврат без маркировки: ШК напечатан на возвратах",
         )
     return units
+
+
+def scan_return(
+    session: Session, *, code: str, actor: User, shift_id: int | None = None
+) -> ScanResult:
+    """Скан возврата с нашей этикеткой: отгруженное зеркало — снова на склад площадки возвратов.
+
+    Негодное не сканируют — на склад оно не попадает (решение владельца 2026-10-20).
+    """
+    number = clean_code(code)
+    if not is_own_label(number):
+        return ScanResult(False, "Это не этикетка BLAGO", "Для зеркала без этикетки — «Печать ШК»")
+    site = returns_site(session)
+    unit = lock_unit(session, number)
+    if unit is None:
+        return ScanResult(False, "Номер не найден", f"Этикетка {number} не выдавалась", number=number)
+    article_name = unit.article.name
+    if unit.status != SHIPPED:
+        current = STATUS_LABELS.get(unit.status, unit.status)
+        return ScanResult(
+            False,
+            f"Нельзя принять как возврат: статус «{current}»",
+            f"зеркало {number}",
+            number=number,
+            article=article_name,
+        )
+    apply_transition(
+        session,
+        unit,
+        IN_STOCK,
+        movement_type=MV_RETURN_OK,
+        user_id=actor.id,
+        shift_id=shift_id,
+        to_site_id=site.id,
+        note="возврат от покупателя",
+    )
+    return ScanResult(
+        True,
+        article_name,
+        f"Возврат · на складе {site.name}",
+        number=number,
+        article=article_name,
+        stock=stock_count(session, unit.article_id, site.id),
+    )
 
 
 # --- Инвентаризация (SPEC §6.6) ---

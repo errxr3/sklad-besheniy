@@ -76,6 +76,7 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("GET", "/admin/sites/{site_id}/code.pdf"): ADMIN_ONLY,
     # Приёмка сканом и перепечатка этикетки
     ("POST", "/scan/accept"): ACCEPTORS,
+    ("GET", "/scanner"): ADMIN_ONLY,
     ("GET", "/make/reprint/{number}"): LEADS,
     ("GET", "/api/articles"): (*LEADS, ROLE_RETURNS),
     # Печать по задачам сборщиков и уборка висящих этикеток

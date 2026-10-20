@@ -255,4 +255,7 @@ def test_menu_differs_by_role(client: TestClient, db: Session) -> None:
 
     _admin(client, db)
     admin_text = client.get("/").text
-    assert "Настройки" in admin_text
+    # У админа — «Кабинет» со всеми действиями по ролям
+    assert "Кабинет администратора" in admin_text
+    for section in ("Начальник смены", "Кладовщица", "Сборщик", "Грузчик", "Возвраты"):
+        assert section in admin_text

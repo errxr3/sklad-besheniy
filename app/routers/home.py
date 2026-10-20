@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import Site
 from app.services.shifts import open_shift
-from app.statuses import ROLE_ASSEMBLER, ROLE_LOADER, ROLE_RETURNS, ROLE_STOREKEEPER
+from app.statuses import ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_LOADER, ROLE_RETURNS, ROLE_STOREKEEPER
 from app.web import GuardedRoute, page
 
 router = APIRouter(route_class=GuardedRoute)
@@ -29,4 +29,6 @@ def home(request: Request, db: Session = Depends(get_db), err: str = "") -> Resp
         return RedirectResponse("/labels", status_code=303)
     if user.role == ROLE_RETURNS:
         return RedirectResponse("/returns", status_code=303)
+    if user.role == ROLE_ADMIN:
+        return RedirectResponse("/admin", status_code=303)
     return RedirectResponse("/board", status_code=303)

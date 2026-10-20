@@ -58,6 +58,21 @@ def labels_pdf_response(db: Session, units: list[Unit]) -> Response:
     )
 
 
+@router.get("/scanner", response_class=HTMLResponse)
+def scanner_page(request: Request) -> Response:
+    """Сканер приёмки для администратора — тот же скан, что у сборщика."""
+    return page(
+        request,
+        "scan_op.html",
+        {
+            "title": "Сканер приёмки",
+            "hint": "Скан этикетки готового зеркала — зеркало встаёт на склад.",
+            "url": "/scan/accept",
+            "button": "Принять",
+        },
+    )
+
+
 @router.post("/scan/accept")
 async def scan_accept(request: Request, db: Session = Depends(get_db)) -> JSONResponse:
     """Приёмка отсканированной этикетки: «Напечатано» → «На складе»."""
