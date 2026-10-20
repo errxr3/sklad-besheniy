@@ -141,10 +141,47 @@
 	};
 
 	// --- Камера ---
+	// Кадр распознаётся в полном разрешении камеры: тонкие полосы Code 128 на этикетке 58 мм
+	// пропадают, если кадр сначала ужать до размера окошка на экране.
+	// Android Chrome — встроенный BarcodeDetector, остальные браузеры — ZXing (zxing-wasm).
+	var SCAN_INTERVAL_MS = 120;
+	var MAX_FRAME_WIDTH = 1920;
+	var zxingReady = null;
+
+	function prepareZxing() {
+		if (zxingReady) return zxingReady;
+		if (!global.ZXingWASM) return null;
+		global.ZXingWASM.prepareZXingModule({
+			overrides: {
+				locateFile: function (path, prefix) {
+					return path.slice(-5) === '.wasm' ? '/static/vendor/' + path : prefix + path;
+				}
+			},
+			fireImmediately: true
+		});
+		zxingReady = Promise.resolve();
+		return zxingReady;
+	}
+
+	function makeDetector() {
+		if (!('BarcodeDetector' in global)) return Promise.resolve(null);
+		return global.BarcodeDetector.getSupportedFormats().then(function (formats) {
+			if (formats.indexOf('code_128') < 0) return null;
+			var wanted = ['code_128'];
+			if (formats.indexOf('qr_code') >= 0) wanted.push('qr_code');
+			return new global.BarcodeDetector({ formats: wanted });
+		}).catch(function () { return null; });
+	}
+
 	function CameraScan(options) {
 		this.boxId = options.boxId || 'camera-box';
 		this.onCode = options.onCode;
-		this.scanner = null;
+		this.stream = null;
+		this.video = null;
+		this.canvas = null;
+		this.timer = null;
+		this.detector = null;
+		this.running = false;
 	}
 
 	CameraScan.prototype.start = function () {
@@ -152,37 +189,143 @@
 		var box = document.getElementById(this.boxId);
 		if (!box) return;
 		box.hidden = false;
-		if (!global.Html5Qrcode) {
-			box.textContent = 'Библиотека камеры не загрузилась';
+		if (this.running) return;
+		if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+			box.textContent = 'Камера недоступна: откройте склад по https';
 			return;
 		}
-		if (this.scanner) return;
-		this.scanner = new global.Html5Qrcode(this.boxId);
-		this.scanner.start(
-			{ facingMode: 'environment' },
-			{ fps: 10, qrbox: { width: 250, height: 250 } },
-			function (text) {
+		this.running = true;
+		box.innerHTML = '';
+		var video = document.createElement('video');
+		video.setAttribute('playsinline', '');
+		video.setAttribute('autoplay', '');
+		video.muted = true;
+		var frame = document.createElement('div');
+		frame.className = 'camera-frame';
+		frame.appendChild(video);
+		var aim = document.createElement('div');
+		aim.className = 'camera-aim';
+		frame.appendChild(aim);
+		var hint = document.createElement('p');
+		hint.className = 'hint';
+		hint.textContent = 'Наведите на штрихкод — он должен занимать почти всю ширину рамки';
+		box.appendChild(frame);
+		box.appendChild(hint);
+		this.video = video;
+		this.canvas = document.createElement('canvas');
+
+		navigator.mediaDevices.getUserMedia({
+			audio: false,
+			video: {
+				facingMode: { ideal: 'environment' },
+				width: { ideal: 1920 },
+				height: { ideal: 1080 }
+			}
+		}).then(function (stream) {
+			if (!self.running) {
+				stream.getTracks().forEach(function (track) { track.stop(); });
+				return null;
+			}
+			self.stream = stream;
+			self.tuneTrack(stream);
+			video.srcObject = stream;
+			return Promise.all([video.play(), makeDetector()]);
+		}).then(function (result) {
+			if (!result || !self.running) return;
+			self.detector = result[1];
+			if (!self.detector && !prepareZxing()) {
+				box.textContent = 'Библиотека камеры не загрузилась';
+				self.stop();
+				return;
+			}
+			self.loop();
+		}).catch(function (error) {
+			self.running = false;
+			box.textContent = 'Камера недоступна: ' + (error && error.name === 'NotAllowedError'
+				? 'разрешите доступ к камере в настройках браузера' : error);
+		});
+	};
+
+	// Непрерывный автофокус там, где телефон это умеет
+	CameraScan.prototype.tuneTrack = function (stream) {
+		var track = stream.getVideoTracks()[0];
+		if (!track || !track.getCapabilities) return;
+		var caps = track.getCapabilities();
+		if (caps.focusMode && caps.focusMode.indexOf('continuous') >= 0) {
+			track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }).catch(function () {});
+		}
+	};
+
+	CameraScan.prototype.loop = function () {
+		var self = this;
+		if (!this.running) return;
+		this.decodeFrame().then(function (text) {
+			if (!self.running) return;
+			if (text) {
 				self.stop();
 				self.onCode(text);
-			},
-			function () { /* кадр без кода — это нормально */ }
-		).catch(function (error) {
-			box.textContent = 'Камера недоступна: ' + error;
-			self.scanner = null;
+				return;
+			}
+			self.timer = setTimeout(function () { self.loop(); }, SCAN_INTERVAL_MS);
+		}).catch(function () {
+			if (self.running) self.timer = setTimeout(function () { self.loop(); }, SCAN_INTERVAL_MS);
+		});
+	};
+
+	// Средняя полоса кадра (где рамка-прицел) в полном разрешении
+	CameraScan.prototype.grab = function () {
+		var video = this.video;
+		var width = video.videoWidth;
+		var height = video.videoHeight;
+		if (!width || !height) return null;
+		var scale = Math.min(1, MAX_FRAME_WIDTH / width);
+		var cropTop = Math.floor(height * 0.15);
+		var cropHeight = height - cropTop * 2;
+		var canvas = this.canvas;
+		canvas.width = Math.round(width * scale);
+		canvas.height = Math.round(cropHeight * scale);
+		var ctx = canvas.getContext('2d', { willReadFrequently: true });
+		ctx.drawImage(video, 0, cropTop, width, cropHeight, 0, 0, canvas.width, canvas.height);
+		return ctx;
+	};
+
+	CameraScan.prototype.decodeFrame = function () {
+		var ctx = this.grab();
+		if (!ctx) return Promise.resolve(null);
+		if (this.detector) {
+			return this.detector.detect(this.canvas).then(function (codes) {
+				return codes.length ? codes[0].rawValue : null;
+			});
+		}
+		var image = ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
+		return global.ZXingWASM.readBarcodes(image, {
+			formats: ['Code128', 'QRCode'],
+			tryHarder: true,
+			tryRotate: false,
+			tryInvert: false,
+			tryDownscale: true,
+			maxNumberOfSymbols: 1
+		}).then(function (results) {
+			for (var i = 0; i < results.length; i++) {
+				if (results[i].isValid && results[i].text) return results[i].text;
+			}
+			return null;
 		});
 	};
 
 	CameraScan.prototype.stop = function () {
-		var self = this;
-		if (!this.scanner) return;
-		this.scanner.stop().then(function () {
-			self.scanner.clear();
-			self.scanner = null;
-			var box = document.getElementById(self.boxId);
-			if (box) box.hidden = true;
-		}).catch(function () {
-			self.scanner = null;
-		});
+		this.running = false;
+		clearTimeout(this.timer);
+		if (this.stream) {
+			this.stream.getTracks().forEach(function (track) { track.stop(); });
+			this.stream = null;
+		}
+		if (this.video) this.video.srcObject = null;
+		var box = document.getElementById(this.boxId);
+		if (box) {
+			box.innerHTML = '';
+			box.hidden = true;
+		}
 	};
 
 	global.Sklad = global.Sklad || {};

@@ -142,7 +142,17 @@ td.zero { background: var(--zero); }
 
 /* Камера */
 #camera-box { width: 100%; max-width: 420px; margin: 0 auto; }
-#camera-box video, #camera-box canvas { width: 100%; border-radius: var(--radius); background: #000; }
+#camera-box .camera-frame { position: relative; border-radius: var(--radius); overflow: hidden; background: #000; }
+#camera-box video { display: block; width: 100%; }
+/* Прицел совпадает с полосой кадра, которая уходит в распознавание (15% сверху и снизу отрезаются) */
+#camera-box .camera-aim {
+	position: absolute; left: 4%; right: 4%; top: 15%; bottom: 15%;
+	border: 3px solid rgba(255, 255, 255, .9); border-radius: 10px;
+	box-shadow: 0 0 0 999px rgba(0, 0, 0, .35); pointer-events: none;
+}
+#camera-box .camera-aim::after {
+	content: ""; position: absolute; left: 0; right: 0; top: 50%; height: 2px; background: #e53935;
+}
 
 .table-wrap { overflow: auto; max-height: calc(100vh - 230px); border: 1px solid var(--line); border-radius: var(--radius); }
 .table-wrap table { min-width: 560px; }

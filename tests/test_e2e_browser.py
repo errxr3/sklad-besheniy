@@ -14,6 +14,7 @@ from pathlib import Path
 
 import httpx
 import pytest
+from PIL import Image
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -21,7 +22,14 @@ from app.models import Unit
 from app.services.shifts import make_shift_code
 from app.services.tasks import create_task
 from app.services.units import stock_count
-from app.statuses import ROLE_ASSEMBLER, ROLE_LOADER, ROLE_SHIFT_LEAD
+from app.statuses import (
+    IN_STOCK,
+    ROLE_ADMIN,
+    ROLE_ASSEMBLER,
+    ROLE_LABELS,
+    ROLE_LOADER,
+    ROLE_SHIFT_LEAD,
+)
 from app.timeutil import today_msk
 from tests.helpers import make_article, make_user, site_by_name
 
@@ -166,3 +174,72 @@ def test_full_day_in_browser(server: str, db: Session) -> None:
 
     db.expire_all()
     assert stock_count(db, article.id, site.id) == 0
+
+
+def _write_y4m(path: Path, image: Image.Image, seconds: int = 2, fps: int = 10) -> None:
+    """Неподвижный кадр как видео Y4M — Chromium отдаёт его странице вместо камеры."""
+    frame = image.convert("YCbCr")
+    width, height = frame.size
+    y, cb, cr = frame.split()
+    half = (width // 2, height // 2)
+    planes = y.tobytes() + cb.resize(half).tobytes() + cr.resize(half).tobytes()
+    with path.open("wb") as out:
+        out.write(f"YUV4MPEG2 W{width} H{height} F{fps}:1 Ip A1:1 C420jpeg\n".encode())
+        for _ in range(seconds * fps):
+            out.write(b"FRAME\n" + planes)
+
+
+def test_camera_reads_printed_label(server: str, db: Session, tmp_path: Path) -> None:
+    """Камера телефона читает напечатанную этикетку: кадр 1280×720, этикетка ~40% ширины."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    pdfium = pytest.importorskip("pypdfium2")
+
+    article = make_article(db, name="Zerkalo_100x200")
+    make_user(db, name="Анна Админ", role=ROLE_ADMIN, pin="4444")
+    db.commit()
+    login_label = f"Анна Админ — {ROLE_LABELS[ROLE_ADMIN]}"
+
+    with sync_api.sync_playwright() as playwright:
+        browser = playwright.chromium.launch(executable_path=_chromium(), args=["--no-sandbox"])
+        page = browser.new_context().new_page()
+        _login(page, server, login_label, "4444")
+        page.goto(f"{server}/make?article_id={article.id}")
+        csrf = page.get_attribute("#print-form input[name=csrf_token]", "value")
+        pdf = page.request.post(
+            f"{server}/make/print",
+            form={"csrf_token": csrf or "", "article_id": str(article.id), "qty": "1"},
+        )
+        assert pdf.ok
+        pdf_bytes = pdf.body()
+        browser.close()
+
+    label = pdfium.PdfDocument(pdf_bytes)[0].render(scale=4).to_pil().convert("RGB")
+    frame = Image.new("RGB", (1280, 720), (170, 170, 170))
+    width = 520
+    label = label.resize((width, int(label.height * width / label.width)))
+    frame.paste(label, ((1280 - label.width) // 2, (720 - label.height) // 2))
+    video = tmp_path / "camera.y4m"
+    _write_y4m(video, frame)
+
+    with sync_api.sync_playwright() as playwright:
+        browser = playwright.chromium.launch(
+            executable_path=_chromium(),
+            args=[
+                "--no-sandbox",
+                "--use-fake-ui-for-media-stream",
+                "--use-fake-device-for-media-stream",
+                f"--use-file-for-fake-video-capture={video}",
+            ],
+        )
+        page = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
+        _login(page, server, login_label, "4444")
+        page.goto(f"{server}/make")
+        page.click("#camera-btn")
+        page.wait_for_selector(".scan-result.ok", timeout=15000)
+        assert "Zerkalo_100x200" in page.inner_text("#scan-result")
+        assert "Принято" in page.inner_text("#scan-result")
+        browser.close()
+
+    db.expire_all()
+    status = db.scalar(select(Unit.status).where(Unit.article_id == article.id))
+    assert status == IN_STOCK

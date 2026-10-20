@@ -1,5 +1,6 @@
 """Общее для веб-слоя: шаблоны, проверка доступа, ответы на сканы."""
 
+import hashlib
 import logging
 from collections.abc import Callable, Coroutine
 from pathlib import Path
@@ -31,8 +32,18 @@ from app.timeutil import fmt_date, fmt_day_month, fmt_dt, fmt_time, today_msk
 logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent
 
+
+def _static_version() -> str:
+    """Метка версии статики: меняется при любой правке файлов, браузер не держит старый скрипт."""
+    digest = hashlib.sha256()
+    for path in sorted((BASE_DIR / "static").glob("*.*")):
+        digest.update(path.read_bytes())
+    return digest.hexdigest()[:10]
+
+
 templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 templates.env.globals.update(
+    STATIC_VERSION=_static_version(),
     STATUS_LABELS=STATUS_LABELS,
     ROLE_LABELS=ROLE_LABELS,
     MOVEMENT_LABELS=MOVEMENT_LABELS,

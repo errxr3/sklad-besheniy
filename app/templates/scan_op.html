@@ -49,8 +49,8 @@
 {% endblock %}
 {% block scripts %}
 {% if not blocked %}
-<script src="/static/vendor/html5-qrcode.min.js"></script>
-<script src="/static/scan.js"></script>
+<script src="/static/vendor/zxing-reader.min.js?v={{ STATIC_VERSION }}"></script>
+<script src="/static/scan.js?v={{ STATIC_VERSION }}"></script>
 <script>
 (function () {
 	var screen = new window.Sklad.ScanScreen({
