@@ -234,8 +234,10 @@ ul.plain li { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .pin-dots { font-size: 32px; letter-spacing: 8px; text-align: center; min-height: 44px; }
 @media (max-width: 600px) {
 	main { padding: 10px; }
-	nav.menu { gap: 6px; padding: 8px 10px; }
-	nav.menu a { padding: 6px 11px; min-height: 38px; font-size: 14px; }
+	/* На телефоне меню — одна строка с прокруткой пальцем */
+	nav.menu { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; gap: 8px; padding: 10px 12px; }
+	nav.menu::-webkit-scrollbar { display: none; }
+	nav.menu a { padding: 9px 16px; min-height: 44px; font-size: 16px; }
 }
 
 
