@@ -40,10 +40,10 @@ jobs:
           ADMIN_PIN: ${{ github.event.inputs.admin_pin }}
         run: |
           if [ -n "$ADMIN_PIN" ]; then echo "::add-mask::$ADMIN_PIN"; fi
-          if ! printf '%s' "$SITE_DOMAIN" | grep -Eq '^[A-Za-z0-9.-]*$'; then
+          if ! [[ "$SITE_DOMAIN" =~ ^[A-Za-z0-9.-]*$ ]]; then
             echo "Домен — только латиница, цифры, точки и дефисы, без http:// и слешей"; exit 1
           fi
-          if [ -n "$ADMIN_PIN" ] && ! printf '%s' "$ADMIN_PIN" | grep -Eq '^[0-9]{4,6}$'; then
+          if [ -n "$ADMIN_PIN" ] && ! [[ "$ADMIN_PIN" =~ ^[0-9]{4,6}$ ]]; then
             echo "PIN — от 4 до 6 цифр"; exit 1
           fi
           if printf '%s' "$ADMIN_NAME" | grep -q "['\"\\$\`]"; then
