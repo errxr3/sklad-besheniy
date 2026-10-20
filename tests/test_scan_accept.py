@@ -79,7 +79,7 @@ def test_marketplace_barcode_refused(db: Session) -> None:
     worker = make_user(db, name="Сборщик 4", role=ROLE_ASSEMBLER)
     result = accept_unit(db, code="4603746901234", actor=worker)
     assert not result.ok
-    assert "не этикетка СКЛАД" in result.message
+    assert "не этикетка BLAGO" in result.message
 
 
 def test_assembler_cannot_accept_foreign_unit(db: Session) -> None:

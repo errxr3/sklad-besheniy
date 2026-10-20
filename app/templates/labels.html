@@ -75,7 +75,7 @@
 		</div>
 	</div>
 	{% endfor %}
-	<div class="row tight mt">
+	<div class="mt">
 		<form method="post" action="/labels/print" target="_blank" class="print-form">
 			<input type="hidden" name="csrf_token" value="{{ csrf }}">
 			<input type="hidden" name="day" value="{{ day.isoformat() }}">
@@ -86,7 +86,7 @@
 			</button>
 		</form>
 		{% if group.hanging %}
-		<form method="post" action="/labels/void" class="void-form"
+		<form method="post" action="/labels/void" class="void-form mt"
 		      data-confirm="Убрать висящие этикетки сборщика {{ group.user.name }} ({{ group.hanging }})?">
 			<input type="hidden" name="csrf_token" value="{{ csrf }}">
 			<input type="hidden" name="day" value="{{ day.isoformat() }}">

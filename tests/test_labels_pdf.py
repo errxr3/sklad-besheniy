@@ -61,7 +61,7 @@ def test_cyrillic_text_in_pdf() -> None:
     )
     document = pypdfium2.PdfDocument(pdf)
     text = document[0].get_textpage().get_text_bounded()
-    assert "СКЛАД" in text
+    assert "BLAGO" in text
     assert "Учительская" in text
     # Название переносится на две строки, поэтому проверяем слова по отдельности
     assert "Зеркало" in text

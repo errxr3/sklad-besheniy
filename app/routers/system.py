@@ -148,7 +148,7 @@ def openapi_schema(request: Request) -> JSONResponse:
 def api_docs(request: Request) -> HTMLResponse:
     """Документация API на локальном Swagger UI (без CDN)."""
     html = """<!doctype html><html lang="ru"><head><meta charset="utf-8">
-<title>API — Склад зеркал</title>
+<title>API — BLAGO</title>
 <link rel="stylesheet" href="/static/vendor/swagger-ui.css"></head>
 <body><div id="swagger"></div>
 <script src="/static/vendor/swagger-ui-bundle.js"></script>

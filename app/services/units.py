@@ -133,7 +133,7 @@ def accept_unit(
     """Приёмка после изготовления: «Напечатано» → «На складе» (SPEC §6.3)."""
     number = clean_code(code)
     if not is_own_label(number):
-        return ScanResult(False, "Это не этикетка СКЛАД", "Отсканируйте этикетку с номером")
+        return ScanResult(False, "Это не этикетка BLAGO", "Отсканируйте этикетку с номером")
 
     unit = lock_unit(session, number)
     if unit is None:
@@ -203,7 +203,7 @@ def write_off_unit(
     """Списание брака, боя, потери или испорченной этикетки (SPEC §6.7)."""
     number = clean_code(code)
     if not is_own_label(number):
-        return ScanResult(False, "Это не этикетка СКЛАД", "Отсканируйте этикетку с номером")
+        return ScanResult(False, "Это не этикетка BLAGO", "Отсканируйте этикетку с номером")
 
     unit = lock_unit(session, number)
     if unit is None:

@@ -103,7 +103,7 @@ def draw_label(pdf: canvas.Canvas, data: LabelData, width_mm: float, height_mm: 
     padding = 2.0 * mm
     content_width = width - 2 * padding
 
-    # 1. Чёрная шапка: «СКЛАД» слева, площадка справа
+    # 1. Чёрная шапка: «BLAGO» слева, площадка справа
     header_height = max(5.0 * mm, height * 0.15)
     pdf.setFillColor(black)
     pdf.rect(0, height - header_height, width, header_height, stroke=0, fill=1)
@@ -111,7 +111,7 @@ def draw_label(pdf: canvas.Canvas, data: LabelData, width_mm: float, height_mm: 
     header_font = header_height / mm * 2.1
     pdf.setFont(FONT_BOLD, header_font)
     baseline = height - header_height + (header_height - header_font * 0.72) / 2
-    pdf.drawString(padding, baseline, "СКЛАД")
+    pdf.drawString(padding, baseline, "BLAGO")
     site_font = header_font * 0.85
     site_text = data.site
     while pdfmetrics.stringWidth(site_text, FONT_REGULAR, site_font) > content_width * 0.55 and site_font > 4:
@@ -175,7 +175,7 @@ def build_labels_pdf(labels: list[LabelData], width_mm: float = 58, height_mm: f
     register_fonts()
     buffer = io.BytesIO()
     pdf = canvas.Canvas(buffer, pagesize=(width_mm * mm, height_mm * mm))
-    pdf.setTitle("Этикетки СКЛАД")
+    pdf.setTitle("Этикетки BLAGO")
     for data in labels:
         draw_label(pdf, data, width_mm, height_mm)
         pdf.showPage()

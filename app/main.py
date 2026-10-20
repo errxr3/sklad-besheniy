@@ -52,7 +52,7 @@ def create_app() -> FastAPI:
     """Собрать приложение."""
     settings = get_settings()
     app = FastAPI(
-        title="Склад зеркал",
+        title="BLAGO — склад зеркал",
         version="1.0.0",
         lifespan=lifespan,
         docs_url=None,

@@ -3,14 +3,16 @@
 <head>
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-	<title>{% block title %}Склад зеркал{% endblock %}</title>
+	<title>{% block title %}Склад{% endblock %} · BLAGO</title>
+	<meta name="theme-color" content="#1b1746">
 	<link rel="stylesheet" href="/static/app.css?v={{ STATIC_VERSION }}">
 	<link rel="icon" href="data:,">
+	<script>window.SKLAD_STATIC_VERSION = '{{ STATIC_VERSION }}';</script>
 </head>
 <body>
 {% if user %}
 <header class="top">
-	<a class="brand" href="/">СКЛАД</a>
+	<a class="brand" href="/"><b>BLAGO</b><span>склад</span></a>
 	<div class="who">
 		{{ user.name }}
 		<small>{{ ROLE_LABELS[user.role] }}</small>

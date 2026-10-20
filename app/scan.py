@@ -13,5 +13,5 @@ def clean_code(raw: str) -> str:
 
 
 def is_own_label(raw: str) -> bool:
-    """Это этикетка СКЛАД, а не код маркетплейса."""
+    """Это этикетка BLAGO, а не код маркетплейса."""
     return bool(OWN_LABEL_RE.match(clean_code(raw)))

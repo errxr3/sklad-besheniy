@@ -154,7 +154,9 @@
 		global.ZXingWASM.prepareZXingModule({
 			overrides: {
 				locateFile: function (path, prefix) {
-					return path.slice(-5) === '.wasm' ? '/static/vendor/' + path : prefix + path;
+					if (path.slice(-5) !== '.wasm') return prefix + path;
+					var version = global.SKLAD_STATIC_VERSION ? '?v=' + global.SKLAD_STATIC_VERSION : '';
+					return '/static/vendor/' + path + version;
 				}
 			},
 			fireImmediately: true

@@ -132,7 +132,7 @@ def test_marketplace_code_without_unit_refused(db: Session) -> None:
     result = scan_loading(db, code="4603746901234", pallet=pallet, actor=loader)
     assert not result.ok
     assert "код маркетплейса" in result.message
-    assert "этикетку СКЛАД" in result.detail
+    assert "этикетку BLAGO" in result.detail
 
 
 def test_mp_barcode_attached_after_ship(db: Session) -> None:

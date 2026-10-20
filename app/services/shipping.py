@@ -165,7 +165,7 @@ def scan_loading(
         return LoadResult(
             False,
             "Это код маркетплейса",
-            "Сначала отсканируйте этикетку СКЛАД",
+            "Сначала отсканируйте этикетку BLAGO",
         )
     return _scan_mp_barcode(
         session,
@@ -256,7 +256,7 @@ def _scan_mp_barcode(
     """Скан ШК маркетплейса, который наклеен на только что отсканированное зеркало."""
     unit = lock_unit(session, clean_code(unit_number))
     if unit is None:
-        return LoadResult(False, "Зеркало не найдено", "отсканируйте этикетку СКЛАД заново")
+        return LoadResult(False, "Зеркало не найдено", "отсканируйте этикетку BLAGO заново")
 
     existing = session.scalar(
         select(Unit).where(Unit.mp_barcode == mp_barcode, Unit.id != unit.id)

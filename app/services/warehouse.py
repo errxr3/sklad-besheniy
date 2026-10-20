@@ -40,7 +40,7 @@ def transfer_out(
     """Отправка зеркала на другую площадку: «На складе» → «В пути»."""
     number = clean_code(code)
     if not is_own_label(number):
-        return ScanResult(False, "Это не этикетка СКЛАД")
+        return ScanResult(False, "Это не этикетка BLAGO")
     target = session.get(Site, to_site_id)
     if target is None or not target.active:
         return ScanResult(False, "Площадка-получатель не найдена")
@@ -90,7 +90,7 @@ def transfer_in(
     """Приёмка перемещения на площадке-получателе: «В пути» → «На складе»."""
     number = clean_code(code)
     if not is_own_label(number):
-        return ScanResult(False, "Это не этикетка СКЛАД")
+        return ScanResult(False, "Это не этикетка BLAGO")
     site = session.get(Site, site_id)
     if site is None:
         return ScanResult(False, "Площадка не найдена")
@@ -166,7 +166,7 @@ def return_unit(
     """Возврат от покупателя: годное — на склад, негодное — в списание."""
     number = clean_code(code)
     if not is_own_label(number):
-        return ScanResult(False, "Это не этикетка СКЛАД")
+        return ScanResult(False, "Это не этикетка BLAGO")
     unit = lock_unit(session, number)
     if unit is None:
         return ScanResult(False, "Номер не найден", number=number)
@@ -290,7 +290,7 @@ def scan_inventory(session: Session, *, inventory_id: int, code: str, actor: Use
     """Скан зеркала при пересчёте. Повторный скан — не ошибка."""
     number = clean_code(code)
     if not is_own_label(number):
-        return ScanResult(False, "Это не этикетка СКЛАД")
+        return ScanResult(False, "Это не этикетка BLAGO")
     inventory = session.get(Inventory, inventory_id)
     if inventory is None or inventory.finished_at is not None:
         return ScanResult(False, "Инвентаризация уже завершена")

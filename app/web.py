@@ -36,7 +36,7 @@ BASE_DIR = Path(__file__).resolve().parent
 def _static_version() -> str:
     """Метка версии статики: меняется при любой правке файлов, браузер не держит старый скрипт."""
     digest = hashlib.sha256()
-    for path in sorted((BASE_DIR / "static").glob("*.*")):
+    for path in sorted((BASE_DIR / "static").rglob("*.*")):
         digest.update(path.read_bytes())
     return digest.hexdigest()[:10]
 
