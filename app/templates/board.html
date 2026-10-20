@@ -33,13 +33,16 @@
 			<td>{% if row.tasks_plan %}{{ row.tasks_done }} / {{ row.tasks_plan }}{% endif %}</td>
 			<td>
 				{% if row.shift and not row.shift.ended_at %}
-				<form method="post" action="/board/close-shift" class="row tight inline-form">
-					<input type="hidden" name="csrf_token" value="{{ csrf }}">
-					<input type="hidden" name="shift_id" value="{{ row.shift.id }}">
-					<input type="datetime-local" name="ended_at" style="min-width:170px" title="время окончания, можно оставить пустым">
-					<input type="text" name="note" placeholder="причина" required style="min-width:120px">
-					<button type="submit" class="secondary">Закрыть смену</button>
-				</form>
+				<details class="close-shift">
+					<summary>Закрыть…</summary>
+					<form method="post" action="/board/close-shift" class="inline-form">
+						<input type="hidden" name="csrf_token" value="{{ csrf }}">
+						<input type="hidden" name="shift_id" value="{{ row.shift.id }}">
+						<input type="datetime-local" name="ended_at" title="время окончания, можно оставить пустым">
+						<input type="text" name="note" placeholder="причина" required>
+						<button type="submit" class="secondary">Закрыть смену</button>
+					</form>
+				</details>
 				{% endif %}
 			</td>
 		</tr>

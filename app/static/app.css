@@ -32,6 +32,8 @@ body {
 	font-size: 18px;
 	line-height: 1.4;
 	-webkit-tap-highlight-color: transparent;
+	/* Ничто не должно растягивать страницу вбок на телефоне */
+	overflow-x: clip;
 }
 
 header.top {
@@ -87,6 +89,8 @@ h2 { font-size: 20px; margin: 18px 0 10px; }
 .card {
 	background: var(--card); border: 1px solid var(--line); border-radius: var(--radius);
 	padding: 16px; margin-bottom: 14px; box-shadow: var(--shadow);
+	/* Широкая таблица прокручивается внутри карточки, а не растягивает страницу */
+	overflow-x: auto;
 }
 
 label { display: block; margin: 10px 0 4px; font-weight: 600; }
@@ -139,7 +143,7 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
 td.zero { background: var(--zero); }
 
 .badge {
-	display: inline-block; padding: 2px 8px; border-radius: 999px;
+	display: inline-block; white-space: nowrap; padding: 2px 8px; border-radius: 999px;
 	font-size: 14px; font-weight: 600; background: #e7eaf0; color: var(--text);
 }
 .badge.ok { background: var(--ok-bg); color: var(--ok); }
@@ -252,3 +256,18 @@ ul.plain li { padding: 8px 0; border-bottom: 1px solid var(--line); }
 .login-logo { font-size: 44px; font-weight: 800; letter-spacing: .2em; padding-left: .2em; }
 .login-hero p { margin: 4px 0 0; opacity: .8; }
 .login-card { max-width: 460px; margin: 0 auto; }
+
+/* Таблицы на телефоне: компактнее, текст ячеек не ломается по буквам */
+@media (max-width: 600px) {
+	th, td { padding: 6px 8px; font-size: 15px; }
+	th { white-space: nowrap; }
+}
+
+/* Табло: закрытие забытой смены спрятано, чтобы строки оставались короткими */
+details.close-shift summary {
+	cursor: pointer; color: var(--accent-dark); font-weight: 600; font-size: 15px; white-space: nowrap;
+	list-style: none;
+}
+details.close-shift summary::-webkit-details-marker { display: none; }
+details.close-shift .inline-form { display: grid; gap: 6px; margin-top: 6px; min-width: 200px; }
+#board-table td { white-space: nowrap; }
