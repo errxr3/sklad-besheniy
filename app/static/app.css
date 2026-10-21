@@ -455,3 +455,8 @@ table.shipments { border-collapse: separate; border-spacing: 0; }
 .shipments th, .shipments td { border: 0; border-right: 1px solid var(--line-strong); border-bottom: 1px solid var(--line-strong); }
 .shipments tr.header-row td { border-left: 0; }
 .shipments thead tr:last-child th { box-shadow: none; border-bottom: 2px solid var(--line-strong); }
+
+/* Погрузка: открытый канал площадки выделен, под названием — сколько уже загружено */
+.channel-btn { flex-direction: column; gap: 2px; }
+.channel-btn small { font-size: 14px; font-weight: 600; letter-spacing: 0; }
+.channel-btn.secondary { color: var(--text); }

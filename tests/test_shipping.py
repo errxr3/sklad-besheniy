@@ -15,6 +15,7 @@ from app.services.shipping import (
     close_pallet,
     next_pallet_number,
     open_new_pallet,
+    pallet_loaders,
     pallet_summary,
     scan_loading,
 )
@@ -227,12 +228,26 @@ def test_close_pallet_and_summary(db: Session) -> None:
         close_pallet(db, pallet_id=pallet.id, user=loader, note="Озон1")
 
 
-def test_one_open_pallet_per_loader(db: Session) -> None:
-    """У грузчика не может быть двух открытых паллет."""
-    loader, _ = _loader_with_pallet(db)
-    with pytest.raises(ShippingError) as err:
-        open_new_pallet(db, user=loader, site=site_by_name(db), channel="WB")
-    assert "уже открыт канал" in str(err.value)
+def test_loaders_share_channel_of_site(db: Session) -> None:
+    """Ozon на площадке один: второй грузчик встаёт в тот же канал и грузит вместе (2026-10-21)."""
+    units = _stocked_units(db, 2)
+    first, pallet = _loader_with_pallet(db, name="Грузчик 1")
+    second = make_user(db, name="Грузчик 2", role=ROLE_LOADER)
+    joined = open_new_pallet(db, user=second, site=site_by_name(db), channel="Ozon")
+    db.commit()
+    assert joined.id == pallet.id
+    assert scan_loading(db, code=units[0].number, pallet=pallet, actor=first).ok
+    assert scan_loading(db, code=units[1].number, pallet=joined, actor=second).ok
+    db.commit()
+    assert pallet_loaders(db, pallet.id) == [("Грузчик 1", 1), ("Грузчик 2", 1)]
+    # Закрыть может любой из них, канал закрывается для всех
+    close_pallet(db, pallet_id=pallet.id, user=second, note="Озон2")
+    db.commit()
+    assert pallet_summary(db, pallet.id) == [(units[0].article.name, 2)]
+    # Другой канал и другая площадка — отдельные каналы
+    wb = open_new_pallet(db, user=first, site=site_by_name(db), channel="WB")
+    other = open_new_pallet(db, user=second, site=site_by_name(db, "Учительская"), channel="WB")
+    assert wb.id != other.id
 
 
 def test_cancel_ship_returns_unit_to_stock(db: Session) -> None:
@@ -295,7 +310,7 @@ def test_loading_through_http(client: TestClient, db: Session) -> None:
 
     response = client.post(
         "/loading/scan",
-        json={"code": units[0].number, "csrf_token": token},
+        json={"code": units[0].number, "csrf_token": token, "pallet_id": pallet.id},
         headers={"X-CSRF-Token": token, "X-Requested-With": "fetch"},
     )
     data = response.json()
@@ -372,34 +387,50 @@ def test_all_channels_available(db: Session) -> None:
         open_new_pallet(db, user=loader, site=site, channel="Почта")
 
 
-def test_empty_channel_follows_shift_site(client: TestClient, db: Session) -> None:
-    """Канал остался открытым со смены на Коминтерна, сегодня смена на Учительской (2026-10-21)."""
+def test_channel_of_other_site_refused_over_http(client: TestClient, db: Session) -> None:
+    """Канал Коминтерна не принимает сканы грузчика на смене на Учительской."""
     units = _stocked_units(db, 1, site_name="Учительская")
-    loader = make_user(db, name="Грузчик переезд", role=ROLE_LOADER, pin="1234")
-    stale = open_new_pallet(db, user=loader, site=site_by_name(db, "Коминтерна"), channel="Ozon")
+    kom_loader = make_user(db, name="Грузчик Коминтерна", role=ROLE_LOADER)
+    kom_pallet = open_new_pallet(db, user=kom_loader, site=site_by_name(db, "Коминтерна"), channel="Ozon")
+    loader = make_user(db, name="Грузчик Учительская", role=ROLE_LOADER, pin="1234")
     db.commit()
     open_shift(db, loader, site_by_name(db, "Учительская"))
     login(client, loader)
+    token = get_csrf(client, "/loading")
+    headers = {"X-CSRF-Token": token, "X-Requested-With": "fetch"}
+    refused = client.post(
+        "/loading/scan", json={"code": units[0].number, "pallet_id": kom_pallet.id}, headers=headers
+    ).json()
+    assert refused["ok"] is False
+    assert "Коминтерна" in refused["message"]
 
+    # Нажал Ozon у себя — открылся свой канал Учительской, скан проходит
+    client.post("/loading/new-pallet", data={"csrf_token": token, "channel": "Ozon"})
+    own = db.scalar(
+        select(Pallet).where(Pallet.site_id == site_by_name(db, "Учительская").id, Pallet.closed_at.is_(None))
+    )
+    assert own is not None and own.id != kom_pallet.id
+    data = client.post(
+        "/loading/scan", json={"code": units[0].number, "pallet_id": own.id}, headers=headers
+    ).json()
+    assert data["ok"] is True, data
+
+
+def test_scan_into_closed_channel_refused(client: TestClient, db: Session) -> None:
+    """Канал закрыл напарник — следующий скан получает отказ и возврат к выбору канала."""
+    units = _stocked_units(db, 1)
+    loader = make_user(db, name="Грузчик поздний", role=ROLE_LOADER, pin="1234")
+    open_shift(db, loader)
+    _, pallet = _loader_with_pallet(db, channel="WB", name="Напарник")
+    close_pallet(db, pallet_id=pallet.id, user=pallet.opener, note="")
+    db.commit()
+    login(client, loader)
     token = get_csrf(client, "/loading")
     data = client.post(
         "/loading/scan",
-        json={"code": units[0].number, "csrf_token": token},
+        json={"code": units[0].number, "pallet_id": pallet.id},
         headers={"X-CSRF-Token": token, "X-Requested-With": "fetch"},
     ).json()
-    assert data["ok"] is True, data
-    db.refresh(stale)
-    assert stale.site_id == site_by_name(db, "Учительская").id
-
-
-def test_filled_channel_of_other_site_explained(db: Session) -> None:
-    """Канал с зеркалами другой площадки не переезжает, отказ называет обе площадки."""
-    kom_units = _stocked_units(db, 1, site_name="Коминтерна")
-    uch_units = _stocked_units(db, 1, site_name="Учительская")
-    loader, pallet = _loader_with_pallet(db)
-    assert scan_loading(db, code=kom_units[0].number, pallet=pallet, actor=loader).ok
-    db.commit()
-    result = scan_loading(db, code=uch_units[0].number, pallet=pallet, actor=loader)
-    assert not result.ok
-    assert "Учительская" in result.message
-    assert "Коминтерна" in result.detail
+    assert data["ok"] is False
+    assert data["closed"] is True
+    assert "уже закрыт" in data["message"]

@@ -13,23 +13,26 @@
 		<form method="post" action="/loading/new-pallet">
 			<input type="hidden" name="csrf_token" value="{{ csrf }}">
 			<input type="hidden" name="channel" value="{{ c }}">
-			<button type="submit" class="channel-btn">{{ c }}</button>
+			<button type="submit" class="channel-btn {% if c in open %}is-open{% else %}secondary{% endif %}">
+				{{ c }}
+				{% if c in open %}<small>открыт · {{ counts[c] }} шт.</small>{% endif %}
+			</button>
 		</form>
 		{% endfor %}
 	</div>
-	<p class="hint">Выберите канал, отсканируйте все зеркала и закройте канал — значит, всё готово к отгрузке.</p>
+	<p class="hint">Каналы общие для всех грузчиков площадки: если Ozon уже открыт, нажмите его —
+		и сканируйте вместе. Закрывает канал один, когда всё загружено.</p>
 </div>
 {% else %}
 <div class="card">
 	<div class="line">
 		<h2>Канал {{ pallet.channel }}</h2>
-		<span class="badge ok">открыт</span>
+		<a class="btn secondary small-btn" href="/loading">Другой канал</a>
 	</div>
-	{% if pallet.site_id != site.id %}
-	<p class="msg warn">Этот канал открыт на площадке {{ pallet.site.name }} и в нём уже есть зеркала оттуда.
-		Закройте его, чтобы грузить на площадке {{ site.name }}.</p>
+	<p class="counter">В канале: <b id="pallet-count">{{ count }}</b></p>
+	{% if loaders %}
+	<p class="muted">Грузят: {% for name, n in loaders %}{{ name }} — {{ n }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
 	{% endif %}
-	<p class="counter">Отсканировано: <b id="pallet-count">{{ count }}</b></p>
 	<div id="scan-result" class="scan-result"></div>
 	<form id="scan-form">
 		<input type="text" id="scan-input" class="scan-input" placeholder="Отсканируйте этикетку зеркала"
@@ -62,7 +65,8 @@
 		<input type="text" name="note" id="close-note" maxlength="200" placeholder="например, машина или номер отправки">
 		{% endif %}
 		<button type="submit" class="big mt">Закрыть канал {{ pallet.channel }}</button>
-		<p class="hint">После закрытия добавить зеркала в эту отгрузку нельзя — для следующей выберите канал заново.</p>
+		<p class="hint">Канал закроется у всех, кто в нём грузит. После закрытия добавить зеркала в эту
+			отгрузку нельзя — для следующей выберите канал заново.</p>
 	</form>
 </div>
 
@@ -84,7 +88,15 @@
 	var screen = new window.Sklad.ScanScreen({
 		url: '/loading/scan',
 		csrf: '{{ csrf }}',
-		extra: function () { return pendingUnit ? { unit_number: pendingUnit } : {}; },
+		extra: function () {
+			var data = { pallet_id: {{ pallet.id }} };
+			if (pendingUnit) data.unit_number = pendingUnit;
+			return data;
+		},
+		onResult: function (data) {
+			// Канал закрыл другой грузчик — возвращаемся к выбору канала
+			if (data.closed) setTimeout(function () { window.location.href = '/loading'; }, 2500);
+		},
 		onSuccess: function (data) {
 			if (data.await_mp) {
 				pendingUnit = data.number;
@@ -106,7 +118,7 @@
 
 	document.getElementById('close-form').addEventListener('submit', function (event) {
 		var count = document.getElementById('pallet-count').textContent;
-		if (!window.confirm('Закрыть канал {{ pallet.channel }}? Отсканировано: ' + count)) event.preventDefault();
+		if (!window.confirm('Закрыть канал {{ pallet.channel }} для всех? В канале: ' + count)) event.preventDefault();
 	});
 })();
 </script>

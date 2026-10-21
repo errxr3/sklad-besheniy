@@ -43,25 +43,45 @@ class LoadResult(ScanResult):
     pallet_count: int = 0
 
 
-def open_pallet_for(session: Session, user_id: int) -> Pallet | None:
-    """Открытый канал (отгрузка) грузчика."""
-    return session.scalars(
-        select(Pallet).where(Pallet.opened_by == user_id, Pallet.closed_at.is_(None)).limit(1)
-    ).first()
+def open_channel_at(session: Session, site_id: int, channel: str) -> Pallet | None:
+    """Открытый канал площадки (Ozon на Учительской и т.п.)."""
+    return session.scalar(
+        select(Pallet).where(
+            Pallet.site_id == site_id, Pallet.channel == channel, Pallet.closed_at.is_(None)
+        )
+    )
 
 
-def follow_shift_site(session: Session, pallet: Pallet, site: Site) -> None:
-    """Пустой канал переезжает на площадку текущей смены грузчика.
+def site_channels(session: Session, site_id: int) -> dict[str, Pallet]:
+    """Открытые каналы площадки по названию канала."""
+    pallets = session.scalars(
+        select(Pallet).where(Pallet.site_id == site_id, Pallet.closed_at.is_(None))
+    ).all()
+    return {pallet.channel: pallet for pallet in pallets}
 
-    Канал мог остаться открытым со смены на другой площадке: пока в нём ничего нет, его
-    площадка просто меняется на ту, где грузчик работает сейчас.
-    """
-    if pallet.site_id == site.id or pallet.closed_at is not None:
+
+def pallet_loaders(session: Session, pallet_id: int) -> list[tuple[str, int]]:
+    """Кто сколько зеркал загрузил в канал — грузят несколько человек одновременно."""
+    rows = session.execute(
+        select(User.name, func.count(func.distinct(Unit.id)))
+        .join(Movement, Movement.user_id == User.id)
+        .join(Unit, Unit.id == Movement.unit_id)
+        .where(Unit.pallet_id == pallet_id, Movement.type == MV_SHIP)
+        .group_by(User.name)
+        .order_by(func.count(func.distinct(Unit.id)).desc(), User.name)
+    ).all()
+    return [(str(name), int(count)) for name, count in rows]
+
+
+def check_channel_site(pallet: Pallet, site: Site | None, user: User) -> None:
+    """Грузить и закрывать канал можно только на площадке своей смены."""
+    if pallet.closed_at is not None:
+        truck = f", {pallet.note}" if pallet.note else ""
+        raise ShippingError(f"Канал {pallet.channel} уже закрыт{truck} — выберите канал заново")
+    if user.role == ROLE_ADMIN:
         return
-    if pallet_count(session, pallet.id) == 0:
-        pallet.site_id = site.id
-        pallet.site = site
-        session.flush()
+    if site is None or pallet.site_id != site.id:
+        raise ShippingError(f"Канал {pallet.channel} открыт на площадке {pallet.site.name}, а вы на другой")
 
 
 def next_pallet_number(session: Session) -> str:
@@ -77,12 +97,18 @@ def next_pallet_number(session: Session) -> str:
     return f"{prefix}-{index:02d}"
 
 
-def open_new_pallet(session: Session, *, user: User, site: Site, channel: str) -> Pallet:
-    """Открыть канал погрузки."""
+def join_channel(session: Session, *, user: User, site: Site, channel: str) -> Pallet:
+    """Встать на канал: присоединиться к открытому на площадке или открыть его.
+
+    Канал общий — Ozon на Учительской один, и все грузчики на смене там сканируют в него.
+    """
     if channel not in CHANNELS:
         raise ShippingError("Выберите канал: " + ", ".join(CHANNELS))
-    if open_pallet_for(session, user.id) is not None:
-        raise ShippingError("У вас уже открыт канал — закройте его или продолжайте")
+    # Блокировка площадки: двое одновременно нажали «Ozon» — канал откроется один
+    session.execute(select(Site.id).where(Site.id == site.id).with_for_update())
+    existing = open_channel_at(session, site.id, channel)
+    if existing is not None:
+        return existing
     pallet = Pallet(
         number=next_pallet_number(session),
         site_id=site.id,
@@ -95,18 +121,22 @@ def open_new_pallet(session: Session, *, user: User, site: Site, channel: str) -
     return pallet
 
 
-def close_pallet(session: Session, *, pallet_id: int, user: User, note: str = "") -> Pallet:
+# Старое имя: тесты и скрипты открывали канал так
+open_new_pallet = join_channel
+
+
+def close_pallet(
+    session: Session, *, pallet_id: int, user: User, note: str = "", site: Site | None = None
+) -> Pallet:
     """Закрыть канал: всё отсканировано и готово к отгрузке, дополнять больше нельзя.
 
-    Для Ozon обязательно указать машину (Озон1…Озон3), для остальных описание — по желанию.
+    Закрыть может любой грузчик на смене на площадке канала. Для Ozon обязательно указать
+    машину (Озон1…Озон3), для остальных описание — по желанию.
     """
-    pallet = session.get(Pallet, pallet_id)
+    pallet = session.scalar(select(Pallet).where(Pallet.id == pallet_id).with_for_update(of=Pallet))
     if pallet is None:
         raise ShippingError("Отгрузка не найдена")
-    if pallet.closed_at is not None:
-        raise ShippingError("Канал уже закрыт")
-    if pallet.opened_by != user.id and user.role != ROLE_ADMIN:
-        raise ShippingError("Этот канал открыт другим сотрудником")
+    check_channel_site(pallet, site if site is not None else pallet.site, user)
     text = note.strip()
     if pallet.channel == OZON and text not in OZON_TRUCKS:
         raise ShippingError("Для Ozon выберите машину: " + ", ".join(OZON_TRUCKS))

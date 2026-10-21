@@ -145,14 +145,16 @@ class Article(Base):
 
 
 class Pallet(Base):
-    """Паллета грузчика (SPEC §6.4)."""
+    """Канал погрузки площадки (SPEC §6.4): общий для всех грузчиков на смене там."""
 
     __tablename__ = "pallets"
     __table_args__ = (
         UniqueConstraint("number", name="uq_pallets_number"),
+        # Один открытый канал каждого вида на площадке: грузят в него все грузчики площадки
         Index(
-            "uq_pallets_one_open_per_loader",
-            "opened_by",
+            "uq_pallets_one_open_per_channel",
+            "site_id",
+            "channel",
             unique=True,
             postgresql_where=text("closed_at IS NULL"),
         ),

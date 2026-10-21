@@ -113,7 +113,7 @@ def test_one_open_shift_per_user_index() -> None:
         names = set(rows)
     assert {
         "uq_shifts_one_open_per_user",
-        "uq_pallets_one_open_per_loader",
+        "uq_pallets_one_open_per_channel",
         "uq_inventories_one_active_per_site",
         "ix_units_stock",
     } <= names

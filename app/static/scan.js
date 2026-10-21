@@ -35,6 +35,7 @@
 		this.csrf = options.csrf;
 		this.extra = options.extra || function () { return {}; };
 		this.onSuccess = options.onSuccess || function () {};
+		this.onResult = options.onResult || function () {};
 		this.busy = false;
 		this.bind();
 	}
@@ -177,6 +178,7 @@
 			self.input.value = '';
 			self.focus();
 			if (ok) self.onSuccess(data);
+			self.onResult(data);
 		}).catch(function () {
 			clearTimeout(timer);
 			self.busy = false;
