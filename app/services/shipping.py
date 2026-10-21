@@ -50,6 +50,20 @@ def open_pallet_for(session: Session, user_id: int) -> Pallet | None:
     ).first()
 
 
+def follow_shift_site(session: Session, pallet: Pallet, site: Site) -> None:
+    """Пустой канал переезжает на площадку текущей смены грузчика.
+
+    Канал мог остаться открытым со смены на другой площадке: пока в нём ничего нет, его
+    площадка просто меняется на ту, где грузчик работает сейчас.
+    """
+    if pallet.site_id == site.id or pallet.closed_at is not None:
+        return
+    if pallet_count(session, pallet.id) == 0:
+        pallet.site_id = site.id
+        pallet.site = site
+        session.flush()
+
+
 def next_pallet_number(session: Session) -> str:
     """Номер отгрузки: P + дата + порядковый за день (напр. P20261013-03)."""
     today = today_msk()
@@ -246,8 +260,8 @@ def _scan_unit_label(
     if unit.site_id != pallet.site_id:
         return LoadResult(
             False,
-            f"Зеркало числится на {unit.site.name}",
-            "отгрузка возможна только со своей площадки",
+            f"Зеркало числится на площадке {unit.site.name}",
+            f"а канал открыт на площадке {pallet.site.name}: грузить можно только оттуда",
             number=number,
             article=article_name,
         )

@@ -13,6 +13,7 @@ from app.services.context import site_and_shift
 from app.services.shipping import (
     ShippingError,
     close_pallet,
+    follow_shift_site,
     open_new_pallet,
     open_pallet_for,
     pallet_count,
@@ -33,6 +34,8 @@ def loading_page(request: Request, db: Session = Depends(get_db), err: str = "")
     user = request.state.user
     site, _ = site_and_shift(db, user)
     pallet = open_pallet_for(db, user.id)
+    if pallet is not None:
+        follow_shift_site(db, pallet, site)
     return page(
         request,
         "loading.html",
@@ -71,11 +74,12 @@ async def loading_scan(request: Request, db: Session = Depends(get_db)) -> JSONR
     code = str(payload.get("code") or "").strip()
     unit_number = payload.get("unit_number")
     user = request.state.user
-    _, shift_id = site_and_shift(db, user)
+    site, shift_id = site_and_shift(db, user)
 
     pallet = open_pallet_for(db, user.id)
     if pallet is None:
         return JSONResponse({"ok": False, "message": "Сначала выберите канал"})
+    follow_shift_site(db, pallet, site)
     if not code:
         return JSONResponse({"ok": False, "message": "Пустой скан"})
 

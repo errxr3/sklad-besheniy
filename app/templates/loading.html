@@ -25,6 +25,10 @@
 		<h2>Канал {{ pallet.channel }}</h2>
 		<span class="badge ok">открыт</span>
 	</div>
+	{% if pallet.site_id != site.id %}
+	<p class="msg warn">Этот канал открыт на площадке {{ pallet.site.name }} и в нём уже есть зеркала оттуда.
+		Закройте его, чтобы грузить на площадке {{ site.name }}.</p>
+	{% endif %}
 	<p class="counter">Отсканировано: <b id="pallet-count">{{ count }}</b></p>
 	<div id="scan-result" class="scan-result"></div>
 	<form id="scan-form">

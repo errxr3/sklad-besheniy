@@ -370,3 +370,36 @@ def test_all_channels_available(db: Session) -> None:
         assert closed.channel == channel and closed.note is None
     with pytest.raises(ShippingError):
         open_new_pallet(db, user=loader, site=site, channel="Почта")
+
+
+def test_empty_channel_follows_shift_site(client: TestClient, db: Session) -> None:
+    """Канал остался открытым со смены на Коминтерна, сегодня смена на Учительской (2026-10-21)."""
+    units = _stocked_units(db, 1, site_name="Учительская")
+    loader = make_user(db, name="Грузчик переезд", role=ROLE_LOADER, pin="1234")
+    stale = open_new_pallet(db, user=loader, site=site_by_name(db, "Коминтерна"), channel="Ozon")
+    db.commit()
+    open_shift(db, loader, site_by_name(db, "Учительская"))
+    login(client, loader)
+
+    token = get_csrf(client, "/loading")
+    data = client.post(
+        "/loading/scan",
+        json={"code": units[0].number, "csrf_token": token},
+        headers={"X-CSRF-Token": token, "X-Requested-With": "fetch"},
+    ).json()
+    assert data["ok"] is True, data
+    db.refresh(stale)
+    assert stale.site_id == site_by_name(db, "Учительская").id
+
+
+def test_filled_channel_of_other_site_explained(db: Session) -> None:
+    """Канал с зеркалами другой площадки не переезжает, отказ называет обе площадки."""
+    kom_units = _stocked_units(db, 1, site_name="Коминтерна")
+    uch_units = _stocked_units(db, 1, site_name="Учительская")
+    loader, pallet = _loader_with_pallet(db)
+    assert scan_loading(db, code=kom_units[0].number, pallet=pallet, actor=loader).ok
+    db.commit()
+    result = scan_loading(db, code=uch_units[0].number, pallet=pallet, actor=loader)
+    assert not result.ok
+    assert "Учительская" in result.message
+    assert "Коминтерна" in result.detail
