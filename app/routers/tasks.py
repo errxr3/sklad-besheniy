@@ -211,6 +211,27 @@ def tasks_done(
     return RedirectResponse("/", status_code=303)
 
 
+@router.post("/tasks/submit")
+def tasks_submit(
+    request: Request,
+    task_id: int = Form(...),
+    db: Session = Depends(get_db),
+) -> Response:
+    """«Собрал всё»: все висящие этикетки задачи сборщика — на склад без скана."""
+    from app.services.context import site_and_shift
+    from app.services.task_labels import submit_task
+    from app.services.units import UnitError
+
+    user = request.state.user
+    _, shift_id = site_and_shift(db, user)
+    try:
+        count = submit_task(db, task_id=task_id, actor=user, shift_id=shift_id)
+    except UnitError as exc:
+        return RedirectResponse(f"/?{urlencode({'err': str(exc)})}", status_code=303)
+    logger.info("Задача сдана кнопкой", extra={"user_id": user.id, "status": f"{count} шт."})
+    return RedirectResponse(f"/?{urlencode({'ok': f'На склад записано: {count} шт.'})}", status_code=303)
+
+
 @router.get("/reports/plan-fact", response_class=HTMLResponse)
 def plan_fact(
     request: Request,

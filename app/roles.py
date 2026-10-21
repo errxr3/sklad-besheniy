@@ -90,8 +90,10 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     # Ввод остатков
     ("GET", "/stock-entry"): STOCK_ENTRY,
     ("POST", "/stock-entry/print"): STOCK_ENTRY,
-    ("GET", "/stock-entry/remove"): STOCK_ENTRY,
-    ("POST", "/stock-entry/remove/scan"): STOCK_ENTRY,
+    ("GET", "/stock-entry/remove"): (*STOCK_ENTRY, ROLE_SHIFT_LEAD),
+    ("POST", "/stock-entry/remove/scan"): (*STOCK_ENTRY, ROLE_SHIFT_LEAD),
+    # «Собрал всё»: сборщик сдаёт задачу кнопкой, без скана
+    ("POST", "/tasks/submit"): ACCEPTORS,
     ("POST", "/labels/void-unit"): LEADS,
     # Карточка зеркала
     ("GET", "/mirror"): LEADS,
@@ -174,6 +176,7 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
 # Маршруты, требующие открытой смены у сборщика и грузчика (SPEC §4)
 NEEDS_OPEN_SHIFT: Final[set[tuple[str, str]]] = {
     ("POST", "/scan/accept"),
+    ("POST", "/tasks/submit"),
     ("POST", "/loading/new-pallet"),
     ("POST", "/loading/scan"),
     ("POST", "/transfer/scan"),

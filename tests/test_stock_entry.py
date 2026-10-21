@@ -65,7 +65,7 @@ def test_real_mirror_cannot_be_removed_as_extra(client: TestClient, db: Session)
     login(client, keeper)
     token = get_csrf(client, "/stock-entry/remove")
     result = _scan(client, token, unit.number)
-    assert result["ok"] is False and "не этикетка ввода остатков" in result["message"]
+    assert result["ok"] is False and "так убрать нельзя" in result["message"]
 
 
 def test_storekeeper_only_own_site(client: TestClient, db: Session) -> None:

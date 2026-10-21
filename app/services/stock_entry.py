@@ -10,16 +10,17 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import Site, Unit, User
+from app.models import Movement, Site, Unit, User
 from app.scan import clean_code, is_own_label
 from app.seed import INVENTORY_SERVICE_NAME
+from app.services.task_labels import BUTTON_ACCEPT_NOTE
 from app.services.units import MAX_PRINT_QTY, ScanResult, UnitError, create_printed_units, stock_count
 from app.statuses import IN_STOCK, MV_ACCEPT, MV_INVENTORY_FIX, STATUS_LABELS, WRITTEN_OFF
 from app.transitions import apply_transition, lock_unit
 
 MAX_ENTRY_QTY = 300
 ENTRY_NOTE = "ввод остатков (инвентаризация)"
-REMOVE_NOTE = "лишняя этикетка при вводе остатков"
+REMOVE_NOTE = "лишняя этикетка: не наклеена"
 
 
 def inventory_user(session: Session) -> User:
@@ -66,8 +67,25 @@ def enter_stock(
     return units
 
 
+def _removable(session: Session, unit: Unit) -> bool:
+    """Лишней может быть только этикетка, на склад которой не попала сканом.
+
+    Это этикетки «Ввода остатков» и этикетки задач, сданных кнопкой «Собрал всё»: сайт не
+    знает, какие из них наклеены. Зеркало, принятое сканом, так не убрать.
+    """
+    if unit.assembler is not None and unit.assembler.name == INVENTORY_SERVICE_NAME:
+        return True
+    last_accept_note = session.scalar(
+        select(Movement.note)
+        .where(Movement.unit_id == unit.id, Movement.type == MV_ACCEPT)
+        .order_by(Movement.created_at.desc(), Movement.id.desc())
+        .limit(1)
+    )
+    return last_accept_note == BUTTON_ACCEPT_NOTE
+
+
 def remove_extra(session: Session, *, code: str, actor: User) -> ScanResult:
-    """Скан неиспользованной этикетки ввода остатков — убрать её со склада."""
+    """Скан неиспользованной этикетки (ввод остатков или «Собрал всё») — убрать со склада."""
     number = clean_code(code)
     if not is_own_label(number):
         return ScanResult(False, "Это не этикетка BLAGO", "Отсканируйте лишнюю этикетку")
@@ -75,11 +93,11 @@ def remove_extra(session: Session, *, code: str, actor: User) -> ScanResult:
     if unit is None:
         return ScanResult(False, "Номер не найден", f"Этикетка {number} не выдавалась", number=number)
     article_name = unit.article.name
-    if unit.assembler is None or unit.assembler.name != INVENTORY_SERVICE_NAME:
+    if not _removable(session, unit):
         return ScanResult(
             False,
-            "Это не этикетка ввода остатков",
-            "убрать можно только этикетку, напечатанную в «Вводе остатков»",
+            "Эту этикетку так убрать нельзя",
+            "только из «Ввода остатков» или сданную кнопкой «Собрал всё»",
             number=number,
             article=article_name,
         )

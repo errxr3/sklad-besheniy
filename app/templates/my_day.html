@@ -3,6 +3,7 @@
 {% block content %}
 <h1>{% if user.role == ROLE_ASSEMBLER %}Сканер{% else %}Смена{% endif %}</h1>
 {% if err %}<p class="msg err">{{ err }}</p>{% endif %}
+{% if ok %}<p class="msg ok">{{ ok }}</p>{% endif %}
 
 <div class="card">
 	{% if shift %}
@@ -38,6 +39,34 @@
 </div>
 
 {% if user.role == ROLE_ASSEMBLER %}
+<div class="card">
+	<h2>Мои задачи</h2>
+	{% if not tasks %}
+	<p class="muted">Задач на сегодня нет — уточните у начальника смены.</p>
+	{% endif %}
+	{% for item in tasks %}
+	<div class="task">
+		<div class="line">
+			<span class="name">{{ item.task.article.name }}</span>
+			<span class="muted">план {{ item.task.qty_plan }}{% if item.task.date != today %} · {{ item.task.date|day_month }}{% endif %}</span>
+		</div>
+		<p class="muted">Сдано на склад: <b>{{ item.done }}</b> · этикеток на руках: <b>{{ item.hanging }}</b></p>
+		{% if item.hanging and shift %}
+		<form method="post" action="/tasks/submit"
+		      onsubmit="return confirm('Собрал всё: записать на склад {{ item.hanging }} шт. «{{ item.task.article.name }}»? Неиспользованные этикетки отдайте кладовщице.')">
+			<input type="hidden" name="csrf_token" value="{{ csrf }}">
+			<input type="hidden" name="task_id" value="{{ item.task.id }}">
+			<button type="submit" class="big">Собрал всё ({{ item.hanging }} шт.)</button>
+		</form>
+		{% elif item.hanging %}
+		<p class="hint">Чтобы сдать, начните смену.</p>
+		{% endif %}
+	</div>
+	{% endfor %}
+	<p class="hint">Сделали меньше, чем этикеток? Всё равно нажмите «Собрал всё», а лишние этикетки
+		отдайте кладовщице — она уберёт их со склада сканом.</p>
+</div>
+
 <div class="card">
 	<h2>Скан зеркала</h2>
 	{% if shift %}

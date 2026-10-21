@@ -17,7 +17,7 @@ from sqlalchemy.sql.elements import ColumnElement
 from app.models import Task, Unit, User
 from app.services.tasks import done_count
 from app.services.units import MAX_PRINT_QTY, UnitError, create_printed_units
-from app.statuses import MV_LABEL_VOID, PRINTED, WRITTEN_OFF
+from app.statuses import IN_STOCK, MV_ACCEPT, MV_LABEL_VOID, PRINTED, ROLE_ADMIN, WRITTEN_OFF
 from app.transitions import apply_transition, lock_unit_by_id
 
 VOID_NOTE = "этикетка не использована — зеркало не сделано"
@@ -169,3 +169,84 @@ def hanging_units(session: Session, *, task_ids: list[int]) -> list[Unit]:
             select(Unit).where(Unit.task_id.in_(task_ids), Unit.status == PRINTED).order_by(Unit.id)
         ).all()
     )
+
+
+# Пометка в журнале: зеркала сданы кнопкой «Собрал всё», без скана (наверху нет интернета)
+BUTTON_ACCEPT_NOTE = "сдано кнопкой «Собрал всё»"
+
+
+@dataclass
+class AssemblerTask:
+    """Задача сборщика на экране «Сканер»: сколько висит этикеток и сколько сдано."""
+
+    task: Task
+    hanging: int
+    done: int
+
+
+def assembler_tasks(session: Session, *, user_id: int, day: date) -> list[AssemblerTask]:
+    """Задачи сборщика на день и более ранние, по которым ещё висят этикетки."""
+    hanging_by_task: dict[int, int] = {}
+    for task_id, count in session.execute(
+        select(Unit.task_id, func.count())
+        .join(Task, Task.id == Unit.task_id)
+        .where(Task.user_id == user_id, Unit.status == PRINTED)
+        .group_by(Unit.task_id)
+    ).all():
+        if task_id is not None:
+            hanging_by_task[int(task_id)] = int(count)
+    tasks = list(
+        session.scalars(
+            select(Task)
+            .where(
+                Task.user_id == user_id,
+                Task.kind == "article",
+                (Task.date == day) | Task.id.in_(list(hanging_by_task) or [0]),
+            )
+            .order_by(Task.date, Task.id)
+        ).all()
+    )
+    result = []
+    for task in tasks:
+        done = (
+            done_count(session, user_id=user_id, article_id=task.article_id, day=task.date)
+            if task.article_id
+            else 0
+        )
+        result.append(AssemblerTask(task=task, hanging=hanging_by_task.get(task.id, 0), done=done))
+    return result
+
+
+def submit_task(
+    session: Session, *, task_id: int, actor: User, shift_id: int | None = None
+) -> int:
+    """«Собрал всё»: все висящие этикетки задачи — на склад без скана.
+
+    Если сделано не всё, неиспользованные этикетки потом сканируются в «Убрать лишние
+    этикетки» — так на складе остаются ровно наклеенные.
+    """
+    task = session.get(Task, task_id)
+    if task is None or task.kind != "article":
+        raise UnitError("Задача не найдена")
+    if actor.role != ROLE_ADMIN and task.user_id != actor.id:
+        raise UnitError("Это задача другого сборщика")
+    units = hanging_units(session, task_ids=[task.id])
+    if not units:
+        raise UnitError("По этой задаче нет напечатанных этикеток — возьмите их у кладовщицы")
+    accepted = 0
+    for candidate in units:
+        unit = lock_unit_by_id(session, candidate.id)
+        if unit is None or unit.status != PRINTED:
+            continue
+        apply_transition(
+            session,
+            unit,
+            IN_STOCK,
+            movement_type=MV_ACCEPT,
+            user_id=actor.id,
+            shift_id=shift_id,
+            to_site_id=task.site_id,
+            note=BUTTON_ACCEPT_NOTE,
+        )
+        accepted += 1
+    return accepted

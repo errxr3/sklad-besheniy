@@ -26,6 +26,7 @@ MENU: tuple[MenuItem, ...] = (
     MenuItem("Табло смены", "/board", LEADS),
     MenuItem("Печать по задачам", "/labels", PRINTERS),
     MenuItem("Ввод остатков", "/stock-entry", (ROLE_STOREKEEPER,)),
+    MenuItem("Убрать лишние", "/stock-entry/remove", (ROLE_STOREKEEPER,)),
     MenuItem("Задачи", "/tasks", LEADS),
     MenuItem("Найти зеркало", "/mirror", LEADS),
     MenuItem("Склад", "/warehouse", LEADS),
@@ -53,6 +54,7 @@ ADMIN_SECTIONS: tuple[AdminSection, ...] = (
         ("/mirror", "Найти зеркало", "По номеру этикетки: история, перепечатка"),
         ("/warehouse/in-transit", "В пути больше суток", "Перемещения, которые не приняли"),
         ("/warehouse/printed-old", "Напечатано больше суток", "Этикетки без скана, убрать лишние"),
+        ("/stock-entry/remove", "Убрать лишние этикетки", "Не наклеенные после «Собрал всё»"),
         ("/journal", "Журнал", "Все движения зеркал, CSV"),
         ("/reports/timesheet", "Табель", "Смены и часы"),
         ("/reports/plan-fact", "Задачи: план и факт", "Сделано против плана"),
@@ -60,6 +62,7 @@ ADMIN_SECTIONS: tuple[AdminSection, ...] = (
     AdminSection("keeper", "Кладовщица", (
         ("/labels", "Печать по задачам", "Этикетки каждому сборщику в коробку с комплектующими"),
         ("/stock-entry", "Ввод остатков", "Этикетки сразу на склад, лишние — убрать сканом"),
+        ("/stock-entry/remove", "Убрать лишние этикетки", "Не наклеенные: ввод остатков, «Собрал всё»"),
     )),
     AdminSection("assembler", "Сборщик", (
         ("/scanner", "Сканер приёмки", "Скан этикетки готового зеркала — запись на склад"),
