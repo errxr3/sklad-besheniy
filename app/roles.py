@@ -59,6 +59,7 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("GET", "/"): ALL_LOGGED_IN,
     # Настройки администратора
     ("GET", "/admin"): ADMIN_ONLY,
+    ("GET", "/admin/section/{key}"): ADMIN_ONLY,
     ("GET", "/admin/employees"): ADMIN_ONLY,
     ("POST", "/admin/employees/create"): ADMIN_ONLY,
     ("POST", "/admin/employees/update"): ADMIN_ONLY,

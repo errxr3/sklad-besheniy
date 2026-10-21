@@ -238,6 +238,7 @@ def page(request: Request, template: str, context: dict[str, Any] | None = None)
         "user": user,
         "menu": menu_for(user.role if user else None),
         "active_url": "/" + request.url.path.lstrip("/").split("/")[0],
+        "current_path": request.url.path,
         "csrf": csrf_token(request),
         "today": today_msk(),
         # Показывать ссылку, только если у роли есть доступ к странице

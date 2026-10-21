@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.importer import import_top
+from app.menu import ADMIN_SECTION_BY_KEY
 from app.models import Article, Site, User
 from app.services.admin import (
     AdminError,
@@ -44,8 +45,17 @@ def _redirect(url: str, message: str = "", err: str = "") -> RedirectResponse:
 
 @router.get("", response_class=HTMLResponse)
 def admin_home(request: Request) -> Response:
-    """Меню настроек."""
-    return page(request, "admin/index.html", {})
+    """Раздел «Администратор»: настройки и редкие операции."""
+    return page(request, "admin/index.html", {"section": ADMIN_SECTION_BY_KEY["admin"]})
+
+
+@router.get("/section/{key}", response_class=HTMLResponse)
+def admin_section(request: Request, key: str) -> Response:
+    """Раздел кабинета: действия одной роли плитками."""
+    section = ADMIN_SECTION_BY_KEY.get(key)
+    if section is None:
+        return page(request, "error.html", {"message": "Раздел не найден", "status_code": 404})
+    return page(request, "admin/index.html", {"section": section})
 
 
 @router.get("/employees", response_class=HTMLResponse)

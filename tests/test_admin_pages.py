@@ -255,7 +255,10 @@ def test_menu_differs_by_role(client: TestClient, db: Session) -> None:
 
     _admin(client, db)
     admin_text = client.get("/").text
-    # У админа — «Кабинет» со всеми действиями по ролям
-    assert "Кабинет администратора" in admin_text
-    for section in ("Начальник смены", "Кладовщица", "Сборщик", "Грузчик", "Возвраты"):
+    # У админа в меню — разделы по ролям, по умолчанию открыт «Начальник смены»
+    for section in ("Начальник смены", "Кладовщица", "Сборщик", "Грузчик", "Возвраты", "Администратор"):
         assert section in admin_text
+    assert 'href="/board"' in admin_text
+    assert "Сотрудники" in client.get("/admin").text
+    assert "Сканер приёмки" in client.get("/admin/section/assembler").text
+    assert "Раздел не найден" in client.get("/admin/section/nope").text

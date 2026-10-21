@@ -30,5 +30,5 @@ def home(request: Request, db: Session = Depends(get_db), err: str = "") -> Resp
     if user.role == ROLE_RETURNS:
         return RedirectResponse("/returns", status_code=303)
     if user.role == ROLE_ADMIN:
-        return RedirectResponse("/admin", status_code=303)
+        return RedirectResponse("/admin/section/lead", status_code=303)
     return RedirectResponse("/board", status_code=303)
