@@ -8,9 +8,8 @@
                    I Озон 1, J КГТ, K СДЭК, L WB, M СГТ, N Озон 2, O Озон 3
                    — отгружено за день с площадки отгрузки по ЗАКРЫТЫМ каналам и машинам;
                    повторные закрытия одного канала за день суммируются по артикулам;
-    ПОСЛЕ отгрузок: S склад − отгрузка, T склад + задачи − отгрузка (площадка отгрузки),
-                   U задачи Коминтерна, V задачи Учительской,
-                   X Учительская + задачи, Z общее (T + X).
+    ПОСЛЕ отгрузок: S склад − отгрузка, T склад + задачи − отгрузка (площадка отгрузки;
+                   задачи — несделанная часть), U задачи Коминтерна, V задачи Учительской.
 
 «До отгрузок» = остаток (сейчас или на конец прошедшего дня — по журналу движений) + всё
 отгруженное за день, в том числе в ещё открытом канале.
@@ -20,10 +19,10 @@ from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Article, Movement, Pallet, Site, Unit
+from app.models import Article, Movement, Pallet, Site, Task, Unit
 from app.seed import RETURNS_SITE_NAME
 from app.services.stock import active_sites, stock_at, stock_by_article_site
 from app.services.tasks import plan_sum_by_site
@@ -67,6 +66,7 @@ class ShipmentRow:
     before_ship: int = 0  # Коминтерна, до отгрузок
     tasks_other: int = 0
     tasks_ship: int = 0
+    tasks_ship_done: int = 0  # из задач дня уже сделано и принято сканом
     channels: list[int] = field(default_factory=list)
 
     @property
@@ -79,19 +79,18 @@ class ShipmentRow:
         return self.before_ship - self.shipped
 
     @property
+    def tasks_ship_left(self) -> int:
+        """Сколько по задачам ещё не сделано (сделанное уже лежит на складе)."""
+        return max(0, self.tasks_ship - self.tasks_ship_done)
+
+    @property
     def after_with_tasks(self) -> int:
-        """Склад + задачи − отгрузка."""
-        return self.before_ship + self.tasks_ship - self.shipped
+        """Склад + задачи − отгрузка.
 
-    @property
-    def other_with_tasks(self) -> int:
-        """Учительская + задачи."""
-        return self.before_other + self.tasks_other
-
-    @property
-    def total(self) -> int:
-        """Общее: (склад + задачи − отгрузка) + (Учительская + задачи)."""
-        return self.after_with_tasks + self.other_with_tasks
+        Задачи прибавляются сразу, как начальник смены их поставил, но только несделанная
+        часть: готовое зеркало после скана уже в складе, иначе оно посчиталось бы дважды.
+        """
+        return self.before_ship + self.tasks_ship_left - self.shipped
 
 
 @dataclass
@@ -160,6 +159,27 @@ def shipped_by_article_column(
     return dict(result)
 
 
+def tasks_done_by_article_site(session: Session, *, day: date) -> dict[tuple[int, int], int]:
+    """Из задач на день уже сделано: этикетки задач, принятые сканом до конца дня."""
+    end = msk_day_bounds(day)[1]
+    rows = session.execute(
+        select(Task.article_id, Task.site_id, func.count())
+        .join(Unit, Unit.task_id == Task.id)
+        .where(
+            Task.date == day,
+            Task.kind == "article",
+            Unit.accepted_at.is_not(None),
+            Unit.accepted_at < end,
+        )
+        .group_by(Task.article_id, Task.site_id)
+    ).all()
+    return {
+        (int(article_id), int(site_id)): int(count)
+        for article_id, site_id, count in rows
+        if article_id is not None
+    }
+
+
 def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
     """Собрать таблицу отгрузки за день в порядке строк TOP.xlsx."""
     sites = active_sites(session)
@@ -172,6 +192,7 @@ def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
     else:
         stock = stock_at(session, msk_day_bounds(day)[1])
     plans = plan_sum_by_site(session, day=day)
+    done = tasks_done_by_article_site(session, day=day)
     shipped: dict[tuple[int, int], int] = {}
     shipped_other: dict[tuple[int, int], int] = {}
     if ship_site is not None:
@@ -211,6 +232,7 @@ def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
                 else 0,
                 tasks_other=plans.get((article.id, other_site.id), 0) if other_site else 0,
                 tasks_ship=plans.get((article.id, ship_site.id), 0) if ship_site else 0,
+                tasks_ship_done=done.get((article.id, ship_site.id), 0) if ship_site else 0,
                 channels=channels,
             )
         )
@@ -273,7 +295,6 @@ def shipment_xlsx(table: ShipmentTable) -> bytes:
         "F": f"Задачи на {other}", "G": f"Задачи на {ship}",
         "R": "Артикул", "S": "склад - отгрузка", "T": "СКЛАД + задачи - отгрузки",
         "U": f"Задачи на {ship}", "V": f"Задачи на {other}",
-        "X": f"{other} + задачи", "Z": "общее",
     }
     for letter, (title, _, _) in zip(channel_letters, CHANNEL_COLUMNS, strict=True):
         headers[letter] = title
@@ -330,15 +351,13 @@ def shipment_xlsx(table: ShipmentTable) -> bytes:
         put(row_index, "T", row.after_with_tasks)
         put(row_index, "U", row.tasks_ship, blank_zero=True)
         put(row_index, "V", row.tasks_other, blank_zero=True)
-        put(row_index, "X", row.other_with_tasks)
-        put(row_index, "Z", row.total)
         row_index += 1
 
     for letter in ("B", "R"):
         sheet.column_dimensions[letter].width = 26
-    for letter in ("A", "E", "H", "P", "Q", "W", "Y"):
+    for letter in ("A", "E", "H", "P", "Q"):
         sheet.column_dimensions[letter].width = 3
-    for letter in ("C", "D", "F", "G", "S", "T", "U", "V", "X", "Z", *channel_letters):
+    for letter in ("C", "D", "F", "G", "S", "T", "U", "V", *channel_letters):
         sheet.column_dimensions[letter].width = 11
     sheet.freeze_panes = "C4"
 

@@ -68,8 +68,6 @@ def test_channels_trucks_and_after_columns(db: Session) -> None:
     assert row.tasks_ship == 20
     assert row.after == 10 - 7  # склад − отгрузка = остаток сейчас
     assert row.after_with_tasks == 10 + 20 - 7
-    assert row.other_with_tasks == 3
-    assert row.total == row.after_with_tasks + row.other_with_tasks
     assert table.totals[0] == 3
 
 
@@ -89,11 +87,12 @@ def test_xlsx_layout_matches_sheet_columns(client: TestClient, db: Session) -> N
     assert response.status_code == 200
     sheet = load_workbook(io.BytesIO(response.content)).active
     assert sheet["B2"].value == "Артикул" and sheet["I2"].value == "Озон 1"
-    assert sheet["O2"].value == "Озон 3" and sheet["Z2"].value == "общее"
+    assert sheet["O2"].value == "Озон 3"
     assert sheet["B4"].value == "Полотна" and sheet["C4"].value is None
     assert sheet["B5"].value == "Zerkalo_60x160"
     assert (sheet["C5"].value, sheet["D5"].value) == (0, 2)
-    assert (sheet["S5"].value, sheet["T5"].value, sheet["Z5"].value) == (2, 2, 2)
+    assert (sheet["S5"].value, sheet["T5"].value) == (2, 2)
+    assert sheet["X2"].value is None and sheet["Z2"].value is None
 
 
 def test_shipments_page_for_lead(client: TestClient, db: Session) -> None:
@@ -102,6 +101,7 @@ def test_shipments_page_for_lead(client: TestClient, db: Session) -> None:
     response = client.get("/shipments")
     assert response.status_code == 200
     for text in ("ДО отгрузок", "ПОСЛЕ отгрузок", "Озон 1", "Озон 3", "склад − отгрузка"):
+        assert "общее" not in response.text
         assert text in response.text
     stock = client.get("/stock").text
     assert 'href="/shipments"' in stock  # вкладки раздела «Склад»
@@ -161,3 +161,31 @@ def test_past_day_uses_stock_from_journal(db: Session) -> None:
     today = build_shipment_table(db, day=today_msk())
     row = next(r for r in today.rows if r.name == "Zerkalo_40x160")
     assert (row.before_ship, row.shipped, row.after) == (4, 3, 1)
+
+
+def test_done_part_of_tasks_is_not_counted_twice(db: Session) -> None:
+    """«Склад + задачи − отгрузка»: задачи сразу, но сделанное (уже на складе) не дважды."""
+    from app.services.task_labels import print_for_tasks
+
+    site = site_by_name(db, "Коминтерна")
+    article = make_article(db, name="Zerkalo_50x170")
+    lead = make_user(db, name="Начальник задач", role=ROLE_SHIFT_LEAD)
+    worker = make_user(db, name="Сборщик задач", role=ROLE_ASSEMBLER)
+    task = create_task(
+        db, actor=lead, day=today_msk(), site_id=site.id, user_id=worker.id, kind="article",
+        article_id=article.id, qty_plan=15,
+    )
+    db.commit()
+
+    row = next(r for r in build_shipment_table(db, day=today_msk()).rows if r.name == "Zerkalo_50x170")
+    assert (row.before_ship, row.tasks_ship, row.after_with_tasks) == (0, 15, 15)
+
+    units = print_for_tasks(db, tasks=[task], actor=lead)
+    db.commit()
+    for unit in units[:5]:
+        assert accept_unit(db, code=unit.number, actor=worker).ok
+    db.commit()
+
+    row = next(r for r in build_shipment_table(db, day=today_msk()).rows if r.name == "Zerkalo_50x170")
+    assert (row.before_ship, row.tasks_ship, row.tasks_ship_done) == (5, 15, 5)
+    assert row.after_with_tasks == 15  # 5 на складе + 10 ещё сделают
