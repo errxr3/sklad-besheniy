@@ -2,6 +2,10 @@
 {% block title %}Табло смены{% endblock %}
 {% block content %}
 <h1>Табло смены</h1>
+{% for p in open_channels %}
+<p class="msg warn">Открыт канал {{ p.channel }} у {{ p.opener.name }} ({{ p.site.name }}) с {{ p.opened_at|time }} —
+	пока не закрыт, его зеркала не попадут в «Отгрузку». Закроется сам в 23:59.</p>
+{% endfor %}
 <div class="card">
 	<form method="get" action="/board" class="row tight">
 		<select name="site_id">

@@ -25,6 +25,7 @@ from app.services.shifts import (
     start_shift,
     timesheet,
 )
+from app.services.shipping import open_channels
 from app.services.tasks import tasks_progress
 from app.statuses import ROLE_ASSEMBLER, ROLE_LOADER
 from app.timeutil import MOSCOW, fmt_dt, msk_day_bounds, now_utc, to_moscow, today_msk
@@ -115,7 +116,13 @@ def board(request: Request, db: Session = Depends(get_db), site_id: int = 0, day
     return page(
         request,
         "board.html",
-        {"sites": sites, "site": chosen, "day": target_day, "rows": rows},
+        {
+            "sites": sites,
+            "site": chosen,
+            "day": target_day,
+            "rows": rows,
+            "open_channels": open_channels(db),
+        },
     )
 
 

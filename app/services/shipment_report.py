@@ -25,6 +25,7 @@ from sqlalchemy.orm import Session
 
 from app.models import Article, Movement, Pallet, Site, Task, Unit, User
 from app.seed import RETURNS_SITE_NAME
+from app.services.shipping import AUTO_CLOSE_NOTE, open_channels
 from app.services.stock import active_sites, stock_at, stock_by_article_site
 from app.services.tasks import plan_sum_by_site
 from app.statuses import MV_SHIP, MV_SHIP_CANCEL, OZON, OZON_TRUCKS
@@ -47,13 +48,16 @@ OTHER_SITE_NAME = "Учительская"
 
 
 def _column_index(channel: str, note: str | None) -> int:
-    """Номер колонки канала (−1 — колонки нет)."""
+    """Номер колонки канала (−1 — колонки нет).
+
+    Ozon без выбранной машины (канал закрыт автоматически в конце дня) — в «Озон 1».
+    """
     for index, (_, col_channel, truck) in enumerate(CHANNEL_COLUMNS):
         if col_channel != channel:
             continue
         if truck is None or note == truck:
             return index
-    return -1
+    return 0 if channel == OZON else -1
 
 
 @dataclass
@@ -114,6 +118,8 @@ class ShipmentTable:
     rows: list[ShipmentRow]
     built_at: str
     is_today: bool = True
+    open_channels: list[Pallet] = field(default_factory=list)  # не закрыты — не в таблице
+    auto_closed: list[Pallet] = field(default_factory=list)  # закрыты автоматически в этот день
     totals: list[int] = field(default_factory=list)  # отгружено по каналам за день
 
 
@@ -278,6 +284,16 @@ def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
         built_at=fmt_dt(now_utc()),
         totals=totals,
         is_today=day >= today_msk(),
+        open_channels=open_channels(session),
+        auto_closed=list(
+            session.scalars(
+                select(Pallet).where(
+                    Pallet.note == AUTO_CLOSE_NOTE,
+                    Pallet.closed_at >= msk_day_bounds(day)[0],
+                    Pallet.closed_at < msk_day_bounds(day)[1],
+                )
+            ).all()
+        ),
     )
 
 

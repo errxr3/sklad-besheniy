@@ -27,6 +27,19 @@ def job_auto_close_shifts() -> None:
         logger.exception("Автозакрытие смен не выполнено")
 
 
+def job_auto_close_channels() -> None:
+    """Закрыть каналы погрузки, которые грузчики забыли закрыть, — чтобы отгрузка попала в таблицу."""
+    from app.services.shipping import auto_close_channels
+
+    try:
+        with session_scope() as session:
+            closed = auto_close_channels(session)
+        if closed:
+            logger.info("Автозакрытие каналов", extra={"status": f"закрыто {closed}"})
+    except Exception:
+        logger.exception("Автозакрытие каналов не выполнено")
+
+
 def job_sync_sheets() -> None:
     """Выгрузить остатки в гугл-таблицу (если она настроена)."""
     from app.services.sheets import sync_stock_to_sheets
@@ -54,6 +67,12 @@ def start_scheduler() -> BackgroundScheduler | None:
         job_auto_close_shifts,
         CronTrigger(hour=AUTO_CLOSE_HOUR, minute=AUTO_CLOSE_MINUTE, timezone=MOSCOW),
         id="auto_close_shifts",
+        replace_existing=True,
+    )
+    scheduler.add_job(
+        job_auto_close_channels,
+        CronTrigger(hour=23, minute=59, timezone=MOSCOW),
+        id="auto_close_channels",
         replace_existing=True,
     )
     scheduler.add_job(

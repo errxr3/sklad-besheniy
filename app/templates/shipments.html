@@ -12,6 +12,14 @@
 		</div>
 		<div><label>&nbsp;</label><button type="submit" class="secondary">Показать</button></div>
 	</form>
+	{% for p in table.open_channels %}
+	<p class="msg err">Канал {{ p.channel }} открыт у {{ p.opener.name }} с {{ p.opened_at|dt }} — пока его не закроют,
+		эти зеркала не попадут в колонки отгрузки. Закроется сам в 23:59.</p>
+	{% endfor %}
+	{% for p in table.auto_closed %}
+	<p class="msg warn">Канал {{ p.channel }} ({{ p.opener.name }}) закрыт автоматически
+		{%- if p.channel == 'Ozon' %} — машина не выбрана, посчитан в «Озон 1»{% endif %}.</p>
+	{% endfor %}
 	<p class="hint">{% if table.is_today %}Сегодня, данные на <b>{{ table.built_at }}</b>{% else %}Итог дня <b>{{ day|date }}</b>: остатки на конец дня{% endif %}</p>
 	<div class="row tight mt">
 		<a class="btn" href="/shipments.xlsx?day={{ day.isoformat() }}">Скачать XLSX</a>

@@ -39,6 +39,52 @@
 		this.bind();
 	}
 
+	// Режим ввода: «Сканер» — поле всегда в фокусе для сканера-клавиатуры;
+	// «Камера» — поле не хватает фокус, экранная клавиатура не выскакивает.
+	// Выбор запоминается на устройстве.
+	var MODE_KEY = 'sklad-scan-mode';
+
+	function getMode() {
+		try { return global.localStorage.getItem(MODE_KEY) === 'camera' ? 'camera' : 'scanner'; }
+		catch (e) { return 'scanner'; }
+	}
+
+	function setMode(mode) {
+		try { global.localStorage.setItem(MODE_KEY, mode); } catch (e) { /* без памяти — только на эту страницу */ }
+	}
+
+	ScanScreen.prototype.addModeSwitch = function () {
+		var self = this;
+		var box = document.createElement('div');
+		box.className = 'scan-mode';
+		[['scanner', 'Сканер'], ['camera', 'Камера']].forEach(function (pair) {
+			var button = document.createElement('button');
+			button.type = 'button';
+			button.dataset.mode = pair[0];
+			button.textContent = pair[1];
+			button.addEventListener('click', function () { self.applyMode(pair[0], true); });
+			box.appendChild(button);
+		});
+		this.form.parentNode.insertBefore(box, this.form);
+		this.modeBox = box;
+		this.applyMode(getMode(), false);
+	};
+
+	ScanScreen.prototype.applyMode = function (mode, remember) {
+		this.mode = mode;
+		if (remember) setMode(mode);
+		Array.prototype.forEach.call(this.modeBox.children, function (button) {
+			button.classList.toggle('active', button.dataset.mode === mode);
+		});
+		var cameraButton = document.getElementById('camera-btn');
+		if (cameraButton) cameraButton.classList.toggle('secondary', mode !== 'camera');
+		if (mode === 'camera') {
+			if (document.activeElement === this.input) this.input.blur();
+		} else {
+			this.focus();
+		}
+	};
+
 	ScanScreen.prototype.bind = function () {
 		var self = this;
 		if (!this.form || !this.input) return;
@@ -46,6 +92,7 @@
 			event.preventDefault();
 			self.send(self.input.value);
 		});
+		this.addModeSwitch();
 		// Поле всегда в фокусе: сканер-клавиатура печатает прямо в него
 		document.addEventListener('click', function (event) {
 			if (event.target.closest('button, a, select, input, textarea')) return;
@@ -55,6 +102,7 @@
 	};
 
 	ScanScreen.prototype.focus = function () {
+		if (this.mode === 'camera') return;
 		if (this.input && !this.busy) {
 			this.input.focus();
 			this.input.select();

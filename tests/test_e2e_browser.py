@@ -248,3 +248,27 @@ def test_camera_reads_printed_label(server: str, db: Session, tmp_path: Path) ->
     db.expire_all()
     status = db.scalar(select(Unit.status).where(Unit.article_id == article.id))
     assert status == IN_STOCK
+
+
+def test_scan_mode_switch_remembered(server: str, db: Session) -> None:
+    """«Сканер / Камера»: в режиме камеры поле не держит фокус; выбор запоминается."""
+    sync_api = pytest.importorskip("playwright.sync_api")
+    worker = make_user(db, name="Сборщик Режим", role=ROLE_ASSEMBLER, pin="5555")
+    open_shift(db, worker)
+
+    with sync_api.sync_playwright() as playwright:
+        browser = playwright.chromium.launch(executable_path=_chromium(), args=["--no-sandbox"])
+        page = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
+        _login(page, server, f"Сборщик Режим — {ROLE_LABELS[ROLE_ASSEMBLER]}", "5555")
+        page.goto(f"{server}/")
+        assert page.inner_text(".scan-mode button.active") == "Сканер"
+        assert page.evaluate("document.activeElement.id") == "scan-input"
+
+        page.click(".scan-mode button[data-mode=camera]")
+        assert page.evaluate("document.activeElement.id") != "scan-input"
+        page.reload()
+        assert page.inner_text(".scan-mode button.active") == "Камера"
+        page.click("h1")
+        assert page.evaluate("document.activeElement.id") != "scan-input"
+        assert "secondary" not in (page.get_attribute("#camera-btn", "class") or "")
+        browser.close()

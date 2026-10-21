@@ -3,7 +3,7 @@
 from dataclasses import dataclass
 
 from app.roles import ADMIN_ONLY, ALL_LOGGED_IN, LEADS, LOADERS, PRINTERS, RETURNS
-from app.statuses import ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_LOADER
+from app.statuses import ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_LOADER, ROLE_STOREKEEPER
 
 
 @dataclass(frozen=True)
@@ -25,6 +25,7 @@ MENU: tuple[MenuItem, ...] = (
     MenuItem("Печать ШК", "/returns/print", RETURNS),
     MenuItem("Табло смены", "/board", LEADS),
     MenuItem("Печать по задачам", "/labels", PRINTERS),
+    MenuItem("Ввод остатков", "/stock-entry", (ROLE_STOREKEEPER,)),
     MenuItem("Задачи", "/tasks", LEADS),
     MenuItem("Найти зеркало", "/mirror", LEADS),
     MenuItem("Склад", "/warehouse", LEADS),
@@ -58,6 +59,7 @@ ADMIN_SECTIONS: tuple[AdminSection, ...] = (
     )),
     AdminSection("keeper", "Кладовщица", (
         ("/labels", "Печать по задачам", "Этикетки каждому сборщику в коробку с комплектующими"),
+        ("/stock-entry", "Ввод остатков", "Этикетки сразу на склад, лишние — убрать сканом"),
     )),
     AdminSection("assembler", "Сборщик", (
         ("/scanner", "Сканер приёмки", "Скан этикетки готового зеркала — запись на склад"),

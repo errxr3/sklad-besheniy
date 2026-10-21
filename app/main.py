@@ -27,6 +27,7 @@ from app.routers import (
     mirror,
     shifts,
     stock,
+    stock_entry,
     system,
     tasks,
     warehouse,
@@ -83,6 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(warehouse.router)
     app.include_router(journal.router)
     app.include_router(stock.router)
+    app.include_router(stock_entry.router)
     app.include_router(api_v1.router)
     app.include_router(system.router)
 

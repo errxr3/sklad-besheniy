@@ -13,6 +13,8 @@ from app.statuses import ROLE_ASSEMBLER
 SERVICE_ASSEMBLER_NAME = "Остаток на запуск"
 # Служебный «сборщик» зеркал с возвратов, пришедших без нашей этикетки
 RETURNS_SERVICE_NAME = "Возврат без ШК"
+# Служебный «сборщик» зеркал, заведённых при вводе остатков (инвентаризация на старте)
+INVENTORY_SERVICE_NAME = "Инвентаризация"
 # Возвраты всегда записываются на эту площадку (решение владельца 2026-10-20)
 RETURNS_SITE_NAME = "Коминтерна"
 SERVICE_PIN_HASH = "*служебный сотрудник, вход запрещён*"
@@ -34,7 +36,7 @@ def apply_seed(session: Session) -> None:
         if session.scalar(select(Site).where(Site.name == name)) is None:
             session.add(Site(name=name, active=True, sort_order=order, geo_radius_m=300))
 
-    for service_name in (SERVICE_ASSEMBLER_NAME, RETURNS_SERVICE_NAME):
+    for service_name in (SERVICE_ASSEMBLER_NAME, RETURNS_SERVICE_NAME, INVENTORY_SERVICE_NAME):
         if session.scalar(select(User).where(User.name == service_name)) is None:
             session.add(
                 User(

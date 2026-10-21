@@ -102,6 +102,31 @@ def close_pallet(session: Session, *, pallet_id: int, user: User, note: str = ""
     return pallet
 
 
+AUTO_CLOSE_NOTE = "закрыт автоматически"
+
+
+def open_channels(session: Session) -> list[Pallet]:
+    """Каналы, которые грузчики ещё не закрыли: их зеркала не попали в таблицу отгрузки."""
+    return list(
+        session.scalars(select(Pallet).where(Pallet.closed_at.is_(None)).order_by(Pallet.opened_at)).all()
+    )
+
+
+def auto_close_channels(session: Session) -> int:
+    """Закрыть забытые каналы в конце дня, чтобы отгрузка попала в таблицу.
+
+    У Ozon машина не выбрана — такая отгрузка считается в колонке «Озон 1».
+    """
+    moment = now_utc()
+    closed = 0
+    for pallet in open_channels(session):
+        pallet.closed_at = moment
+        pallet.note = AUTO_CLOSE_NOTE
+        closed += 1
+    session.flush()
+    return closed
+
+
 def pallet_summary(session: Session, pallet_id: int) -> list[tuple[str, int]]:
     """Итог отгрузки: количество по артикулам."""
     rows = session.execute(

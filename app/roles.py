@@ -39,6 +39,8 @@ ADMIN_ONLY: Final[tuple[str, ...]] = (ROLE_ADMIN,)
 LEADS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_SHIFT_LEAD)
 # Печать этикеток по задачам сборщиков
 PRINTERS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_SHIFT_LEAD, ROLE_STOREKEEPER)
+# Ввод остатков (инвентаризация на старте)
+STOCK_ENTRY: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_STOREKEEPER)
 # Приёмка сканом готового зеркала
 ACCEPTORS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_ASSEMBLER)
 # Погрузка по каналам и перемещение между площадками
@@ -79,12 +81,17 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("POST", "/scan/accept"): ACCEPTORS,
     ("GET", "/scanner"): ADMIN_ONLY,
     ("GET", "/make/reprint/{number}"): LEADS,
-    ("GET", "/api/articles"): (*LEADS, ROLE_RETURNS),
+    ("GET", "/api/articles"): (*LEADS, ROLE_RETURNS, ROLE_STOREKEEPER),
     # Печать по задачам сборщиков и уборка висящих этикеток
     ("GET", "/labels"): PRINTERS,
     ("POST", "/labels/print"): PRINTERS,
     ("POST", "/labels/void"): PRINTERS,
     ("GET", "/warehouse/printed-old"): LEADS,
+    # Ввод остатков
+    ("GET", "/stock-entry"): STOCK_ENTRY,
+    ("POST", "/stock-entry/print"): STOCK_ENTRY,
+    ("GET", "/stock-entry/remove"): STOCK_ENTRY,
+    ("POST", "/stock-entry/remove/scan"): STOCK_ENTRY,
     ("POST", "/labels/void-unit"): LEADS,
     # Карточка зеркала
     ("GET", "/mirror"): LEADS,

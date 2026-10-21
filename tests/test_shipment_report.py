@@ -208,3 +208,28 @@ def test_stock_is_common_tasks_of_both_sites(db: Session) -> None:
     assert (row.before_other, row.before_ship, row.tasks_other) == (5, 0, 5)
     assert row.after == 5
     assert row.after_with_tasks == 10
+
+
+def test_open_channel_warned_and_auto_closed(client: TestClient, db: Session) -> None:
+    """Незакрытый канал виден на «Отгрузке» и табло; автозакрытие кладёт его в таблицу."""
+    from app.services.shipping import auto_close_channels
+
+    article = make_article(db, name="Zerkalo_60x200")
+    units = _stock(db, article.id, "Коминтерна", 3)
+    loader = make_user(db, name="Забывчивый грузчик", role=ROLE_LOADER)
+    pallet = open_new_pallet(db, user=loader, site=site_by_name(db, "Коминтерна"), channel="Ozon")
+    for unit in units[:2]:
+        assert scan_loading(db, code=unit.number, pallet=pallet, actor=loader).ok
+    db.commit()
+
+    lead = make_user(db, name="Начальник каналов", role=ROLE_SHIFT_LEAD)
+    login(client, lead)
+    assert "Канал Ozon открыт у Забывчивый грузчик" in client.get("/shipments").text
+    assert "Открыт канал Ozon у Забывчивый грузчик" in client.get("/board").text
+
+    assert auto_close_channels(db) == 1
+    db.commit()
+    row = next(r for r in build_shipment_table(db, day=today_msk()).rows if r.name == "Zerkalo_60x200")
+    assert row.channels[0] == 2  # Ozon без машины — в «Озон 1»
+    page = client.get("/shipments").text
+    assert "закрыт автоматически" in page and "открыт у" not in page

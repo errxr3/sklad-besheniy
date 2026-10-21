@@ -1,0 +1,59 @@
+{% extends "base.html" %}
+{% block title %}Ввод остатков{% endblock %}
+{% block content %}
+<h1>Ввод остатков</h1>
+<p class="muted">Для начала работы: этикетки на то, что уже лежит на складе. Зеркала сразу записываются
+на склад с отметкой «Инвентаризация» — сканировать наклеенные не нужно.</p>
+{% if err %}<p class="msg err">{{ err }}</p>{% endif %}
+
+<div class="card">
+	<h2>1. Печать с запасом</h2>
+	<form method="post" action="/stock-entry/print" target="_blank" id="entry-form">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		{% if sites|length == 1 %}
+		<input type="hidden" name="site_id" value="{{ sites[0].id }}">
+		<p>Площадка: <b>{{ sites[0].name }}</b></p>
+		{% else %}
+		<label for="site">Площадка</label>
+		<select name="site_id" id="site" required>
+			{% for s in sites %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+		</select>
+		{% endif %}
+		<label>Артикул</label>
+		<div class="article-picker" data-article-picker>
+			<input type="search" class="ap-input" placeholder="Начните вводить, например 60x160"
+			       autocomplete="off" aria-label="Артикул">
+			<input type="hidden" name="article_id" class="ap-value">
+			<ul class="ap-list" hidden></ul>
+		</div>
+		<label for="qty">Количество (1–{{ max_qty }})</label>
+		<input type="number" name="qty" id="qty" value="5" min="1" max="{{ max_qty }}" required>
+		<div class="row tight mt">
+			{% for n in [5, 10, 20, 50] %}
+			<button type="button" class="secondary qty-btn" data-qty="{{ n }}">{{ n }}</button>
+			{% endfor %}
+		</div>
+		<button type="submit" class="big mt">Напечатать и записать на склад</button>
+	</form>
+	<p class="hint">PDF откроется в новой вкладке. Можно печатать с запасом — лишнее уберёте на шаге 2.</p>
+</div>
+
+<div class="card">
+	<h2>2. Убрать лишние</h2>
+	<p class="hint">Неиспользованные этикетки принесите туда, где есть интернет, и отсканируйте —
+		они уберутся со склада. В брак не попадают.</p>
+	<a class="btn secondary" href="/stock-entry/remove">Сканировать лишние этикетки</a>
+</div>
+{% endblock %}
+{% block scripts %}
+<script src="/static/article_picker.js?v={{ STATIC_VERSION }}"></script>
+<script>
+(function () {
+	Array.prototype.forEach.call(document.querySelectorAll('.qty-btn'), function (button) {
+		button.addEventListener('click', function () {
+			document.getElementById('qty').value = button.dataset.qty;
+		});
+	});
+})();
+</script>
+{% endblock %}
