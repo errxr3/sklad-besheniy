@@ -66,8 +66,9 @@ def test_channels_trucks_and_after_columns(db: Session) -> None:
     assert row.before_ship == 10  # остаток до отгрузок
     assert row.before_other == 3
     assert row.tasks_ship == 20
-    assert row.after == 10 - 7  # склад − отгрузка = остаток сейчас
-    assert row.after_with_tasks == 10 + 20 - 7
+    # Склад общий: Коминтерна 10 + Учительская 3
+    assert row.after == 10 + 3 - 7
+    assert row.after_with_tasks == 10 + 3 + 20 - 7
     assert table.totals[0] == 3
 
 
@@ -91,7 +92,7 @@ def test_xlsx_layout_matches_sheet_columns(client: TestClient, db: Session) -> N
     assert sheet["B4"].value == "Полотна" and sheet["C4"].value is None
     assert sheet["B5"].value == "Zerkalo_60x160"
     assert (sheet["C5"].value, sheet["D5"].value) == (0, 2)
-    assert (sheet["S5"].value, sheet["T5"].value) == (2, 2)
+    assert (sheet["S5"].value, sheet["T5"].value) == (2, 2)  # Учительская 0 + Коминтерна 2
     assert sheet["X2"].value is None and sheet["Z2"].value is None
 
 
@@ -189,3 +190,21 @@ def test_done_part_of_tasks_is_not_counted_twice(db: Session) -> None:
     row = next(r for r in build_shipment_table(db, day=today_msk()).rows if r.name == "Zerkalo_50x170")
     assert (row.before_ship, row.tasks_ship, row.tasks_ship_done) == (5, 15, 5)
     assert row.after_with_tasks == 15  # 5 на складе + 10 ещё сделают
+
+
+def test_stock_is_common_tasks_of_both_sites(db: Session) -> None:
+    """Склад общий: задача на Учительской тоже входит в «склад + задачи − отгрузка»."""
+    other = site_by_name(db, "Учительская")
+    article = make_article(db, name="Zerkalo_80x180")
+    _stock(db, article.id, "Учительская", 5)
+    lead = make_user(db, name="Начальник общий", role=ROLE_SHIFT_LEAD)
+    worker = make_user(db, name="Сборщик Учительской", role=ROLE_ASSEMBLER)
+    create_task(
+        db, actor=lead, day=today_msk(), site_id=other.id, user_id=worker.id, kind="article",
+        article_id=article.id, qty_plan=5,
+    )
+    db.commit()
+    row = next(r for r in build_shipment_table(db, day=today_msk()).rows if r.name == "Zerkalo_80x180")
+    assert (row.before_other, row.before_ship, row.tasks_other) == (5, 0, 5)
+    assert row.after == 5
+    assert row.after_with_tasks == 10

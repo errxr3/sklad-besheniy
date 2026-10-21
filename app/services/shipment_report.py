@@ -8,8 +8,9 @@
                    I Озон 1, J КГТ, K СДЭК, L WB, M СГТ, N Озон 2, O Озон 3
                    — отгружено за день с площадки отгрузки по ЗАКРЫТЫМ каналам и машинам;
                    повторные закрытия одного канала за день суммируются по артикулам;
-    ПОСЛЕ отгрузок: S склад − отгрузка, T склад + задачи − отгрузка (площадка отгрузки;
-                   задачи — несделанная часть), U задачи Коминтерна, V задачи Учительской.
+    ПОСЛЕ отгрузок: S склад − отгрузка, T склад + задачи − отгрузка — склад общий (обе
+                   площадки), задачи обеих площадок, только несделанная часть;
+                   U задачи Коминтерна, V задачи Учительской.
 
 «До отгрузок» = остаток (сейчас или на конец прошедшего дня — по журналу движений) + всё
 отгруженное за день, в том числе в ещё открытом канале.
@@ -67,6 +68,7 @@ class ShipmentRow:
     tasks_other: int = 0
     tasks_ship: int = 0
     tasks_ship_done: int = 0  # из задач дня уже сделано и принято сканом
+    tasks_other_done: int = 0
     channels: list[int] = field(default_factory=list)
 
     @property
@@ -74,23 +76,30 @@ class ShipmentRow:
         return sum(self.channels)
 
     @property
-    def after(self) -> int:
-        """Склад − отгрузка (площадка отгрузки)."""
-        return self.before_ship - self.shipped
+    def stock_total(self) -> int:
+        """Склад общий: обе площадки вместе (решение владельца 2026-10-21)."""
+        return self.before_ship + self.before_other
 
     @property
-    def tasks_ship_left(self) -> int:
-        """Сколько по задачам ещё не сделано (сделанное уже лежит на складе)."""
-        return max(0, self.tasks_ship - self.tasks_ship_done)
+    def after(self) -> int:
+        """Склад − отгрузка (склад общий)."""
+        return self.stock_total - self.shipped
+
+    @property
+    def tasks_left(self) -> int:
+        """Сколько по задачам обеих площадок ещё не сделано (сделанное уже на складе)."""
+        return max(0, self.tasks_ship - self.tasks_ship_done) + max(
+            0, self.tasks_other - self.tasks_other_done
+        )
 
     @property
     def after_with_tasks(self) -> int:
-        """Склад + задачи − отгрузка.
+        """Склад + задачи − отгрузка (склад общий, задачи обеих площадок).
 
         Задачи прибавляются сразу, как начальник смены их поставил, но только несделанная
         часть: готовое зеркало после скана уже в складе, иначе оно посчиталось бы дважды.
         """
-        return self.before_ship + self.tasks_ship_left - self.shipped
+        return self.stock_total + self.tasks_left - self.shipped
 
 
 @dataclass
@@ -209,7 +218,11 @@ def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
         if article.kind == "header":
             rows.append(ShipmentRow(name=article.name, is_header=True, color_hex=article.color_hex))
             continue
-        channels = [shipped.get((article.id, index), 0) for index in range(len(CHANNEL_COLUMNS))]
+        # Отгрузки со всех площадок: склад общий
+        channels = [
+            shipped.get((article.id, index), 0) + shipped_other.get((article.id, index), 0)
+            for index in range(len(CHANNEL_COLUMNS))
+        ]
         for index, value in enumerate(channels):
             totals[index] += value
         other_shipped = sum(
@@ -233,6 +246,7 @@ def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
                 tasks_other=plans.get((article.id, other_site.id), 0) if other_site else 0,
                 tasks_ship=plans.get((article.id, ship_site.id), 0) if ship_site else 0,
                 tasks_ship_done=done.get((article.id, ship_site.id), 0) if ship_site else 0,
+                tasks_other_done=done.get((article.id, other_site.id), 0) if other_site else 0,
                 channels=channels,
             )
         )
