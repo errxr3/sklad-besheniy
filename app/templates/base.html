@@ -4,7 +4,11 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 	<title>{% block title %}Склад{% endblock %} · BLAGO</title>
-	<meta name="theme-color" content="#1b1746">
+	<meta name="theme-color" content="#12151c">
+	<script>
+	// Тема выбирается до отрисовки, чтобы страница не мигала белым
+	try { var t = localStorage.getItem('sklad-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
+	</script>
 	<link rel="stylesheet" href="/static/app.css?v={{ STATIC_VERSION }}">
 	<link rel="icon" href="data:,">
 	<script>window.SKLAD_STATIC_VERSION = '{{ STATIC_VERSION }}';</script>
@@ -17,6 +21,7 @@
 		{{ user.name }}
 		<small>{{ ROLE_LABELS[user.role] }}</small>
 	</div>
+	<button type="button" class="theme" data-theme-toggle title="Светлая / тёмная тема" aria-label="Светлая или тёмная тема"><svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 2a8 8 0 0 1 0 16z" fill="currentColor"/></svg></button>
 	<form method="post" action="/logout">
 		<input type="hidden" name="csrf_token" value="{{ csrf }}">
 		<button type="submit" class="exit">Выйти</button>
@@ -38,6 +43,23 @@
 <main>
 	{% block content %}{% endblock %}
 </main>
+<script>
+(function () {
+	// Кнопка темы: переключает светлую и тёмную, выбор запоминается на этом телефоне
+	var root = document.documentElement;
+	function current() {
+		if (root.dataset.theme) return root.dataset.theme;
+		return window.matchMedia && matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+	}
+	Array.prototype.forEach.call(document.querySelectorAll('[data-theme-toggle]'), function (btn) {
+		btn.addEventListener('click', function () {
+			var next = current() === 'dark' ? 'light' : 'dark';
+			root.dataset.theme = next;
+			try { localStorage.setItem('sklad-theme', next); } catch (e) {}
+		});
+	});
+})();
+</script>
 {% block scripts %}{% endblock %}
 </body>
 </html>
