@@ -7,7 +7,7 @@ from typing import Any
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Article, Movement, Task, TaskLog, Unit, User
+from app.models import Article, Movement, Site, Task, TaskLog, Unit, User
 from app.statuses import (
     IN_STOCK,
     MV_ACCEPT,
@@ -174,6 +174,9 @@ def create_task(
         article = session.get(Article, article_id) if article_id else None
         if article is None or article.kind != "article":
             raise TaskError("Артикул не найден")
+        site = session.get(Site, site_id)
+        if site is not None and not site.makes(article.name):
+            raise TaskError(f"«{article.name}» не делают на площадке {site.name}")
         if not qty_plan or qty_plan < 1:
             raise TaskError("Укажите количество")
         existing = session.scalar(

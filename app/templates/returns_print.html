@@ -9,9 +9,13 @@
 <div class="card">
 	<form method="post" action="/returns/print" target="_blank" id="print-form">
 		<input type="hidden" name="csrf_token" value="{{ csrf }}">
-		<label for="article-search">Артикул</label>
-		<input type="search" id="article-search" placeholder="часть названия, например 60x160" autocomplete="off">
-		<select name="article_id" id="article-select" size="6" required></select>
+		<label>Артикул</label>
+		<div class="article-picker" data-article-picker>
+			<input type="search" class="ap-input" placeholder="Начните вводить, например 60x160"
+			       autocomplete="off" aria-label="Артикул">
+			<input type="hidden" name="article_id" class="ap-value">
+			<ul class="ap-list" hidden></ul>
+		</div>
 		<label for="qty">Количество (1–50)</label>
 		<input type="number" name="qty" id="qty" value="1" min="1" max="50" required>
 		<div class="row tight mt">
@@ -25,33 +29,9 @@
 </div>
 {% endblock %}
 {% block scripts %}
+<script src="/static/article_picker.js?v={{ STATIC_VERSION }}"></script>
 <script>
 (function () {
-	var search = document.getElementById('article-search');
-	var select = document.getElementById('article-select');
-	var timer = null;
-
-	function load(query) {
-		fetch('/api/articles?q=' + encodeURIComponent(query), {
-			headers: { 'X-Requested-With': 'fetch' }
-		}).then(function (r) { return r.json(); }).then(function (data) {
-			select.innerHTML = '';
-			data.articles.forEach(function (article, index) {
-				var option = document.createElement('option');
-				option.value = article.id;
-				option.textContent = article.name;
-				if (index === 0) option.selected = true;
-				select.appendChild(option);
-			});
-		});
-	}
-
-	search.addEventListener('input', function () {
-		clearTimeout(timer);
-		timer = setTimeout(function () { load(search.value); }, 200);
-	});
-	load('');
-
 	Array.prototype.forEach.call(document.querySelectorAll('.qty-btn'), function (button) {
 		button.addEventListener('click', function () {
 			document.getElementById('qty').value = button.dataset.qty;

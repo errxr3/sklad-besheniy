@@ -164,6 +164,7 @@ def sites_update(
     geo_radius_m: int = Form(300),
     geo_check_enabled: str = Form(""),
     labeling_done: str = Form(""),
+    article_prefixes: str | None = Form(None),
     db: Session = Depends(get_db),
 ) -> Response:
     """Изменить площадку."""
@@ -179,6 +180,7 @@ def sites_update(
             geo_lon=float(geo_lon) if geo_lon.strip() else None,
             geo_radius_m=geo_radius_m,
             geo_check_enabled=geo_check_enabled == "1",
+            article_prefixes=article_prefixes,
             labeling_done=labeling_done == "1",
         )
     except (AdminError, ValueError) as exc:

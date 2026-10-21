@@ -52,8 +52,8 @@
 				<td class="sticky" {% if row.color_hex %}style="background:{{ row.color_hex }}"{% endif %}>{{ row.name }}</td>
 				<td class="num {% if row.before_other == 0 %}zero{% endif %}">{{ row.before_other }}</td>
 				<td class="num {% if row.before_ship == 0 %}zero{% endif %}">{{ row.before_ship }}</td>
-				<td class="num">{{ row.tasks_other or '' }}{% if row.tasks_other_done %} <span class="muted">(сделано {{ row.tasks_other_done }})</span>{% endif %}</td>
-				<td class="num" {% if row.tasks_ship_done %}title="сделано {{ row.tasks_ship_done }}"{% endif %}>{{ row.tasks_ship or '' }}{% if row.tasks_ship_done %} <span class="muted">(сделано {{ row.tasks_ship_done }})</span>{% endif %}</td>
+				<td class="num {% if row.tasks_other_who %}who{% endif %}" {% if row.tasks_other_who %}data-who="Делают: {{ row.tasks_other_who }}" tabindex="0"{% endif %}>{{ row.tasks_other or '' }}{% if row.tasks_other_done %} <span class="muted">(сделано {{ row.tasks_other_done }})</span>{% endif %}</td>
+				<td class="num {% if row.tasks_ship_who %}who{% endif %}" {% if row.tasks_ship_who %}data-who="Делают: {{ row.tasks_ship_who }}" tabindex="0"{% endif %}>{{ row.tasks_ship or '' }}{% if row.tasks_ship_done %} <span class="muted">(сделано {{ row.tasks_ship_done }})</span>{% endif %}</td>
 				{% for value in row.channels %}<td class="num ch">{{ value or '' }}</td>{% endfor %}
 				<td class="num {% if row.after < 0 %}neg{% elif row.after == 0 %}zero{% endif %}">{{ row.after }}</td>
 				<td class="num {% if row.after_with_tasks < 0 %}neg{% elif row.after_with_tasks == 0 %}zero{% endif %}">{{ row.after_with_tasks }}</td>

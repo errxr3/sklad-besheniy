@@ -61,6 +61,22 @@ class Site(Base):
 
     # Маркировка остатка при первом запуске (SPEC §6.11)
     labeling_done: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Какие артикулы делают на площадке: начала названий через запятую («Zerkalo, Alum»).
+    # Пусто — любые. Ограничивает выбор артикула при постановке задач.
+    article_prefixes: Mapped[str | None] = mapped_column(Text)
+
+    @property
+    def prefixes(self) -> list[str]:
+        """Начала названий артикулов площадки."""
+        return [part.strip() for part in (self.article_prefixes or "").split(",") if part.strip()]
+
+    def makes(self, article_name: str) -> bool:
+        """Делают ли на площадке этот артикул."""
+        names = self.prefixes
+        if not names:
+            return True
+        lowered = article_name.lower()
+        return any(lowered.startswith(prefix.lower()) for prefix in names)
 
     def __repr__(self) -> str:
         return f"<Site {self.id} {self.name}>"

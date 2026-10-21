@@ -29,28 +29,15 @@
 				<select name="labeling_done"><option value="1" {% if s.labeling_done %}selected{% endif %}>да</option>
 					<option value="0" {% if not s.labeling_done %}selected{% endif %}>нет</option></select></div>
 		</div>
-		<div class="row">
-			<div><label>Проверка геолокации</label>
-				<select name="geo_check_enabled"><option value="0" {% if not s.geo_check_enabled %}selected{% endif %}>выключена</option>
-					<option value="1" {% if s.geo_check_enabled %}selected{% endif %}>включена</option></select></div>
-			<div><label>Широта</label><input type="text" name="geo_lat" value="{{ s.geo_lat if s.geo_lat is not none else '' }}"></div>
-			<div><label>Долгота</label><input type="text" name="geo_lon" value="{{ s.geo_lon if s.geo_lon is not none else '' }}"></div>
-			<div><label>Радиус, м</label><input type="number" name="geo_radius_m" value="{{ s.geo_radius_m }}"></div>
-		</div>
+		<label>Какие артикулы делают (начало названия, через запятую; пусто — любые)</label>
+		<input type="text" name="article_prefixes" value="{{ s.article_prefixes or '' }}" placeholder="например: Zerkalo, Alum">
+		<p class="hint">Начальник смены при постановке задач на эту площадку увидит только такие артикулы.</p>
+		<input type="hidden" name="geo_check_enabled" value="{{ '1' if s.geo_check_enabled else '0' }}">
+		<input type="hidden" name="geo_lat" value="{{ s.geo_lat if s.geo_lat is not none else '' }}">
+		<input type="hidden" name="geo_lon" value="{{ s.geo_lon if s.geo_lon is not none else '' }}">
+		<input type="hidden" name="geo_radius_m" value="{{ s.geo_radius_m }}">
 		<button type="submit" class="mt">Сохранить</button>
 	</form>
-	<h2>Код смены</h2>
-	<p class="hint">
-		{% if s.shift_code_rotated_at %}Выпущен {{ s.shift_code_rotated_at|dt }}{% else %}Ещё не выпускался{% endif %}
-	</p>
-	<div class="row tight">
-		<a class="btn secondary" href="/admin/sites/{{ s.id }}/code.pdf" target="_blank">Распечатать код смены</a>
-		<form method="post" action="/admin/sites/{{ s.id }}/rotate-code">
-			<input type="hidden" name="csrf_token" value="{{ csrf }}">
-			<button type="submit" class="danger">Перевыпустить код</button>
-		</form>
-	</div>
-	<p class="hint">Перевыпуск сразу ломает старый лист — повесьте в цеху новый.</p>
 </div>
 {% endfor %}
 {% endblock %}

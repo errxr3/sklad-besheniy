@@ -29,7 +29,7 @@
 			<form method="post" action="/shift/start">
 				<input type="hidden" name="csrf_token" value="{{ csrf }}">
 				<input type="hidden" name="site_id" value="{{ s.id }}">
-				<button type="submit" class="channel-btn">{{ s.name }}</button>
+				<button type="submit" class="channel-btn site-btn">{{ s.name }}</button>
 			</form>
 			{% endfor %}
 		</div>

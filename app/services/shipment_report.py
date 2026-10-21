@@ -23,7 +23,7 @@ from datetime import date
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Article, Movement, Pallet, Site, Task, Unit
+from app.models import Article, Movement, Pallet, Site, Task, Unit, User
 from app.seed import RETURNS_SITE_NAME
 from app.services.stock import active_sites, stock_at, stock_by_article_site
 from app.services.tasks import plan_sum_by_site
@@ -69,6 +69,8 @@ class ShipmentRow:
     tasks_ship: int = 0
     tasks_ship_done: int = 0  # из задач дня уже сделано и принято сканом
     tasks_other_done: int = 0
+    tasks_ship_who: str = ""  # кто делает: «Иван — 5, Пётр — 3»
+    tasks_other_who: str = ""
     channels: list[int] = field(default_factory=list)
 
     @property
@@ -189,6 +191,21 @@ def tasks_done_by_article_site(session: Session, *, day: date) -> dict[tuple[int
     }
 
 
+def task_workers(session: Session, *, day: date) -> dict[tuple[int, int], str]:
+    """Кто делает задачи дня: (артикул, площадка) → «Иван — 5, Пётр — 3»."""
+    rows = session.execute(
+        select(Task.article_id, Task.site_id, User.name, Task.qty_plan)
+        .join(User, User.id == Task.user_id)
+        .where(Task.date == day, Task.kind == "article")
+        .order_by(User.name)
+    ).all()
+    people: dict[tuple[int, int], list[str]] = defaultdict(list)
+    for article_id, site_id, name, qty in rows:
+        if article_id is not None:
+            people[(int(article_id), int(site_id))].append(f"{name} — {qty}")
+    return {key: ", ".join(value) for key, value in people.items()}
+
+
 def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
     """Собрать таблицу отгрузки за день в порядке строк TOP.xlsx."""
     sites = active_sites(session)
@@ -202,6 +219,7 @@ def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
         stock = stock_at(session, msk_day_bounds(day)[1])
     plans = plan_sum_by_site(session, day=day)
     done = tasks_done_by_article_site(session, day=day)
+    workers = task_workers(session, day=day)
     shipped: dict[tuple[int, int], int] = {}
     shipped_other: dict[tuple[int, int], int] = {}
     if ship_site is not None:
@@ -247,6 +265,8 @@ def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
                 tasks_ship=plans.get((article.id, ship_site.id), 0) if ship_site else 0,
                 tasks_ship_done=done.get((article.id, ship_site.id), 0) if ship_site else 0,
                 tasks_other_done=done.get((article.id, other_site.id), 0) if other_site else 0,
+                tasks_ship_who=workers.get((article.id, ship_site.id), "") if ship_site else "",
+                tasks_other_who=workers.get((article.id, other_site.id), "") if other_site else "",
                 channels=channels,
             )
         )

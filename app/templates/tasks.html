@@ -65,21 +65,19 @@
 	{% endfor %}
 
 	{% if editable and site %}
-	<form method="post" action="/tasks/create" class="row tight mt">
+	<form method="post" action="/tasks/create" class="task-add">
 		<input type="hidden" name="csrf_token" value="{{ csrf }}">
 		<input type="hidden" name="day" value="{{ day.isoformat() }}">
 		<input type="hidden" name="site_id" value="{{ site.id }}">
 		<input type="hidden" name="user_id" value="{{ worker.id }}">
-		{% if worker.role == ROLE_ASSEMBLER %}
 		<input type="hidden" name="kind" value="article">
-		<input type="search" class="article-search" data-target="article-{{ worker.id }}"
-		       placeholder="артикул" style="min-width:200px">
-		<select name="article_id" id="article-{{ worker.id }}" style="min-width:220px"></select>
-		<input type="number" name="qty_plan" placeholder="кол-во" min="1" style="max-width:110px" required>
-		{% else %}
-		<input type="hidden" name="kind" value="text">
-		<input type="text" name="text" placeholder="поручение" style="min-width:260px" required>
-		{% endif %}
+		<div class="article-picker" data-article-picker data-site="{{ site.id }}">
+			<input type="search" class="ap-input" placeholder="Артикул — начните вводить, например 60x160"
+			       autocomplete="off" aria-label="Артикул">
+			<input type="hidden" name="article_id" class="ap-value">
+			<ul class="ap-list" hidden></ul>
+		</div>
+		<input type="number" name="qty_plan" class="qty" placeholder="кол-во" min="1" required aria-label="Количество">
 		<button type="submit">Добавить</button>
 	</form>
 	{% endif %}
@@ -87,31 +85,5 @@
 {% endfor %}
 {% endblock %}
 {% block scripts %}
-<script>
-(function () {
-	Array.prototype.forEach.call(document.querySelectorAll('.article-search'), function (input) {
-		var select = document.getElementById(input.dataset.target);
-		var timer = null;
-		function load(query) {
-			fetch('/api/articles?q=' + encodeURIComponent(query), { headers: { 'X-Requested-With': 'fetch' } })
-				.then(function (r) { return r.json(); })
-				.then(function (data) {
-					select.innerHTML = '';
-					data.articles.forEach(function (article, index) {
-						var option = document.createElement('option');
-						option.value = article.id;
-						option.textContent = article.name;
-						if (index === 0) option.selected = true;
-						select.appendChild(option);
-					});
-				});
-		}
-		input.addEventListener('input', function () {
-			clearTimeout(timer);
-			timer = setTimeout(function () { load(input.value); }, 200);
-		});
-		load('');
-	});
-})();
-</script>
+<script src="/static/article_picker.js?v={{ STATIC_VERSION }}"></script>
 {% endblock %}

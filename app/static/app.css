@@ -315,3 +315,39 @@ details.close-shift .inline-form { display: grid; gap: 6px; margin-top: 6px; min
 
 /* Маленькая кнопка «Закончить смену» — чтобы не нажать случайно */
 button.small-btn { min-height: 36px; padding: 6px 12px; font-size: 14px; font-weight: 600; }
+
+/* Выбор артикула: поиск + выпадающий список */
+.article-picker { position: relative; flex: 1 1 260px; min-width: 220px; }
+.article-picker .ap-input { padding-right: 36px; }
+.article-picker.chosen .ap-input { border-color: var(--ok); background: #f3fbf6; font-weight: 600; }
+.article-picker.chosen::after {
+	content: "✓"; position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
+	color: var(--ok); font-weight: 800; pointer-events: none;
+}
+.article-picker.error .ap-input { border-color: var(--err); outline: 3px solid #f6c3c6; }
+.ap-list {
+	position: absolute; z-index: 30; left: 0; right: 0; top: calc(100% + 4px);
+	max-height: 280px; overflow-y: auto; margin: 0; padding: 4px; list-style: none;
+	background: #fff; border: 1px solid var(--line); border-radius: var(--radius);
+	box-shadow: 0 12px 28px rgba(22, 26, 46, .16);
+}
+.ap-list li { padding: 10px 12px; border-radius: 10px; cursor: pointer; font-size: 17px; }
+.ap-list li.active, .ap-list li:hover { background: var(--accent-soft); color: var(--accent-dark); }
+.ap-list li.ap-empty { color: var(--muted); cursor: default; background: none; }
+/* Форма новой задачи */
+.task-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: stretch; margin-top: 10px; }
+.task-add .qty { width: 110px; flex: 0 0 110px; }
+.task-add button { flex: 0 0 auto; }
+.card:has(.article-picker) { overflow: visible; }
+
+/* Задачи в «Отгрузке»: при наведении (или нажатии на телефоне) — кто делает */
+.shipments td.who { position: relative; cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
+.shipments td.who:hover::after, .shipments td.who:focus::after {
+	content: attr(data-who); position: absolute; z-index: 40; right: 0; top: 100%; margin-top: 4px;
+	white-space: nowrap; padding: 6px 10px; border-radius: 8px; font-size: 13px; font-weight: 600;
+	background: var(--brand-from); color: #fff; box-shadow: 0 6px 16px rgba(0, 0, 0, .25);
+}
+
+.channel-btn.site-btn { font-size: 20px; padding: 10px 8px; overflow-wrap: anywhere; }
+.row.tight > * { max-width: 100%; }
+.row.tight > button, .row.tight > form > button { white-space: normal; text-align: center; }

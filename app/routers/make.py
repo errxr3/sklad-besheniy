@@ -13,7 +13,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.labels import LabelData, build_labels_pdf
-from app.models import Article, Unit
+from app.models import Article, Site, Unit
 from app.services.context import site_and_shift
 from app.services.units import (
     accept_unit,
@@ -29,8 +29,15 @@ router = APIRouter(route_class=GuardedRoute)
 
 
 @router.get("/api/articles")
-def api_articles(request: Request, db: Session = Depends(get_db), q: str = "") -> JSONResponse:
-    """Поиск артикула по части названия (для подсказки на экране)."""
+def api_articles(
+    request: Request, db: Session = Depends(get_db), q: str = "", site_id: int = 0
+) -> JSONResponse:
+    """Поиск артикула по части названия (для подсказки на экране).
+
+    С `site_id` — только артикулы, которые делают на этой площадке (для задач).
+    """
+    from sqlalchemy import or_
+
     from app.articles import normalize_article
 
     query = select(Article).where(Article.kind == "article", Article.active.is_(True))
@@ -38,7 +45,10 @@ def api_articles(request: Request, db: Session = Depends(get_db), q: str = "") -
     if text:
         needle = f"%{normalize_article(text)}%"
         query = query.where(Article.name_norm.like(needle))
-    rows = db.scalars(query.order_by(Article.sort_order).limit(30)).all()
+    site = db.get(Site, site_id) if site_id else None
+    if site is not None and site.prefixes:
+        query = query.where(or_(*[Article.name.ilike(f"{prefix}%") for prefix in site.prefixes]))
+    rows = db.scalars(query.order_by(Article.sort_order).limit(40)).all()
     return JSONResponse(
         {"articles": [{"id": a.id, "name": a.name, "group": a.group} for a in rows]}
     )

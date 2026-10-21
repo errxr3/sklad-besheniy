@@ -164,8 +164,9 @@ def update_site(
     geo_radius_m: int | None = None,
     geo_check_enabled: bool | None = None,
     labeling_done: bool | None = None,
+    article_prefixes: str | None = None,
 ) -> Site:
-    """Изменить площадку: название, активность, порядок, геопроверку, маркировку."""
+    """Изменить площадку: название, активность, порядок, геопроверку, маркировку, артикулы."""
     site = session.get(Site, site_id)
     if site is None:
         raise AdminError("Площадка не найдена")
@@ -178,6 +179,7 @@ def update_site(
         "geo_lon": site.geo_lon,
         "geo_radius_m": site.geo_radius_m,
         "labeling_done": site.labeling_done,
+        "article_prefixes": site.article_prefixes,
     }
     if name is not None and name.strip():
         site.name = name.strip()
@@ -193,6 +195,9 @@ def update_site(
         site.geo_radius_m = max(10, geo_radius_m)
     if labeling_done is not None:
         site.labeling_done = labeling_done
+    if article_prefixes is not None:
+        parts = [part.strip() for part in article_prefixes.split(",") if part.strip()]
+        site.article_prefixes = ", ".join(parts) or None
     session.flush()
     after = {
         "name": site.name,
@@ -203,6 +208,7 @@ def update_site(
         "geo_lon": site.geo_lon,
         "geo_radius_m": site.geo_radius_m,
         "labeling_done": site.labeling_done,
+        "article_prefixes": site.article_prefixes,
     }
     log_admin(session, actor_id, "изменена площадка", "site", site.id, before, after)
     return site
