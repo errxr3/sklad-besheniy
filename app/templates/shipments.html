@@ -54,7 +54,7 @@
 		<tbody>
 		{% for row in table.rows %}
 			{% if row.is_header %}
-			<tr class="header-row"><td class="sticky" colspan="{{ 7 + channels|length }}">{{ row.name }}</td></tr>
+			<tr class="header-row"><td colspan="{{ 7 + channels|length }}"><span class="group-name">{{ row.name }}</span></td></tr>
 			{% else %}
 			<tr {% if row.color_hex %}style="background:{{ row.color_hex }}"{% endif %}>
 				<td class="sticky" {% if row.color_hex %}style="background:{{ row.color_hex }}"{% endif %}>{{ row.name }}</td>
@@ -71,4 +71,18 @@
 		</tbody>
 	</table>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+	// Нажатие на задачу показывает, кто её делает; нажатие в любое другое место — прячет
+	document.addEventListener('click', function (event) {
+		var cell = event.target.closest ? event.target.closest('td.who') : null;
+		Array.prototype.forEach.call(document.querySelectorAll('td.who.show'), function (td) {
+			if (td !== cell) td.classList.remove('show');
+		});
+		if (cell) cell.classList.toggle('show');
+	});
+})();
+</script>
 {% endblock %}

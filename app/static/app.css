@@ -369,8 +369,12 @@ details.close-shift .inline-form { display: grid; gap: 6px; margin-top: 6px; min
 .shipments td.ch { background: var(--ship-ch-cell); }
 .shipments td.neg { background: var(--neg); color: #fff; font-weight: 700; }
 .shipments tr.totals th { background: var(--th-bg); font-size: 13px; }
-.shipments thead th { position: relative; top: auto; }
-.shipments thead th.sticky { position: sticky; left: 0; }
+/* Шапка из трёх строк закреплена целиком: при прокрутке видно, что за столбец */
+.shipments thead { position: sticky; top: 0; z-index: 5; }
+.shipments thead th { position: static; }
+.shipments thead th.sticky { position: sticky; left: 0; z-index: 6; }
+/* В закреплённой шапке рамки рисуем тенью: у border-collapse они при прокрутке пропадают */
+.shipments thead tr:last-child th { box-shadow: inset 0 -2px 0 var(--line-strong); }
 
 /* Вкладки раздела «Склад» */
 .subtabs { display: flex; gap: 0; overflow-x: auto; scrollbar-width: none; margin: 0 0 12px; border-bottom: 1px solid var(--line); }
@@ -418,8 +422,13 @@ button.small-btn { min-height: 36px; padding: 6px 12px; font-size: 14px; font-we
 
 /* Задачи в «Отгрузке»: при наведении (или нажатии на телефоне) — кто делает */
 .shipments td.who { position: relative; cursor: help; text-decoration: underline dotted; text-underline-offset: 3px; }
-.shipments td.who:hover::after, .shipments td.who:focus::after {
-	content: attr(data-who); position: absolute; z-index: 40; right: 0; top: 100%; margin-top: 4px;
+/* Подсказка: мышью — при наведении, на телефоне — по нажатию, убирается нажатием в любое место */
+@media (hover: hover) {
+	.shipments td.who:hover::after { content: attr(data-who); }
+}
+.shipments td.who.show::after { content: attr(data-who); }
+.shipments td.who:hover::after, .shipments td.who.show::after {
+	position: absolute; z-index: 40; right: 0; top: 100%; margin-top: 4px;
 	white-space: nowrap; padding: 6px 10px; border-radius: 4px; font-size: 13px; font-weight: 600;
 	background: var(--top-bg); color: #fff; border: 1px solid var(--line-strong);
 }
@@ -437,3 +446,12 @@ button.small-btn { min-height: 36px; padding: 6px 12px; font-size: 14px; font-we
 .scan-mode button.active { background: var(--accent); color: var(--on-accent); }
 .scan-mode button:hover { background: var(--accent-soft); }
 .scan-mode button.active:hover { background: var(--accent); }
+
+/* Название группы в широкой таблице остаётся слева при прокрутке вбок */
+tr.header-row .group-name { position: sticky; left: 8px; }
+.shipments thead { background: var(--th-bg); }
+/* Отгрузка: рамки без border-collapse, чтобы под закреплённой шапкой не просвечивали строки */
+table.shipments { border-collapse: separate; border-spacing: 0; }
+.shipments th, .shipments td { border: 0; border-right: 1px solid var(--line-strong); border-bottom: 1px solid var(--line-strong); }
+.shipments tr.header-row td { border-left: 0; }
+.shipments thead tr:last-child th { box-shadow: none; border-bottom: 2px solid var(--line-strong); }

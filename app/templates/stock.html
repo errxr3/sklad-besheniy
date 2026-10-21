@@ -64,7 +64,7 @@
 		<tbody>
 		{% for row in table.rows %}
 			{% if row.is_header %}
-			<tr class="header-row"><td class="sticky" colspan="{{ 1 + table.sites|length * 2 }}">{{ row.name }}</td></tr>
+			<tr class="header-row"><td colspan="{{ 1 + table.sites|length * 2 }}"><span class="group-name">{{ row.name }}</span></td></tr>
 			{% else %}
 			<tr {% if row.color_hex %}style="background:{{ row.color_hex }}"{% endif %}>
 				<td class="sticky" {% if row.color_hex %}style="background:{{ row.color_hex }}"{% endif %}>
