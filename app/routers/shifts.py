@@ -1,9 +1,10 @@
-"""Смены: начало и окончание по скану QR, табло, табель (SPEC §5)."""
+"""Смены: начало и окончание кнопкой, табло, табель (SPEC §5; без QR — решение 2026-10-21)."""
 
 import csv
 import io
 import logging
 from datetime import date, datetime, timedelta
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
@@ -21,25 +22,16 @@ from app.services.shifts import (
     edit_shift,
     end_shift,
     make_shift_code,
-    open_shift,
     start_shift,
     timesheet,
 )
 from app.services.tasks import tasks_progress
 from app.statuses import ROLE_ASSEMBLER, ROLE_LOADER
 from app.timeutil import MOSCOW, fmt_dt, msk_day_bounds, now_utc, to_moscow, today_msk
-from app.web import GuardedRoute, page, read_json
+from app.web import GuardedRoute, page
 
 logger = logging.getLogger(__name__)
 router = APIRouter(route_class=GuardedRoute)
-
-
-def _coord(value: object) -> float | None:
-    """Координата из запроса или None."""
-    try:
-        return float(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return None
 
 
 def _client_ip(request: Request) -> str | None:
@@ -50,87 +42,46 @@ def _client_ip(request: Request) -> str | None:
     return request.client.host if request.client else None
 
 
-@router.get("/shift/start", response_class=HTMLResponse)
-def shift_start_page(request: Request, db: Session = Depends(get_db)) -> Response:
-    """Экран начала смены: только камера, текстового поля нет (SPEC §5.2)."""
-    user = request.state.user
-    shift = open_shift(db, user.id)
-    site = db.get(Site, shift.site_id) if shift else None
-    return page(
-        request,
-        "shift_scan.html",
-        {
-            "mode": "start",
-            "shift": shift,
-            "site": site,
-            "title": "Начать смену",
-            "need_geo": db.scalar(select(Site.geo_check_enabled).where(Site.geo_check_enabled.is_(True)))
-            or False,
-        },
-    )
+@router.get("/shift/start")
+def shift_start_page() -> Response:
+    """Смена начинается кнопкой на главной («Сканер» / «Смена»)."""
+    return RedirectResponse("/", status_code=303)
 
 
-@router.get("/shift/end", response_class=HTMLResponse)
-def shift_end_page(request: Request, db: Session = Depends(get_db)) -> Response:
-    """Экран окончания смены — тот же скан кода площадки."""
-    user = request.state.user
-    shift = open_shift(db, user.id)
-    site = db.get(Site, shift.site_id) if shift else None
-    return page(
-        request,
-        "shift_scan.html",
-        {"mode": "end", "shift": shift, "site": site, "title": "Закончить смену", "need_geo": False},
-    )
+@router.get("/shift/end")
+def shift_end_page() -> Response:
+    """Смена заканчивается кнопкой на главной."""
+    return RedirectResponse("/", status_code=303)
 
 
 @router.post("/shift/start")
-async def shift_start(request: Request, db: Session = Depends(get_db)) -> JSONResponse:
-    """Начать смену по коду из камеры."""
-    payload = await read_json(request)
-    code = str(payload.get("code") or "").strip()
+def shift_start(request: Request, site_id: int = Form(0), db: Session = Depends(get_db)) -> Response:
+    """Начать смену кнопкой на выбранной площадке (без QR-кода)."""
     user = request.state.user
-    if not code:
-        return JSONResponse({"ok": False, "message": "Код не распознан"})
     try:
-        shift = start_shift(
+        start_shift(
             db,
             user=user,
-            code=code,
+            site_id=site_id,
             ip=_client_ip(request),
             user_agent=request.headers.get("user-agent"),
-            lat=_coord(payload.get("lat")),
-            lon=_coord(payload.get("lon")),
         )
     except ShiftError as exc:
-        return JSONResponse({"ok": False, "message": str(exc)}, status_code=200)
-    site = db.get(Site, shift.site_id)
-    started = to_moscow(shift.started_at).strftime("%H:%M")
+        return RedirectResponse(f"/?{urlencode({'err': str(exc)})}", status_code=303)
     logger.info("Смена начата", extra={"user_id": user.id})
-    return JSONResponse(
-        {
-            "ok": True,
-            "message": f"Смена начата {started}",
-            "detail": site.name if site else "",
-            "redirect": "/",
-        }
-    )
+    return RedirectResponse("/", status_code=303)
 
 
 @router.post("/shift/end")
-async def shift_end(request: Request, db: Session = Depends(get_db)) -> JSONResponse:
-    """Закончить смену по коду из камеры."""
-    payload = await read_json(request)
-    code = str(payload.get("code") or "").strip()
+def shift_end(request: Request, db: Session = Depends(get_db)) -> Response:
+    """Закончить смену кнопкой."""
     user = request.state.user
-    if not code:
-        return JSONResponse({"ok": False, "message": "Код не распознан"})
     try:
-        shift = end_shift(db, user=user, code=code)
+        end_shift(db, user=user)
     except ShiftError as exc:
-        return JSONResponse({"ok": False, "message": str(exc)}, status_code=200)
-    ended = to_moscow(shift.ended_at or now_utc()).strftime("%H:%M")
+        return RedirectResponse(f"/?{urlencode({'err': str(exc)})}", status_code=303)
     logger.info("Смена закончена", extra={"user_id": user.id})
-    return JSONResponse({"ok": True, "message": f"Смена закончена {ended}", "redirect": "/"})
+    return RedirectResponse("/", status_code=303)
 
 
 def _default_board_site(db: Session, user: User) -> Site:

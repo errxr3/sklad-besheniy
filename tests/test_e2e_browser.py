@@ -1,6 +1,6 @@
 """Сквозной тест браузером (SPEC §12, последний абзац).
 
-Вход сборщика → начало смены (камера подменяется вызовом того же обработчика с кодом)
+Вход сборщика → начало смены кнопкой
 → кладовщик печатает этикетки на сборщика по задаче → сборщик сканирует
 → вход грузчика → канал Ozon → скан → закрытие канала с машиной → остаток 0.
 """
@@ -21,7 +21,6 @@ from sqlalchemy.orm import Session
 
 from app.labels import LabelData, build_labels_pdf
 from app.models import Unit
-from app.services.shifts import make_shift_code
 from app.services.tasks import create_task
 from app.services.units import create_printed_units, label_rows, stock_count
 from app.statuses import (
@@ -100,12 +99,11 @@ def _login(page, base: str, label: str, pin: str) -> None:  # type: ignore[no-un
     page.wait_for_load_state("networkidle")
 
 
-def _start_shift(page, base: str, code: str) -> None:  # type: ignore[no-untyped-def]
-    """Начать смену: вместо камеры зовём её же обработчик с кодом из QR."""
-    page.goto(f"{base}/shift/start")
-    page.evaluate("code => window.Sklad.shiftCode(code)", code)
-    page.wait_for_selector(".scan-result.ok", timeout=10000)
-    assert "Смена начата" in page.inner_text("#scan-result")
+def _start_shift(page, base: str, site_name: str) -> None:  # type: ignore[no-untyped-def]
+    """Начать смену кнопкой площадки (QR-кода больше нет)."""
+    page.goto(f"{base}/")
+    page.click(f"form[action='/shift/start'] button:has-text('{site_name}')")
+    page.wait_for_selector("text=На смене с", timeout=10000)
 
 
 def test_full_day_in_browser(server: str, db: Session) -> None:
@@ -113,7 +111,6 @@ def test_full_day_in_browser(server: str, db: Session) -> None:
     sync_api = pytest.importorskip("playwright.sync_api")
 
     site = site_by_name(db)
-    code = make_shift_code(db, site)
     article = make_article(db, name="Zerkalo_60x160")
     assembler = make_user(db, name="Иван Сборщик", role=ROLE_ASSEMBLER, pin="1111")
     make_user(db, name="Пётр Грузчик", role=ROLE_LOADER, pin="2222")
@@ -132,7 +129,7 @@ def test_full_day_in_browser(server: str, db: Session) -> None:
         worker = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
         _login(worker, server, "Иван Сборщик — Сборщик зеркал", "1111")
         assert "Смена не начата" in worker.content()
-        _start_shift(worker, server, code)
+        _start_shift(worker, server, site.name)
 
         worker.goto(f"{server}/")
         assert "Скан зеркала" in worker.inner_text("main")
@@ -167,7 +164,7 @@ def test_full_day_in_browser(server: str, db: Session) -> None:
         # --- Грузчик ---
         carrier = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
         _login(carrier, server, "Пётр Грузчик — Грузчик", "2222")
-        _start_shift(carrier, server, code)
+        _start_shift(carrier, server, site.name)
         carrier.goto(f"{server}/loading")
         carrier.click("button.channel-btn:has-text(\"Ozon\")")
         carrier.wait_for_selector("#scan-input")

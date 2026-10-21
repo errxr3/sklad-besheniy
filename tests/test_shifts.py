@@ -1,4 +1,4 @@
-"""SPEC §12 п. 11 и 12: смены по коду площадки, геопроверка, автозакрытие."""
+"""Смены кнопкой (без QR, решение владельца 2026-10-21), автозакрытие, табель, табло."""
 
 from datetime import datetime
 
@@ -14,7 +14,7 @@ from app.services.shifts import (
     check_code,
     edit_shift,
     end_shift,
-    make_shift_code,
+    shift_sites,
     start_shift,
     timesheet,
 )
@@ -24,20 +24,18 @@ from app.timeutil import MOSCOW, now_utc, to_moscow
 from tests.helpers import get_csrf, login, make_article, make_user, site_by_name
 
 
-def _site_with_code(db: Session, name: str = "Коминтерна") -> tuple[Site, str]:
-    """Площадка с выпущенным кодом смены."""
+def _site_with_id(db: Session, name: str = "Коминтерна") -> tuple[Site, int]:
+    """Площадка и её id (смена начинается кнопкой на площадке)."""
     site = site_by_name(db, name)
-    code = make_shift_code(db, site)
-    db.commit()
-    return site, code
+    return site, site.id
 
 
-def test_start_shift_with_valid_code(db: Session) -> None:
-    """Верный код начинает смену и запоминает устройство."""
-    site, code = _site_with_code(db)
-    worker = make_user(db, name="Сборщик смены", role=ROLE_ASSEMBLER)
+def test_start_shift_by_button(db: Session) -> None:
+    """Смена начинается кнопкой на площадке сотрудника и запоминает устройство."""
+    site = site_by_name(db)
+    worker = make_user(db, name="Сборщик смены", role=ROLE_ASSEMBLER, home_site_id=site.id)
 
-    shift = start_shift(db, user=worker, code=code, ip="10.0.0.5", user_agent="Mobile Safari")
+    shift = start_shift(db, user=worker, site_id=site.id, ip="10.0.0.5", user_agent="Mobile Safari")
     db.commit()
 
     assert shift.site_id == site.id
@@ -46,102 +44,42 @@ def test_start_shift_with_valid_code(db: Session) -> None:
     assert shift.start_ua == "Mobile Safari"
 
 
-def test_wrong_code_refused(db: Session) -> None:
-    """Неверный код смену не начинает (SPEC §12 п. 12)."""
-    site, _ = _site_with_code(db)
-    worker = make_user(db, name="Сборщик 2", role=ROLE_ASSEMBLER)
-
-    with pytest.raises(ShiftError) as err:
-        start_shift(db, user=worker, code=f"SHIFT:{site.id}:чужой-секрет")
-    assert "устарел" in str(err.value)
-
-    with pytest.raises(ShiftError) as err_site:
-        start_shift(db, user=worker, code="SHIFT:999:секрет")
-    assert "не распознан" in str(err_site.value)
-
+def test_assembler_only_on_own_site_loader_chooses(db: Session) -> None:
+    """Сборщик — только на своей площадке; грузчик выбирает Коминтерна или Учительскую."""
+    kom = site_by_name(db, "Коминтерна")
+    uch = site_by_name(db, "Учительская")
+    worker = make_user(db, name="Сборщик Коминтерна", role=ROLE_ASSEMBLER, home_site_id=kom.id)
     with pytest.raises(ShiftError):
-        start_shift(db, user=worker, code="просто текст")
+        start_shift(db, user=worker, site_id=uch.id)
 
-    assert db.scalars(select(Shift)).all() == []
-
-
-def test_rotated_code_breaks_old_one(db: Session) -> None:
-    """После перевыпуска старый код перестаёт работать (SPEC §12 п. 12)."""
-    site, old_code = _site_with_code(db)
-    worker = make_user(db, name="Сборщик 3", role=ROLE_ASSEMBLER)
-
-    new_code = make_shift_code(db, site)
+    loader = make_user(db, name="Грузчик выбор", role=ROLE_LOADER, home_site_id=kom.id)
+    assert {s.id for s in shift_sites(db, loader)} == {kom.id, uch.id}
+    shift = start_shift(db, user=loader, site_id=uch.id)
     db.commit()
-    assert new_code != old_code
-
-    with pytest.raises(ShiftError) as err:
-        start_shift(db, user=worker, code=old_code)
-    assert "устарел" in str(err.value)
-
-    shift = start_shift(db, user=worker, code=new_code)
-    db.commit()
-    assert shift.id is not None
+    assert shift.site_id == uch.id
 
 
 def test_second_open_shift_impossible(db: Session) -> None:
     """Вторая открытая смена у сотрудника невозможна (SPEC §12 п. 12)."""
-    _, code = _site_with_code(db)
+    site = site_by_name(db)
     worker = make_user(db, name="Сборщик 4", role=ROLE_ASSEMBLER)
-    start_shift(db, user=worker, code=code)
+    start_shift(db, user=worker, site_id=site.id)
     db.commit()
 
     with pytest.raises(ShiftError) as err:
-        start_shift(db, user=worker, code=code)
+        start_shift(db, user=worker, site_id=site.id)
     assert "уже начата" in str(err.value)
     assert len(db.scalars(select(Shift)).all()) == 1
 
 
-def test_geo_check_refuses_outside_radius(db: Session) -> None:
-    """Вне радиуса площадки смена не начинается (SPEC §12 п. 12)."""
-    site, code = _site_with_code(db)
-    site.geo_check_enabled = True
-    site.geo_lat = 56.3269
-    site.geo_lon = 44.0059
-    site.geo_radius_m = 300
-    db.commit()
-    worker = make_user(db, name="Сборщик 5", role=ROLE_ASSEMBLER)
-
-    with pytest.raises(ShiftError) as err:
-        start_shift(db, user=worker, code=code, lat=56.3500, lon=44.0500)
-    assert "от площадки" in str(err.value)
-
-    with pytest.raises(ShiftError) as err_no_geo:
-        start_shift(db, user=worker, code=code, lat=None, lon=None)
-    assert "геопозиции" in str(err_no_geo.value)
-
-    shift = start_shift(db, user=worker, code=code, lat=56.3270, lon=44.0060)
-    db.commit()
-    assert shift.start_lat == pytest.approx(56.3270)
-
-
-def test_geo_check_disabled_by_default(db: Session) -> None:
-    """По умолчанию геопроверка выключена и координаты не требуются."""
-    site, code = _site_with_code(db)
-    assert site.geo_check_enabled is False
-    worker = make_user(db, name="Сборщик 6", role=ROLE_ASSEMBLER)
-    shift = start_shift(db, user=worker, code=code)
-    db.commit()
-    assert shift.id is not None
-
-
-def test_end_shift_requires_same_site_code(db: Session) -> None:
-    """Смена закрывается кодом своей площадки."""
-    _, code = _site_with_code(db)
-    other_site, other_code = _site_with_code(db, "Учительская")
+def test_end_shift_by_button(db: Session) -> None:
+    site = site_by_name(db)
     worker = make_user(db, name="Сборщик 7", role=ROLE_ASSEMBLER)
-    start_shift(db, user=worker, code=code)
+    with pytest.raises(ShiftError):
+        end_shift(db, user=worker)
+    start_shift(db, user=worker, site_id=site.id)
     db.commit()
-
-    with pytest.raises(ShiftError) as err:
-        end_shift(db, user=worker, code=other_code)
-    assert other_site.name in str(err.value)
-
-    shift = end_shift(db, user=worker, code=code)
+    shift = end_shift(db, user=worker)
     db.commit()
     assert shift.ended_at is not None
     assert shift.end_reason == END_USER
@@ -149,12 +87,12 @@ def test_end_shift_requires_same_site_code(db: Session) -> None:
 
 def test_auto_close_uses_last_scan_time(db: Session) -> None:
     """Автозакрытие ставит время последнего скана в смену (SPEC §12 п. 12)."""
-    site, code = _site_with_code(db)
+    site, code = _site_with_id(db)
     worker = make_user(db, name="Сборщик 8", role=ROLE_ASSEMBLER)
     article = make_article(db)
 
     yesterday_start = datetime(2026, 10, 13, 5, 0, tzinfo=MOSCOW)
-    shift = start_shift(db, user=worker, code=code)
+    shift = start_shift(db, user=worker, site_id=code)
     shift.started_at = yesterday_start
     db.commit()
 
@@ -195,9 +133,9 @@ def test_auto_close_uses_last_scan_time(db: Session) -> None:
 
 def test_auto_close_without_scans_uses_start_time(db: Session) -> None:
     """Если сканов не было — время окончания равно времени начала."""
-    _, code = _site_with_code(db)
+    _, code = _site_with_id(db)
     worker = make_user(db, name="Сборщик 9", role=ROLE_ASSEMBLER)
-    shift = start_shift(db, user=worker, code=code)
+    shift = start_shift(db, user=worker, site_id=code)
     shift.started_at = datetime(2026, 10, 13, 8, 15, tzinfo=MOSCOW)
     db.commit()
 
@@ -210,9 +148,9 @@ def test_auto_close_without_scans_uses_start_time(db: Session) -> None:
 
 def test_auto_close_does_not_touch_today_shift(db: Session) -> None:
     """Сегодняшняя открытая смена автозакрытием не трогается."""
-    _, code = _site_with_code(db)
+    _, code = _site_with_id(db)
     worker = make_user(db, name="Сборщик 10", role=ROLE_ASSEMBLER)
-    shift = start_shift(db, user=worker, code=code)
+    shift = start_shift(db, user=worker, site_id=code)
     db.commit()
 
     closed = auto_close_shifts(db, moment=now_utc())
@@ -224,10 +162,10 @@ def test_auto_close_does_not_touch_today_shift(db: Session) -> None:
 
 def test_manual_edit_requires_note(db: Session) -> None:
     """Правка смены требует комментарий и сохраняет прежние значения."""
-    _, code = _site_with_code(db)
+    _, code = _site_with_id(db)
     worker = make_user(db, name="Сборщик 11", role=ROLE_ASSEMBLER)
     lead = make_user(db, name="Начальник правок", role=ROLE_SHIFT_LEAD)
-    shift = start_shift(db, user=worker, code=code)
+    shift = start_shift(db, user=worker, site_id=code)
     db.commit()
 
     with pytest.raises(ShiftError):
@@ -246,9 +184,9 @@ def test_manual_edit_requires_note(db: Session) -> None:
 
 def test_timesheet_counts_hours(db: Session) -> None:
     """Табель считает часы за период (SPEC §5.6)."""
-    _, code = _site_with_code(db)
+    _, code = _site_with_id(db)
     worker = make_user(db, name="Сборщик 12", role=ROLE_ASSEMBLER)
-    shift = start_shift(db, user=worker, code=code)
+    shift = start_shift(db, user=worker, site_id=code)
     shift.started_at = datetime(2026, 10, 13, 8, 0, tzinfo=MOSCOW)
     shift.ended_at = datetime(2026, 10, 13, 17, 30, tzinfo=MOSCOW)
     shift.end_reason = END_USER
@@ -262,46 +200,28 @@ def test_timesheet_counts_hours(db: Session) -> None:
     assert rows[0].closed_label == "сотрудником"
 
 
-def test_shift_scan_through_http(client: TestClient, db: Session) -> None:
-    """Начало и окончание смены через веб: камера шлёт код тем же обработчиком."""
-    _, code = _site_with_code(db)
+def test_shift_buttons_through_http(client: TestClient, db: Session) -> None:
+    """Начало и окончание смены кнопками; грузчик видит выбор площадки."""
+    kom = site_by_name(db, "Коминтерна")
     worker = make_user(db, name="Грузчик веб", role=ROLE_LOADER, pin="1234")
     login(client, worker)
+    home = client.get("/").text
+    assert "Коминтерна" in home and "Учительская" in home
+    assert "camera-btn" not in home  # QR-кода больше нет
     token = get_csrf(client, "/")
 
-    started = client.post(
-        "/shift/start",
-        json={"code": code, "csrf_token": token},
-        headers={"X-CSRF-Token": token, "X-Requested-With": "fetch"},
-    )
-    assert started.json()["ok"] is True
-    assert "Смена начата" in started.json()["message"]
+    started = client.post("/shift/start", data={"csrf_token": token, "site_id": str(kom.id)})
+    assert started.status_code == 200
+    assert "На смене с" in started.text
 
     again = client.post(
-        "/shift/start",
-        json={"code": code, "csrf_token": token},
-        headers={"X-CSRF-Token": token, "X-Requested-With": "fetch"},
+        "/shift/start", data={"csrf_token": token, "site_id": str(kom.id)}, follow_redirects=False
     )
-    assert again.json()["ok"] is False
-    assert "уже начата" in again.json()["message"]
+    assert "err=" in again.headers["location"]
 
-    ended = client.post(
-        "/shift/end",
-        json={"code": code, "csrf_token": token},
-        headers={"X-CSRF-Token": token, "X-Requested-With": "fetch"},
-    )
-    assert ended.json()["ok"] is True
-
-
-def test_start_shift_page_has_no_text_input(client: TestClient, db: Session) -> None:
-    """На экране начала смены нет текстового поля — только камера (SPEC §5.2)."""
-    _site_with_code(db)
-    worker = make_user(db, name="Сборщик 13", role=ROLE_ASSEMBLER, pin="1234")
-    login(client, worker)
-    page_text = client.get("/shift/start").text
-    assert "camera-btn" in page_text
-    assert 'type="text"' not in page_text
-    assert "scan-input" not in page_text
+    ended = client.post("/shift/end", data={"csrf_token": token})
+    assert ended.status_code == 200
+    assert "Смена не начата" in ended.text
 
 
 def test_shift_code_pdf_contains_qr(client: TestClient, db: Session) -> None:
@@ -338,14 +258,14 @@ def test_board_counts_only_chosen_site(db: Session) -> None:
     from app.services.units import accept_unit, create_printed_units
     from app.timeutil import today_msk
 
-    site, code = _site_with_code(db)
-    other, other_code = _site_with_code(db, "Учительская")
+    site, code = _site_with_id(db)
+    other, other_code = _site_with_id(db, "Учительская")
     here = make_user(db, name="Работает здесь", role=ROLE_ASSEMBLER)
     there = make_user(db, name="Работает там", role=ROLE_ASSEMBLER)
     nobody = make_user(db, name="Не вышел совсем", role=ROLE_LOADER)
 
-    start_shift(db, user=here, code=code)
-    start_shift(db, user=there, code=other_code)
+    start_shift(db, user=here, site_id=code)
+    start_shift(db, user=there, site_id=other_code)
     db.commit()
 
     article = make_article(db)
@@ -372,10 +292,10 @@ def test_board_ignores_other_site_movements(db: Session) -> None:
     from app.services.units import accept_unit, create_printed_units
     from app.timeutil import today_msk
 
-    site, code = _site_with_code(db)
+    site, code = _site_with_id(db)
     other = site_by_name(db, "Учительская")
     worker = make_user(db, name="Сборщик двух площадок", role=ROLE_ASSEMBLER)
-    start_shift(db, user=worker, code=code)
+    start_shift(db, user=worker, site_id=code)
     db.commit()
 
     article = make_article(db)

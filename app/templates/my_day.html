@@ -6,12 +6,34 @@
 
 <div class="card">
 	{% if shift %}
-		<p class="msg ok">На смене с {{ shift.started_at|time }} · {{ site.name if site else '' }}</p>
-		<a class="btn secondary" href="/shift/end">Закончить смену</a>
+		<div class="line">
+			<p class="msg ok" style="margin:0;flex:1">На смене с {{ shift.started_at|time }} · {{ site.name if site else '' }}</p>
+			<form method="post" action="/shift/end"
+			      onsubmit="return confirm('Закончить смену?')">
+				<input type="hidden" name="csrf_token" value="{{ csrf }}">
+				<button type="submit" class="secondary small-btn">Закончить смену</button>
+			</form>
+		</div>
 	{% else %}
 		<p class="msg warn">Смена не начата</p>
-		<a class="btn big" href="/shift/start">Начать смену</a>
-		<p class="hint">Нажмите и наведите камеру на QR-код, который висит в цеху.</p>
+		{% if sites|length == 1 %}
+		<form method="post" action="/shift/start">
+			<input type="hidden" name="csrf_token" value="{{ csrf }}">
+			<input type="hidden" name="site_id" value="{{ sites[0].id }}">
+			<button type="submit" class="big">Начать смену · {{ sites[0].name }}</button>
+		</form>
+		{% else %}
+		<p class="hint">Где вы сегодня работаете?</p>
+		<div class="channel-grid">
+			{% for s in sites %}
+			<form method="post" action="/shift/start">
+				<input type="hidden" name="csrf_token" value="{{ csrf }}">
+				<input type="hidden" name="site_id" value="{{ s.id }}">
+				<button type="submit" class="channel-btn">{{ s.name }}</button>
+			</form>
+			{% endfor %}
+		</div>
+		{% endif %}
 	{% endif %}
 </div>
 

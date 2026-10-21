@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Site
-from app.services.shifts import open_shift
+from app.services.shifts import open_shift, shift_sites
 from app.statuses import ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_LOADER, ROLE_RETURNS, ROLE_STOREKEEPER
 from app.web import GuardedRoute, page
 
@@ -23,7 +23,7 @@ def home(request: Request, db: Session = Depends(get_db), err: str = "") -> Resp
         return page(
             request,
             "my_day.html",
-            {"shift": shift, "site": site, "err": err},
+            {"shift": shift, "site": site, "sites": shift_sites(db, user), "err": err},
         )
     if user.role == ROLE_STOREKEEPER:
         return RedirectResponse("/labels", status_code=303)

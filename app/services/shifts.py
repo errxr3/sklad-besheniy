@@ -99,24 +99,42 @@ def open_shift(session: Session, user_id: int) -> Shift | None:
     ).first()
 
 
+def shift_sites(session: Session, user: User) -> list[Site]:
+    """Площадки, на которых сотрудник может начать смену.
+
+    Грузчики меняются местами — выбирают площадку сами. Сборщик работает на своей
+    площадке (из карточки сотрудника); если она не задана — тоже выбирает.
+    """
+    sites = list(
+        session.scalars(
+            select(Site).where(Site.active.is_(True)).order_by(Site.sort_order, Site.id)
+        ).all()
+    )
+    if user.role != ROLE_LOADER and user.home_site_id:
+        own = [site for site in sites if site.id == user.home_site_id]
+        if own:
+            return own
+    return sites
+
+
 def start_shift(
     session: Session,
     *,
     user: User,
-    code: str,
+    site_id: int,
     ip: str | None = None,
     user_agent: str | None = None,
-    lat: float | None = None,
-    lon: float | None = None,
 ) -> Shift:
-    """Начать смену по коду, отсканированному камерой в цеху (SPEC §5.2)."""
+    """Начать смену кнопкой на выбранной площадке (решение владельца 2026-10-21: без QR)."""
     existing = open_shift(session, user.id)
     if existing is not None:
         started = to_moscow(existing.started_at).strftime("%H:%M")
         raise ShiftError(f"Смена уже начата в {started}")
 
-    site = check_code(session, code)
-    check_geo(site, lat, lon)
+    allowed = {site.id: site for site in shift_sites(session, user)}
+    site = allowed.get(site_id)
+    if site is None:
+        raise ShiftError("Выберите свою площадку")
 
     shift = Shift(
         user_id=user.id,
@@ -124,22 +142,17 @@ def start_shift(
         started_at=now_utc(),
         start_ip=ip,
         start_ua=(user_agent or "")[:300] or None,
-        start_lat=lat,
-        start_lon=lon,
     )
     session.add(shift)
     session.flush()
     return shift
 
 
-def end_shift(session: Session, *, user: User, code: str) -> Shift:
-    """Закончить смену — тоже по скану кода площадки (SPEC §5.4)."""
+def end_shift(session: Session, *, user: User) -> Shift:
+    """Закончить смену кнопкой."""
     shift = open_shift(session, user.id)
     if shift is None:
         raise ShiftError("Открытой смены нет")
-    site = check_code(session, code)
-    if site.id != shift.site_id:
-        raise ShiftError(f"Это код площадки «{site.name}», а смена открыта на другой")
     shift.ended_at = now_utc()
     shift.end_reason = END_USER
     session.flush()

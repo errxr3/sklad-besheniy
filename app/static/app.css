@@ -312,3 +312,6 @@ details.close-shift .inline-form { display: grid; gap: 6px; margin-top: 6px; min
 .shipments th, .shipments td { border: 1px solid #c7cbe0; }
 .shipments td.num, .shipments th.num { min-width: 46px; }
 .shipments tr.header-row td { border-left: 1px solid #c7cbe0; }
+
+/* Маленькая кнопка «Закончить смену» — чтобы не нажать случайно */
+button.small-btn { min-height: 36px; padding: 6px 12px; font-size: 14px; font-weight: 600; }
