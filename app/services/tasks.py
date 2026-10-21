@@ -16,6 +16,7 @@ from app.statuses import (
     MV_WRITE_OFF,
     PRINTED,
     ROLE_ASSEMBLER,
+    ROLE_SHIFT_LEAD,
     WRITTEN_OFF,
 )
 from app.timeutil import msk_day_bounds, now_utc, today_msk
@@ -144,6 +145,47 @@ def log_task(
     )
 
 
+def task_sites(session: Session, actor: User) -> list[Site]:
+    """Площадки, задачи которых видит и ставит сотрудник.
+
+    Начальник смены с площадкой в карточке работает только с ней, без площадки — с обеими.
+    """
+    sites = list(
+        session.scalars(
+            select(Site).where(Site.active.is_(True)).order_by(Site.sort_order, Site.id)
+        ).all()
+    )
+    if actor.role == ROLE_SHIFT_LEAD and actor.home_site_id:
+        own = [site for site in sites if site.id == actor.home_site_id]
+        if own:
+            return own
+    return sites
+
+
+def check_task_site(session: Session, actor: User, site_id: int) -> None:
+    """Запрет работы с задачами чужой площадки."""
+    if site_id not in {site.id for site in task_sites(session, actor)}:
+        raise TaskError("Задачи этой площадки вам недоступны")
+
+
+def site_workers(session: Session, site_id: int) -> list[User]:
+    """Сборщики площадки: с этой площадкой в карточке или без площадки."""
+    return list(
+        session.scalars(
+            select(User)
+            # Задачи — только сборщикам: грузчик работает по каналам без задач,
+            # служебные «сборщики» (остаток, возвраты) задач не получают
+            .where(
+                User.active.is_(True),
+                User.role == ROLE_ASSEMBLER,
+                User.is_service.is_(False),
+                (User.home_site_id == site_id) | User.home_site_id.is_(None),
+            )
+            .order_by(User.name)
+        ).all()
+    )
+
+
 def _check_editable(day: date) -> None:
     """Прошедшие дни только просматриваются (SPEC §6.2)."""
     if day < today_msk():
@@ -164,9 +206,13 @@ def create_task(
 ) -> Task:
     """Поставить задачу сотруднику."""
     _check_editable(day)
+    check_task_site(session, actor, site_id)
     worker = session.get(User, user_id)
     if worker is None or not worker.active:
         raise TaskError("Сотрудник не найден")
+    if worker.home_site_id and worker.home_site_id != site_id:
+        home = session.get(Site, worker.home_site_id)
+        raise TaskError(f"{worker.name} работает на площадке {home.name if home else 'другой'}")
 
     if kind == "article":
         if worker.role != ROLE_ASSEMBLER:
@@ -226,6 +272,7 @@ def update_task(
     if task is None:
         raise TaskError("Задача не найдена")
     _check_editable(task.date)
+    check_task_site(session, actor, task.site_id)
     before = _snapshot(task)
     if task.kind == "article":
         if qty_plan is None or qty_plan < 1:
@@ -253,6 +300,7 @@ def delete_task(session: Session, *, actor: User, task_id: int) -> None:
     if task is None:
         raise TaskError("Задача не найдена")
     _check_editable(task.date)
+    check_task_site(session, actor, task.site_id)
     before = _snapshot(task)
     log_task(session, task_id=task.id, user_id=actor.id, action="удалена", before=before)
     session.delete(task)
@@ -279,6 +327,7 @@ def copy_remaining(
 ) -> int:
     """Перенести невыполненный остаток плана на другую дату (SPEC §6.2)."""
     _check_editable(target_day)
+    check_task_site(session, actor, site_id)
     tasks = session.scalars(
         select(Task).where(Task.date == source_day, Task.site_id == site_id, Task.kind == "article")
     ).all()

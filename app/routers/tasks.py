@@ -19,10 +19,11 @@ from app.services.tasks import (
     done_count,
     mark_text_task_done,
     plan_fact_report,
+    site_workers,
+    task_sites,
     tasks_progress,
     update_task,
 )
-from app.statuses import ROLE_ASSEMBLER
 from app.timeutil import today_msk
 from app.web import GuardedRoute, page
 
@@ -51,24 +52,14 @@ def tasks_page(
 ) -> Response:
     """Экран задач: по умолчанию — завтра (SPEC §6.2)."""
     target_day = date.fromisoformat(day) if day else today_msk() + timedelta(days=1)
-    sites = list(db.scalars(select(Site).where(Site.active.is_(True)).order_by(Site.sort_order)).all())
     user = request.state.user
-    home = next((s for s in sites if s.id == user.home_site_id), None)
-    # По умолчанию — площадка начальника смены, иначе первая активная
-    site = db.get(Site, site_id) if site_id else (home or (sites[0] if sites else None))
-    workers = list(
-        db.scalars(
-            select(User)
-            # Задачи — только сборщикам: грузчик работает по каналам без задач,
-            # служебные «сборщики» (остаток, возвраты) задач не получают
-            .where(
-                User.active.is_(True),
-                User.role == ROLE_ASSEMBLER,
-                User.is_service.is_(False),
-            )
-            .order_by(User.name)
-        ).all()
-    )
+    # Начальник смены с площадкой в карточке видит только её задачи
+    sites = task_sites(db, user)
+    by_id = {s.id: s for s in sites}
+    home = by_id.get(user.home_site_id) if user.home_site_id else None
+    # По умолчанию — площадка начальника смены, иначе первая доступная
+    site = by_id.get(site_id) or home or (sites[0] if sites else None)
+    workers = site_workers(db, site.id) if site is not None else []
 
     by_user: dict[int, list[dict[str, object]]] = {}
     if site is not None:
