@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}В пути больше суток{% endblock %}
 {% block content %}
+{% include "_warehouse_tabs.html" %}
 <h1>В пути больше суток</h1>
 <div class="card">
 	{% if not units %}<p class="msg ok">Таких зеркал нет.</p>{% endif %}

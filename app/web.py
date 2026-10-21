@@ -231,13 +231,23 @@ def error_page(request: Request, message: str, status_code: int) -> HTMLResponse
     return response
 
 
+# Страницы, которые в меню относятся к разделу «Склад»
+_WAREHOUSE_PAGES = ("/stock", "/shipments")
+
+
+def _menu_section(path: str) -> str:
+    """Пункт меню, который подсветить для страницы."""
+    first = "/" + path.lstrip("/").split("/")[0]
+    return "/warehouse" if first in _WAREHOUSE_PAGES else first
+
+
 def page(request: Request, template: str, context: dict[str, Any] | None = None) -> HTMLResponse:
     """Отрисовать страницу с общими переменными."""
     user = getattr(request.state, "user", None) or load_user(request)
     data: dict[str, Any] = {
         "user": user,
         "menu": menu_for(user.role if user else None),
-        "active_url": "/" + request.url.path.lstrip("/").split("/")[0],
+        "active_url": _menu_section(request.url.path),
         "current_path": request.url.path,
         "csrf": csrf_token(request),
         "today": today_msk(),

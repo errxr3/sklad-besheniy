@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import Site
 from app.services.sheets import is_configured, last_sync, minutes_since_sync, sync_stock_to_sheets
+from app.services.shipment_report import CHANNEL_COLUMNS, build_shipment_table
 from app.services.stock import build_stock_table, site_locative
 from app.timeutil import now_utc, today_msk
 from app.web import GuardedRoute, page
@@ -32,6 +33,27 @@ def _attachment(name: str, fallback: str) -> str:
     Простое имя оставлено для старых браузеров, настоящее — в filename*.
     """
     return f"attachment; filename=\"{fallback}\"; filename*=UTF-8''{quote(name)}"
+
+
+@router.get("/shipments", response_class=HTMLResponse)
+def shipments_page(request: Request, db: Session = Depends(get_db), day: str = "") -> Response:
+    """Отгрузка за день — как гугл-таблица: остатки, задачи, каналы, «после отгрузок»."""
+    try:
+        target_day = date.fromisoformat(day) if day else today_msk()
+    except ValueError:
+        target_day = today_msk()
+    table = build_shipment_table(db, day=target_day)
+    copy_data = {"before": table.tsv_before(), "after": table.tsv_after()}
+    return page(
+        request,
+        "shipments.html",
+        {
+            "table": table,
+            "day": target_day,
+            "channels": [title for title, _, _ in CHANNEL_COLUMNS],
+            "copy_json": json.dumps(copy_data, ensure_ascii=False),
+        },
+    )
 
 
 @router.get("/stock", response_class=HTMLResponse)

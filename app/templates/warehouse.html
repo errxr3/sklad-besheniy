@@ -1,8 +1,11 @@
 {% extends "base.html" %}
 {% block title %}Склад{% endblock %}
 {% block content %}
+{% include "_warehouse_tabs.html" %}
 <h1>Склад</h1>
 <div class="grid2">
+	<a class="card tile" href="/stock"><h2>Остатки</h2><p class="muted">Как в гугл-таблице: площадки и задачи</p></a>
+	<a class="card tile" href="/shipments"><h2>Отгрузка</h2><p class="muted">Остатки, задачи, отгрузки по каналам, склад − отгрузка</p></a>
 	<a class="card tile" href="/warehouse/in-transit"><h2>В пути больше суток</h2><p class="muted">{{ in_transit }} зеркал</p></a>
 	<a class="card tile" href="/warehouse/printed-old"><h2>Напечатано больше суток</h2><p class="muted">Этикетки без приёмки</p></a>
 	{% if can('/inventory') %}

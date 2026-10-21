@@ -1,6 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Остатки{% endblock %}
 {% block content %}
+{% include "_warehouse_tabs.html" %}
 <h1>Остатки</h1>
 {% if ok %}<p class="msg ok">{{ ok }}</p>{% endif %}
 {% if err %}<p class="msg err">{{ err }}</p>{% endif %}

@@ -1,0 +1,114 @@
+{% extends "base.html" %}
+{% block title %}Отгрузка{% endblock %}
+{% block content %}
+{% include "_warehouse_tabs.html" %}
+<h1>Отгрузка</h1>
+
+<div class="card stock-controls">
+	<form method="get" action="/shipments" class="row tight">
+		<div>
+			<label for="day">День</label>
+			<input type="date" id="day" name="day" value="{{ day.isoformat() }}">
+		</div>
+		<div><label>&nbsp;</label><button type="submit" class="secondary">Показать</button></div>
+	</form>
+	<p class="hint">Данные на <b>{{ table.built_at }}</b>. Отгрузки — что грузчики отсканировали за день
+		с {{ table.ship_site.name if table.ship_site else 'площадки' }}, по каналам и машинам Ozon.
+		«До отгрузок» = остаток сейчас + отгружено за день. Страница не обновляется сама.</p>
+	<div class="row tight mt">
+		<button type="button" class="secondary" data-copy="before">Копировать «ДО отгрузок» (C–O)</button>
+		<button type="button" class="secondary" data-copy="after">Копировать «ПОСЛЕ отгрузок» (S–Z)</button>
+	</div>
+	<p class="hint">Вставка: в гугл-таблице встаньте в столбец <b>C</b> (или <b>S</b>) на строку
+		«{{ table.rows[0].name if table.rows else 'Полотна' }}» и нажмите Ctrl+V — цифры лягут напротив своих
+		артикулов, пустые столбцы E, H, W, Y пропускаются сами.</p>
+</div>
+
+<div class="table-wrap">
+	<table class="dense shipments">
+		<thead>
+			<tr>
+				<th class="sticky" rowspan="2">Артикул</th>
+				<th colspan="4" class="group before">ДО отгрузок · {{ day|day_month }}</th>
+				<th colspan="{{ channels|length }}" class="group ch">Отгрузки</th>
+				<th colspan="4" class="group after">ПОСЛЕ отгрузок</th>
+			</tr>
+			<tr>
+				<th class="num">{{ table.other_site.name if table.other_site else '' }}</th>
+				<th class="num">{{ table.ship_site.name if table.ship_site else '' }}</th>
+				<th class="num">Задачи {{ (table.other_site.name if table.other_site else '')|locative }}</th>
+				<th class="num">Задачи {{ (table.ship_site.name if table.ship_site else '')|locative }}</th>
+				{% for title in channels %}<th class="num ch">{{ title }}</th>{% endfor %}
+				<th class="num">склад − отгрузка</th>
+				<th class="num">склад + задачи − отгрузка</th>
+				<th class="num">{{ table.other_site.name if table.other_site else '' }} + задачи</th>
+				<th class="num">общее</th>
+			</tr>
+			<tr class="totals">
+				<th class="sticky">Отгружено за день</th>
+				<th colspan="4"></th>
+				{% for value in table.totals %}<th class="num">{{ value or '' }}</th>{% endfor %}
+				<th colspan="4" class="num">всего {{ table.totals|sum }}</th>
+			</tr>
+		</thead>
+		<tbody>
+		{% for row in table.rows %}
+			{% if row.is_header %}
+			<tr class="header-row"><td class="sticky" colspan="{{ 9 + channels|length }}">{{ row.name }}</td></tr>
+			{% else %}
+			<tr {% if row.color_hex %}style="background:{{ row.color_hex }}"{% endif %}>
+				<td class="sticky" {% if row.color_hex %}style="background:{{ row.color_hex }}"{% endif %}>{{ row.name }}</td>
+				<td class="num {% if row.before_other == 0 %}zero{% endif %}">{{ row.before_other }}</td>
+				<td class="num {% if row.before_ship == 0 %}zero{% endif %}">{{ row.before_ship }}</td>
+				<td class="num">{{ row.tasks_other or '' }}</td>
+				<td class="num">{{ row.tasks_ship or '' }}</td>
+				{% for value in row.channels %}<td class="num ch">{{ value or '' }}</td>{% endfor %}
+				<td class="num {% if row.after < 0 %}neg{% elif row.after == 0 %}zero{% endif %}">{{ row.after }}</td>
+				<td class="num {% if row.after_with_tasks < 0 %}neg{% elif row.after_with_tasks == 0 %}zero{% endif %}">{{ row.after_with_tasks }}</td>
+				<td class="num">{{ row.other_with_tasks }}</td>
+				<td class="num"><b>{{ row.total }}</b></td>
+			</tr>
+			{% endif %}
+		{% endfor %}
+		</tbody>
+	</table>
+</div>
+<div id="toast" class="msg ok" hidden style="position:fixed;bottom:16px;left:16px;right:16px;z-index:50"></div>
+{% endblock %}
+{% block scripts %}
+<script id="copy-data" type="application/json">{{ copy_json|safe }}</script>
+<script>
+(function () {
+	var data = JSON.parse(document.getElementById('copy-data').textContent);
+	var toast = document.getElementById('toast');
+	function show(message) {
+		toast.textContent = message;
+		toast.hidden = false;
+		setTimeout(function () { toast.hidden = true; }, 2500);
+	}
+	function fallback(text, rows) {
+		var area = document.createElement('textarea');
+		area.value = text;
+		area.style.position = 'fixed';
+		area.style.opacity = '0';
+		document.body.appendChild(area);
+		area.select();
+		try { document.execCommand('copy'); show('Скопировано строк: ' + rows); }
+		catch (e) { show('Не удалось скопировать'); }
+		document.body.removeChild(area);
+	}
+	Array.prototype.forEach.call(document.querySelectorAll('[data-copy]'), function (button) {
+		button.addEventListener('click', function () {
+			var text = data[button.dataset.copy];
+			var rows = text.split('\n').length;
+			if (navigator.clipboard && navigator.clipboard.writeText) {
+				navigator.clipboard.writeText(text).then(function () { show('Скопировано строк: ' + rows); })
+					.catch(function () { fallback(text, rows); });
+			} else {
+				fallback(text, rows);
+			}
+		});
+	});
+})();
+</script>
+{% endblock %}

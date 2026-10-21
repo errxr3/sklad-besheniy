@@ -286,3 +286,23 @@ details.close-shift .inline-form { display: grid; gap: 6px; margin-top: 6px; min
 .grid3 .card { margin: 0; padding: 12px 14px; }
 .grid3 h3 { margin: 0 0 4px; font-size: 18px; color: var(--accent-dark); }
 .grid3 p { margin: 0; }
+
+/* Отгрузка: группы столбцов как в гугл-таблице */
+.shipments th.group { text-align: center; font-size: 13px; }
+.shipments th.group.before { background: #ffd8a8; }
+.shipments th.group.ch { background: #fde6d2; }
+.shipments th.group.after { background: #b9f0c9; }
+.shipments td.ch { background: rgba(255, 244, 214, .7); }
+.shipments td.neg { background: #e8463c; color: #fff; font-weight: 700; }
+.shipments tr.totals th { background: #f6f3ff; font-size: 13px; }
+.shipments thead th { position: relative; top: auto; }
+.shipments thead th.sticky { position: sticky; left: 0; }
+
+/* Вкладки раздела «Склад» */
+.subtabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; margin: 0 0 12px; padding-bottom: 2px; }
+.subtabs::-webkit-scrollbar { display: none; }
+.subtabs a {
+	flex: 0 0 auto; padding: 8px 14px; border-radius: 10px; text-decoration: none; white-space: nowrap;
+	color: var(--accent-dark); background: #fff; border: 1px solid #d9d6fb; font-weight: 600; font-size: 15px;
+}
+.subtabs a.active { background: var(--accent); color: #fff; border-color: var(--accent); }
