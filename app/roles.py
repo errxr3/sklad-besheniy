@@ -147,6 +147,7 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     # Остатки и выгрузки
     ("GET", "/stock"): LEADS,
     ("GET", "/shipments"): LEADS,
+    ("GET", "/shipments.xlsx"): LEADS,
     ("GET", "/stock.csv"): LEADS,
     ("GET", "/stock.xlsx"): LEADS,
     ("POST", "/stock/sync"): LEADS,

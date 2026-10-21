@@ -65,7 +65,7 @@ def test_headers_are_rows_without_numbers(db: Session) -> None:
     _with_catalog(db)
     table = build_stock_table(db)
     headers = [row for row in table.rows if row.is_header]
-    assert len(headers) == 8
+    assert len(headers) == 10
     assert headers[0].name == "ПОЛОТНА"
     assert headers[0].stock_text(0) == ""
     assert headers[0].tasks_text(0) == ""

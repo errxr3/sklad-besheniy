@@ -63,13 +63,16 @@ def prefix_for(name: str) -> str:
 def is_subgroup_header(value: str) -> bool:
     """Строка справочника — заголовок подгруппы, а не артикул (SPEC §9).
 
-    Признак: текст целиком заглавными буквами (цифры и пробелы не мешают).
+    Признак: первое слово целиком заглавными буквами — «ПОЛОТНА», «БЕЗРАМНЫЕ КРУГЛЫЕ»,
+    а также «ПОЛОТНА без креплений», «АЛЮМИНИЙ на ноге». Артикулы так не начинаются
+    («Zerkalo_100x200», «Ambient 90 krug multi»).
     """
     text = str(value).strip()
     if not text:
         return False
-    letters = [ch for ch in text if ch.isalpha()]
-    if not letters:
+    first_word = text.split()[0]
+    letters = [ch for ch in first_word if ch.isalpha()]
+    if len(letters) < 2:
         return False
     return all(ch.isupper() for ch in letters)
 

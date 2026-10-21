@@ -169,9 +169,9 @@ def test_articles_import_through_page(client: TestClient, db: Session) -> None:
             follow_redirects=True,
         )
     assert response.status_code == 200
-    assert "Добавлено: 298" in response.text
+    assert "Добавлено: 296" in response.text
     count = len(db.scalars(select(Article).where(Article.kind == "article")).all())
-    assert count == 298
+    assert count == 296
 
 
 def test_article_deactivation_and_color(client: TestClient, db: Session) -> None:

@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import Site
 from app.services.sheets import is_configured, last_sync, minutes_since_sync, sync_stock_to_sheets
-from app.services.shipment_report import CHANNEL_COLUMNS, build_shipment_table
+from app.services.shipment_report import CHANNEL_COLUMNS, build_shipment_table, shipment_xlsx
 from app.services.stock import build_stock_table, site_locative
 from app.timeutil import now_utc, today_msk
 from app.web import GuardedRoute, page
@@ -43,7 +43,6 @@ def shipments_page(request: Request, db: Session = Depends(get_db), day: str = "
     except ValueError:
         target_day = today_msk()
     table = build_shipment_table(db, day=target_day)
-    copy_data = {"before": table.tsv_before(), "after": table.tsv_after()}
     return page(
         request,
         "shipments.html",
@@ -51,8 +50,23 @@ def shipments_page(request: Request, db: Session = Depends(get_db), day: str = "
             "table": table,
             "day": target_day,
             "channels": [title for title, _, _ in CHANNEL_COLUMNS],
-            "copy_json": json.dumps(copy_data, ensure_ascii=False),
         },
+    )
+
+
+@router.get("/shipments.xlsx")
+def shipments_xlsx(request: Request, db: Session = Depends(get_db), day: str = "") -> Response:
+    """Полный файл отгрузки за день в столбцах гугл-таблицы."""
+    try:
+        target_day = date.fromisoformat(day) if day else today_msk()
+    except ValueError:
+        target_day = today_msk()
+    content = shipment_xlsx(build_shipment_table(db, day=target_day))
+    name = f"Отгрузка_{target_day:%d.%m.%Y}_{now_utc().strftime('%H-%M')}.xlsx"
+    return Response(
+        content=content,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": _attachment(name, "shipments.xlsx")},
     )
 
 

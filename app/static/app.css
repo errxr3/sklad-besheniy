@@ -306,3 +306,9 @@ details.close-shift .inline-form { display: grid; gap: 6px; margin-top: 6px; min
 	color: var(--accent-dark); background: #fff; border: 1px solid #d9d6fb; font-weight: 600; font-size: 15px;
 }
 .subtabs a.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* Отгрузка: сетка по клеточкам, как в гугл-таблице */
+.shipments { border-collapse: collapse; }
+.shipments th, .shipments td { border: 1px solid #c7cbe0; }
+.shipments td.num, .shipments th.num { min-width: 46px; }
+.shipments tr.header-row td { border-left: 1px solid #c7cbe0; }

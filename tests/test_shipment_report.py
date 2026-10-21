@@ -61,7 +61,7 @@ def test_channels_trucks_and_after_columns(db: Session) -> None:
     titles = [title for title, _, _ in CHANNEL_COLUMNS]
     by_title = dict(zip(titles, row.channels, strict=True))
     assert by_title == {
-        "OZON утро": 3, "КГТ": 0, "СДЭК": 0, "WB": 1, "СГТ": 1, "Ozon 2": 0, "Ozon 3": 2,
+        "Озон 1": 3, "КГТ": 0, "СДЭК": 0, "WB": 1, "СГТ": 1, "Озон 2": 0, "Озон 3": 2,
     }
     assert row.before_ship == 10  # остаток до отгрузок
     assert row.before_other == 3
@@ -73,21 +73,27 @@ def test_channels_trucks_and_after_columns(db: Session) -> None:
     assert table.totals[0] == 3
 
 
-def test_tsv_layout_matches_sheet_columns(db: Session) -> None:
-    """Копирование: C…O и S…Z с пустыми столбцами E, H, W, Y; строки-заголовки пустые."""
+def test_xlsx_layout_matches_sheet_columns(client: TestClient, db: Session) -> None:
+    """XLSX: столбцы как в гугл-таблице, заголовки подгрупп — отдельные строки."""
+    import io
+
+    from openpyxl import load_workbook
+
     db.add(Article(kind="header", name="Полотна", group="Полотна", sort_order=0))
     db.commit()
     article = make_article(db, name="Zerkalo_60x160", sort_order=1)
     _stock(db, article.id, "Коминтерна", 2)
-    table = build_shipment_table(db, day=today_msk())
-
-    before = table.tsv_before().split("\n")
-    after = table.tsv_after().split("\n")
-    assert before[0] == "" and after[0] == ""
-    cells = before[1].split("\t")
-    assert len(cells) == 6 + len(CHANNEL_COLUMNS)  # C D E F G H + каналы I…O
-    assert cells[:6] == ["0", "2", "", "", "", ""]
-    assert after[1].split("\t") == ["2", "2", "", "", "", "0", "", "2"]
+    lead = make_user(db, name="Начальник файла", role=ROLE_SHIFT_LEAD)
+    login(client, lead)
+    response = client.get("/shipments.xlsx")
+    assert response.status_code == 200
+    sheet = load_workbook(io.BytesIO(response.content)).active
+    assert sheet["B2"].value == "Артикул" and sheet["I2"].value == "Озон 1"
+    assert sheet["O2"].value == "Озон 3" and sheet["Z2"].value == "общее"
+    assert sheet["B4"].value == "Полотна" and sheet["C4"].value is None
+    assert sheet["B5"].value == "Zerkalo_60x160"
+    assert (sheet["C5"].value, sheet["D5"].value) == (0, 2)
+    assert (sheet["S5"].value, sheet["T5"].value, sheet["Z5"].value) == (2, 2, 2)
 
 
 def test_shipments_page_for_lead(client: TestClient, db: Session) -> None:
@@ -95,7 +101,34 @@ def test_shipments_page_for_lead(client: TestClient, db: Session) -> None:
     login(client, lead)
     response = client.get("/shipments")
     assert response.status_code == 200
-    for text in ("ДО отгрузок", "ПОСЛЕ отгрузок", "OZON утро", "Ozon 3", "склад − отгрузка"):
+    for text in ("ДО отгрузок", "ПОСЛЕ отгрузок", "Озон 1", "Озон 3", "склад − отгрузка"):
         assert text in response.text
     stock = client.get("/stock").text
     assert 'href="/shipments"' in stock  # вкладки раздела «Склад»
+
+
+def test_only_closed_channels_and_repeats_are_summed(db: Session) -> None:
+    """В колонки попадает только закрытый канал; Озон 1 в 8:00 и в 9:00 — сумма в одной колонке."""
+    article = make_article(db, name="Zerkalo_80x200")
+    units = _stock(db, article.id, "Коминтерна", 6)
+    loader = make_user(db, name="Грузчик повторов", role=ROLE_LOADER)
+
+    _ship(db, loader, units[:2], "Ozon", "Озон1")  # «8 утра»
+    _ship(db, loader, units[2:3], "Ozon", "Озон1")  # «9 утра» — снова Озон 1
+    # Открытый, ещё не закрытый канал WB
+    pallet = open_new_pallet(db, user=loader, site=site_by_name(db, "Коминтерна"), channel="WB")
+    assert scan_loading(db, code=units[3].number, pallet=pallet, actor=loader).ok
+    db.commit()
+
+    row = next(r for r in build_shipment_table(db, day=today_msk()).rows if r.name == "Zerkalo_80x200")
+    titles = [title for title, _, _ in CHANNEL_COLUMNS]
+    by_title = dict(zip(titles, row.channels, strict=True))
+    assert by_title["Озон 1"] == 3
+    assert by_title["WB"] == 0  # канал не закрыт
+    assert row.before_ship == 6  # до отгрузок — включая открытый канал
+
+    close_pallet(db, pallet_id=pallet.id, user=loader)
+    db.commit()
+    row = next(r for r in build_shipment_table(db, day=today_msk()).rows if r.name == "Zerkalo_80x200")
+    assert dict(zip(titles, row.channels, strict=True))["WB"] == 1
+    assert row.after == 2

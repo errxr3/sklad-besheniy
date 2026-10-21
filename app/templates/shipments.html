@@ -16,12 +16,10 @@
 		с {{ table.ship_site.name if table.ship_site else 'площадки' }}, по каналам и машинам Ozon.
 		«До отгрузок» = остаток сейчас + отгружено за день. Страница не обновляется сама.</p>
 	<div class="row tight mt">
-		<button type="button" class="secondary" data-copy="before">Копировать «ДО отгрузок» (C–O)</button>
-		<button type="button" class="secondary" data-copy="after">Копировать «ПОСЛЕ отгрузок» (S–Z)</button>
+		<a class="btn" href="/shipments.xlsx?day={{ day.isoformat() }}">Скачать XLSX</a>
 	</div>
-	<p class="hint">Вставка: в гугл-таблице встаньте в столбец <b>C</b> (или <b>S</b>) на строку
-		«{{ table.rows[0].name if table.rows else 'Полотна' }}» и нажмите Ctrl+V — цифры лягут напротив своих
-		артикулов, пустые столбцы E, H, W, Y пропускаются сами.</p>
+	<p class="hint">Файл в тех же столбцах, что гугл-таблица отгрузок (B…O — до отгрузок, R…Z — после):
+		скачайте и разнесите в гугл-таблицу.</p>
 </div>
 
 <div class="table-wrap">
@@ -73,42 +71,4 @@
 		</tbody>
 	</table>
 </div>
-<div id="toast" class="msg ok" hidden style="position:fixed;bottom:16px;left:16px;right:16px;z-index:50"></div>
-{% endblock %}
-{% block scripts %}
-<script id="copy-data" type="application/json">{{ copy_json|safe }}</script>
-<script>
-(function () {
-	var data = JSON.parse(document.getElementById('copy-data').textContent);
-	var toast = document.getElementById('toast');
-	function show(message) {
-		toast.textContent = message;
-		toast.hidden = false;
-		setTimeout(function () { toast.hidden = true; }, 2500);
-	}
-	function fallback(text, rows) {
-		var area = document.createElement('textarea');
-		area.value = text;
-		area.style.position = 'fixed';
-		area.style.opacity = '0';
-		document.body.appendChild(area);
-		area.select();
-		try { document.execCommand('copy'); show('Скопировано строк: ' + rows); }
-		catch (e) { show('Не удалось скопировать'); }
-		document.body.removeChild(area);
-	}
-	Array.prototype.forEach.call(document.querySelectorAll('[data-copy]'), function (button) {
-		button.addEventListener('click', function () {
-			var text = data[button.dataset.copy];
-			var rows = text.split('\n').length;
-			if (navigator.clipboard && navigator.clipboard.writeText) {
-				navigator.clipboard.writeText(text).then(function () { show('Скопировано строк: ' + rows); })
-					.catch(function () { fallback(text, rows); });
-			} else {
-				fallback(text, rows);
-			}
-		});
-	});
-})();
-</script>
 {% endblock %}

@@ -10,9 +10,9 @@ from app.models import Article
 
 TOP_PATH = Path(__file__).resolve().parent.parent / "docs" / "input" / "TOP.xlsx"
 
-# В файле 306 строк: 298 артикулов и 8 строк-заголовков подгрупп
-EXPECTED_ARTICLES = 298
-EXPECTED_HEADERS = 8
+# В файле 306 строк: 296 артикулов и 10 строк-заголовков подгрупп
+EXPECTED_ARTICLES = 296
+EXPECTED_HEADERS = 10
 EXPECTED_ROWS = EXPECTED_ARTICLES + EXPECTED_HEADERS
 
 
