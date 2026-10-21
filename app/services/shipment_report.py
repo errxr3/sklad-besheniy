@@ -12,8 +12,8 @@
                    U задачи Коминтерна, V задачи Учительской,
                    X Учительская + задачи, Z общее (T + X).
 
-«До отгрузок» = остаток сейчас + всё отгруженное за день (в том числе в ещё открытом канале):
-пока канал открыт, его зеркала уже не на складе, но в колонки ещё не попали.
+«До отгрузок» = остаток (сейчас или на конец прошедшего дня — по журналу движений) + всё
+отгруженное за день, в том числе в ещё открытом канале.
 """
 
 from collections import defaultdict
@@ -25,10 +25,10 @@ from sqlalchemy.orm import Session
 
 from app.models import Article, Movement, Pallet, Site, Unit
 from app.seed import RETURNS_SITE_NAME
-from app.services.stock import active_sites, stock_by_article_site
+from app.services.stock import active_sites, stock_at, stock_by_article_site
 from app.services.tasks import plan_sum_by_site
 from app.statuses import MV_SHIP, MV_SHIP_CANCEL, OZON, OZON_TRUCKS
-from app.timeutil import fmt_dt, msk_day_bounds, now_utc
+from app.timeutil import fmt_dt, msk_day_bounds, now_utc, today_msk
 
 # Колонки каналов в порядке гугл-таблицы: (заголовок, канал, машина Ozon или None)
 CHANNEL_COLUMNS: tuple[tuple[str, str, str | None], ...] = (
@@ -103,6 +103,7 @@ class ShipmentTable:
     other_site: Site | None
     rows: list[ShipmentRow]
     built_at: str
+    is_today: bool = True
     totals: list[int] = field(default_factory=list)  # отгружено по каналам за день
 
 
@@ -165,7 +166,11 @@ def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
     ship_site = next((s for s in sites if s.name == SHIP_SITE_NAME), sites[0] if sites else None)
     other_site = next((s for s in sites if ship_site is None or s.id != ship_site.id), None)
 
-    stock = stock_by_article_site(session)
+    # Сегодня — остаток сейчас; прошедший день — остаток на конец того дня по журналу
+    if day >= today_msk():
+        stock = stock_by_article_site(session)
+    else:
+        stock = stock_at(session, msk_day_bounds(day)[1])
     plans = plan_sum_by_site(session, day=day)
     shipped: dict[tuple[int, int], int] = {}
     shipped_other: dict[tuple[int, int], int] = {}
@@ -216,6 +221,7 @@ def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
         rows=rows,
         built_at=fmt_dt(now_utc()),
         totals=totals,
+        is_today=day >= today_msk(),
     )
 
 

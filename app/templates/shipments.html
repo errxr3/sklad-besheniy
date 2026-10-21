@@ -12,14 +12,10 @@
 		</div>
 		<div><label>&nbsp;</label><button type="submit" class="secondary">Показать</button></div>
 	</form>
-	<p class="hint">Данные на <b>{{ table.built_at }}</b>. Отгрузки — что грузчики отсканировали за день
-		с {{ table.ship_site.name if table.ship_site else 'площадки' }}, по каналам и машинам Ozon.
-		«До отгрузок» = остаток сейчас + отгружено за день. Страница не обновляется сама.</p>
+	<p class="hint">{% if table.is_today %}Сегодня, данные на <b>{{ table.built_at }}</b>{% else %}Итог дня <b>{{ day|date }}</b>: остатки на конец дня{% endif %}</p>
 	<div class="row tight mt">
 		<a class="btn" href="/shipments.xlsx?day={{ day.isoformat() }}">Скачать XLSX</a>
 	</div>
-	<p class="hint">Файл в тех же столбцах, что гугл-таблица отгрузок (B…O — до отгрузок, R…Z — после):
-		скачайте и разнесите в гугл-таблицу.</p>
 </div>
 
 <div class="table-wrap">

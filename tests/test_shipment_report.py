@@ -132,3 +132,32 @@ def test_only_closed_channels_and_repeats_are_summed(db: Session) -> None:
     row = next(r for r in build_shipment_table(db, day=today_msk()).rows if r.name == "Zerkalo_80x200")
     assert dict(zip(titles, row.channels, strict=True))["WB"] == 1
     assert row.after == 2
+
+
+def test_past_day_uses_stock_from_journal(db: Session) -> None:
+    """Прошедший день показывает остатки на конец того дня, а не сегодняшние."""
+    from datetime import timedelta
+
+    from app.services.stock import stock_at
+    from app.timeutil import now_utc
+
+    article = make_article(db, name="Zerkalo_40x160")
+    site = site_by_name(db, "Коминтерна")
+    units = _stock(db, article.id, "Коминтерна", 4)
+    between = now_utc()
+    loader = make_user(db, name="Грузчик истории", role=ROLE_LOADER)
+    _ship(db, loader, units[:3], "WB")
+
+    # По журналу: до отгрузки 4 на складе, после — 1, а до приёмки — ничего
+    assert stock_at(db, between).get((article.id, site.id)) == 4
+    assert stock_at(db, now_utc() + timedelta(seconds=1)).get((article.id, site.id)) == 1
+    assert stock_at(db, between - timedelta(days=1)).get((article.id, site.id)) is None
+
+    yesterday = build_shipment_table(db, day=today_msk() - timedelta(days=1))
+    row = next(r for r in yesterday.rows if r.name == "Zerkalo_40x160")
+    assert (row.before_ship, row.shipped, row.after) == (0, 0, 0)
+    assert not yesterday.is_today
+
+    today = build_shipment_table(db, day=today_msk())
+    row = next(r for r in today.rows if r.name == "Zerkalo_40x160")
+    assert (row.before_ship, row.shipped, row.after) == (4, 3, 1)

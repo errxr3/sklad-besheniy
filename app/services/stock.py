@@ -1,12 +1,12 @@
 """Экран «Остатки» — повторяет левый блок гугл-таблицы «ДО отгрузок» (SPEC §6.9)."""
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Article, Site, Unit
+from app.models import Article, Movement, Site, Unit
 from app.services.tasks import plan_sum_by_site
 from app.statuses import IN_STOCK
 from app.timeutil import now_utc
@@ -83,6 +83,32 @@ def stock_by_article_site(session: Session) -> dict[tuple[int, int], int]:
         .group_by(Unit.article_id, Unit.site_id)
     ).all()
     return {(int(article_id), int(site_id)): int(count) for article_id, site_id, count in rows}
+
+
+def stock_at(session: Session, moment: datetime) -> dict[tuple[int, int], int]:
+    """Остатки на момент времени, восстановленные по журналу движений.
+
+    Журнал неизменяем (SPEC §8), поэтому состояние любого прошедшего дня считается точно:
+    для каждого зеркала берётся последнее движение до момента — его статус и площадка.
+    """
+    last = (
+        select(Movement.unit_id, Movement.to_status, Movement.to_site_id)
+        .where(Movement.created_at < moment)
+        .distinct(Movement.unit_id)
+        .order_by(Movement.unit_id, Movement.created_at.desc(), Movement.id.desc())
+        .subquery()
+    )
+    rows = session.execute(
+        select(Unit.article_id, last.c.to_site_id, func.count())
+        .join(last, last.c.unit_id == Unit.id)
+        .where(last.c.to_status == IN_STOCK)
+        .group_by(Unit.article_id, last.c.to_site_id)
+    ).all()
+    return {
+        (int(article_id), int(site_id)): int(count)
+        for article_id, site_id, count in rows
+        if site_id is not None
+    }
 
 
 def active_sites(session: Session) -> list[Site]:
