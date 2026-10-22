@@ -313,7 +313,7 @@ async def tasks_import_preview(
     file: UploadFile = File(...),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Разобрать файл: всё узнано — поставить задачи сразу, иначе показать, что не сошлось."""
+    """Разобрать файл и показать, что будет поставлено, ничего не записывая."""
     user = request.state.user
     site = _import_site(db, user, site_id)
     sites = task_sites(db, user)
@@ -334,13 +334,6 @@ async def tasks_import_preview(
             preview = parse_tasks_file(db, content, site)
         except TasksFileError as exc:
             error = str(exc)
-    if site is not None and preview is not None and preview.clean:
-        owner = {c.index: c.user_id for c in preview.columns}
-        wanted: dict[tuple[int, int], int] = {}
-        for cell in preview.cells:
-            key = (owner[cell.col] or 0, cell.article_id)
-            wanted[key] = wanted.get(key, 0) + cell.qty
-        return _place_tasks(db, user, target_day, site.id, wanted, {})
     return page(
         request,
         "tasks_import.html",

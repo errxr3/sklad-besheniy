@@ -146,8 +146,8 @@ def test_import_bad_file_explained(client: TestClient, db: Session) -> None:
     assert "нет задач" in empty
 
 
-def test_clean_file_places_tasks_at_once(client: TestClient, db: Session) -> None:
-    """Всё узнано: задачи ставятся сразу, без страницы проверки."""
+def test_upload_never_places_tasks_without_confirmation(client: TestClient, db: Session) -> None:
+    """Даже если всё узнано, после загрузки только проверка; ставит задачи кнопка."""
     data = _setup(db)
     day = today_msk() + timedelta(days=1)
     login(client, data["lead"])
@@ -156,13 +156,7 @@ def test_clean_file_places_tasks_at_once(client: TestClient, db: Session) -> Non
         ["Ambient 200x100 knopka 4000", 4, None, 4],
         ["Ambient 100 krug multi", None, 2, 2],
     ])
-    token = get_csrf(client, "/tasks/import")
-    response = client.post(
-        "/tasks/import/preview",
-        data={"csrf_token": token, "day": day.isoformat(), "site_id": str(data["uch"].id)},
-        files={"file": ("tasks.xlsx", content, "application/octet-stream")},
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-    tasks = {(t.user_id, t.article_id): t.qty_plan for t in db.scalars(select(Task)).all()}
-    assert tasks == {(data["ilya"].id, data["a1"].id): 4, (data["kirill"].id, data["a3"].id): 2}
+    html = _preview(client, data, content, day)
+    assert "Поставить задачи" in html
+    assert "Общее" not in html  # столбец суммы не считается сотрудником
+    assert db.scalars(select(Task)).first() is None

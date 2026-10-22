@@ -1,7 +1,7 @@
 """Задачи из Excel: сверху имена сотрудников, слева артикулы как в TOP, в клетках количество.
 
-Имена колонок подбираются к сотрудникам площадки. Если всё узнано, задачи ставятся сразу;
-иначе показывается проверка, и ничего не записывается до подтверждения.
+Имена колонок подбираются к сотрудникам площадки. После загрузки всегда показывается проверка,
+задачи записываются только по кнопке «Поставить задачи».
 """
 
 import json
@@ -93,15 +93,6 @@ class ImportPreview:
     unknown: list[tuple[str, int]] = field(default_factory=list)  # (как в файле, штук)
     bad_cells: list[str] = field(default_factory=list)
     repeated_titles: list[str] = field(default_factory=list)
-
-    @property
-    def clean(self) -> bool:
-        """Всё узнано: можно ставить задачи без проверки."""
-        return (
-            not self.unknown
-            and not self.bad_cells
-            and all(c.user_id is not None and c.note != "похоже, проверьте" for c in self.columns)
-        )
 
     @property
     def total_qty(self) -> int:
