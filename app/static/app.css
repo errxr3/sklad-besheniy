@@ -473,3 +473,20 @@ table.shipments { border-collapse: separate; border-spacing: 0; }
 /* Отгрузка: отсканировано в открытый канал — серым, в итог не входит до закрытия */
 .shipments .pending { color: var(--muted); font-weight: 600; font-size: 12px; }
 tr[style*="background"] .pending { color: #6b7280; }
+
+/* Отгрузка: «!» у открытого канала — подсказка, кто и когда открыл */
+.shipments .open-mark {
+	position: relative; display: inline-flex; align-items: center; justify-content: center;
+	width: 16px; height: 16px; margin-left: 2px; border-radius: 50%; vertical-align: 1px;
+	background: var(--warn); color: #fff; font-size: 11px; font-weight: 800; cursor: help;
+}
+@media (hover: hover) {
+	.shipments .open-mark:hover::after { content: attr(data-tip); }
+}
+.shipments .open-mark.show::after { content: attr(data-tip); }
+.shipments .open-mark:hover::after, .shipments .open-mark.show::after {
+	position: absolute; z-index: 40; right: -6px; top: 100%; margin-top: 6px;
+	white-space: pre; text-align: left; padding: 6px 10px; border-radius: 4px;
+	font-size: 13px; font-weight: 600; line-height: 1.4;
+	background: var(--top-bg); color: #fff; border: 1px solid var(--line-strong);
+}

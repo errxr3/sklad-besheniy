@@ -22,7 +22,7 @@
 			<input type="hidden" name="truck" value="{{ truck }}">
 			<button type="submit" class="channel-btn {% if title in open %}is-open{% else %}secondary{% endif %}">
 				{{ title }}
-				{% if title in open %}<small>открыт · {{ counts[title] }} шт.</small>{% endif %}
+				{% if title in open %}<small>открыт · загружено {{ counts[title] }}</small>{% endif %}
 			</button>
 		</form>
 		{% endfor %}

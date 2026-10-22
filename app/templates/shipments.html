@@ -12,10 +12,6 @@
 		</div>
 		<div><label>&nbsp;</label><button type="submit" class="secondary">Показать</button></div>
 	</form>
-	{% for p in table.open_channels %}
-	<p class="msg warn">Канал {{ p.title }} ({{ p.site.name }}) открыт у {{ p.opener.name }} с {{ p.opened_at|dt }}.
-		Что в нём уже отсканировано, видно серым «+N»; в цифры попадёт после закрытия. Закроется сам в 23:59.</p>
-	{% endfor %}
 	{% for p in table.auto_closed %}
 	<p class="msg warn">Канал {{ p.title }} ({{ p.opener.name }}) закрыт автоматически
 		{%- if p.channel == 'Ozon' and p.note == 'закрыт автоматически' %}, машина не выбрана, посчитан в «Озон 1»{% endif %}.</p>
@@ -40,7 +36,8 @@
 				<th class="num">{{ table.ship_site.name if table.ship_site else '' }}</th>
 				<th class="num">Задачи {{ (table.other_site.name if table.other_site else '')|locative }}</th>
 				<th class="num">Задачи {{ (table.ship_site.name if table.ship_site else '')|locative }}</th>
-				{% for title in channels %}<th class="num ch">{{ title }}</th>{% endfor %}
+				{% set open_notes = table.open_by_column %}
+				{% for title in channels %}<th class="num ch">{{ title }}{% if open_notes[loop.index0] %} <span class="open-mark tip" tabindex="0" data-tip="{{ open_notes[loop.index0] }}&#10;Отсканированное видно серым «+N»" aria-label="Канал открыт">!</span>{% endif %}</th>{% endfor %}
 				<th class="num">склад − отгрузка</th>
 				<th class="num">склад + задачи − отгрузка</th>
 			</tr>
@@ -75,11 +72,12 @@
 {% block scripts %}
 <script>
 (function () {
-	// Нажатие на задачу показывает, кто её делает; нажатие в любое другое место — прячет
+	// Нажатие на задачу (кто делает) или на «!» (кто открыл канал) показывает подсказку;
+	// нажатие в любое другое место — прячет
 	document.addEventListener('click', function (event) {
-		var cell = event.target.closest ? event.target.closest('td.who') : null;
-		Array.prototype.forEach.call(document.querySelectorAll('td.who.show'), function (td) {
-			if (td !== cell) td.classList.remove('show');
+		var cell = event.target.closest ? event.target.closest('td.who, .open-mark') : null;
+		Array.prototype.forEach.call(document.querySelectorAll('td.who.show, .open-mark.show'), function (el) {
+			if (el !== cell) el.classList.remove('show');
 		});
 		if (cell) cell.classList.toggle('show');
 	});

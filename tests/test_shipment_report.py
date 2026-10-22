@@ -228,7 +228,10 @@ def test_open_channel_warned_and_auto_closed(client: TestClient, db: Session) ->
 
     lead = make_user(db, name="Начальник каналов", role=ROLE_SHIFT_LEAD)
     login(client, lead)
-    assert "Канал Озон 1 (Коминтерна) открыт у Забывчивый грузчик" in client.get("/shipments").text
+    page = client.get("/shipments").text
+    # Вместо плашки — «!» у столбца канала, в подсказке кто и когда открыл
+    assert 'class="open-mark tip"' in page
+    assert "Открыт: Забывчивый грузчик, Коминтерна, с" in page
     assert "Открыт канал Озон 1 у Забывчивый грузчик" in client.get("/board").text
     # Пока канал открыт — отсканированное видно серым «+2», в цифры не входит
     open_row = next(r for r in build_shipment_table(db, day=today_msk()).rows if r.name == "Zerkalo_60x200")
@@ -239,4 +242,4 @@ def test_open_channel_warned_and_auto_closed(client: TestClient, db: Session) ->
     row = next(r for r in build_shipment_table(db, day=today_msk()).rows if r.name == "Zerkalo_60x200")
     assert row.channels[0] == 2 and row.pending[0] == 0  # машина сохранилась: «Озон 1»
     page = client.get("/shipments").text
-    assert "закрыт автоматически" in page and "открыт у" not in page
+    assert "закрыт автоматически" in page and 'class="open-mark tip"' not in page

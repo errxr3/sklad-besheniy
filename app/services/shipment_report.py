@@ -38,7 +38,7 @@ from app.statuses import (
     OZON_TRUCKS,
     WRITTEN_OFF,
 )
-from app.timeutil import fmt_dt, msk_day_bounds, now_utc, today_msk
+from app.timeutil import fmt_dt, fmt_time, msk_day_bounds, now_utc, today_msk
 
 # Колонки каналов в порядке гугл-таблицы: (заголовок, канал, машина Ozon или None)
 CHANNEL_COLUMNS: tuple[tuple[str, str, str | None], ...] = (
@@ -131,6 +131,18 @@ class ShipmentTable:
     built_at: str
     is_today: bool = True
     open_channels: list[Pallet] = field(default_factory=list)  # не закрыты — не в таблице
+
+    @property
+    def open_by_column(self) -> list[str]:
+        """Кто и когда открыл канал — подсказка у значка «!» над столбцом канала."""
+        notes: list[list[str]] = [[] for _ in CHANNEL_COLUMNS]
+        for pallet in self.open_channels:
+            index = _column_index(pallet.channel, pallet.note)
+            if index >= 0:
+                notes[index].append(
+                    f"Открыт: {pallet.opener.name}, {pallet.site.name}, с {fmt_time(pallet.opened_at)}"
+                )
+        return ["\n".join(lines) for lines in notes]
     auto_closed: list[Pallet] = field(default_factory=list)  # закрыты автоматически в этот день
     totals: list[int] = field(default_factory=list)  # отгружено по каналам за день
     pending_totals: list[int] = field(default_factory=list)  # в открытых каналах, серым
