@@ -490,3 +490,7 @@ tr[style*="background"] .pending { color: #6b7280; }
 	font-size: 13px; font-weight: 600; line-height: 1.4;
 	background: var(--top-bg); color: #fff; border: 1px solid var(--line-strong);
 }
+
+/* Отгрузка: «20 (сделано 20)» в одну строку — иначе строки таблицы разъезжаются */
+.shipments td.num { white-space: nowrap; }
+.shipments td.num .muted { font-size: 11px; }
