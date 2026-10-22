@@ -97,3 +97,19 @@ def test_scanned_mirror_cannot_be_removed(client: TestClient, db: Session) -> No
     assert result["ok"] is False
     db.expire_all()
     assert db.get(Unit, units[0].id).status == IN_STOCK  # type: ignore[union-attr]
+
+
+def test_storekeeper_removes_only_own_site_labels(db: Session) -> None:
+    """Кладовщица Учительской не убирает этикетки Коминтерна (2026-10-22)."""
+    from app.services.stock_entry import remove_extra
+    from app.services.task_labels import submit_task
+
+    _, worker, _, task, units = _task_with_labels(db, 2)
+    submit_task(db, task_id=task.id, actor=worker, shift_id=None)
+    db.commit()
+    keeper = make_user(
+        db, name="Кладовщица Учит", role=ROLE_STOREKEEPER, home_site_id=site_by_name(db, "Учительская").id
+    )
+    result = remove_extra(db, code=units[0].number, actor=keeper)
+    assert not result.ok
+    assert "площадки Коминтерна" in result.message

@@ -36,19 +36,23 @@ def api_articles(
 
     С `site_id` — только артикулы, которые делают на этой площадке (для задач).
     """
-    from sqlalchemy import or_
+    from sqlalchemy import case, or_
 
     from app.articles import normalize_article
 
     query = select(Article).where(Article.kind == "article", Article.active.is_(True))
     text = q.strip()
+    first: list = []
     if text:
-        needle = f"%{normalize_article(text)}%"
-        query = query.where(Article.name_norm.like(needle))
+        # Каждое слово ищется отдельно («100 ambient» тоже найдёт), а сначала идут названия,
+        # которые начинаются с набранного: «Ambient 100» → «Ambient 100 krug», а не «Ambient 200x100»
+        for word in text.split():
+            query = query.where(Article.name_norm.like(f"%{normalize_article(word)}%"))
+        first = [case((Article.name_norm.like(f"{normalize_article(text)}%"), 0), else_=1)]
     site = db.get(Site, site_id) if site_id else None
     if site is not None and site.prefixes:
         query = query.where(or_(*[Article.name.ilike(f"{prefix}%") for prefix in site.prefixes]))
-    rows = db.scalars(query.order_by(Article.sort_order).limit(40)).all()
+    rows = db.scalars(query.order_by(*first, Article.sort_order).limit(40)).all()
     return JSONResponse(
         {"articles": [{"id": a.id, "name": a.name, "group": a.group} for a in rows]}
     )

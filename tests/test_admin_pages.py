@@ -249,7 +249,7 @@ def test_menu_differs_by_role(client: TestClient, db: Session) -> None:
         login(keeper_client, keeper)
         response = keeper_client.get("/")
         assert str(response.url).endswith("/labels")
-        assert "Печать по задачам" in response.text
+        assert "Печать этикеток" in response.text
         assert 'href="/tasks"' not in response.text
         assert "Настройки" not in response.text
 

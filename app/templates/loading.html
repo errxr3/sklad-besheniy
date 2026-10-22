@@ -2,6 +2,12 @@
 {% block title %}Погрузка{% endblock %}
 {% block content %}
 <h1>Погрузка</h1>
+{% if no_shift %}
+<div class="card">
+	<p class="msg warn">Смена не начата: грузить можно только на смене.</p>
+	<a class="btn big" href="/">Начать смену</a>
+</div>
+{% else %}
 <p class="muted">Площадка: <b>{{ site.name }}</b></p>
 {% if err %}<p class="msg err">{{ err }}</p>{% endif %}
 
@@ -39,7 +45,7 @@
 		       autocomplete="off" autocapitalize="characters">
 		<div class="row tight mt">
 			<button type="submit" class="big">Отсканировать</button>
-			<button type="button" class="secondary" id="camera-btn">Камерой</button>
+			<button type="button" class="secondary" id="camera-btn">Сканировать камерой</button>
 		</div>
 	</form>
 	<div id="camera-box" class="mt" hidden></div>
@@ -74,6 +80,7 @@
 	<h2>Последние сканы</h2>
 	<ul class="scan-history" id="scan-history"></ul>
 </div>
+{% endif %}
 {% endif %}
 {% endblock %}
 {% block scripts %}

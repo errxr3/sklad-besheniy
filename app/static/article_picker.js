@@ -58,6 +58,7 @@
 
 	ArticlePicker.prototype.load = function (query) {
 		var self = this;
+		if (this.root.classList.contains('chosen')) return;
 		var ticket = ++this.request;
 		var url = '/api/articles?q=' + encodeURIComponent(query || '');
 		if (this.site) url += '&site_id=' + encodeURIComponent(this.site);
@@ -105,6 +106,10 @@
 	};
 
 	ArticlePicker.prototype.choose = function (item) {
+		// Ответы на ещё не пришедшие запросы поиска больше не нужны: иначе список
+		// откроется заново поверх кнопки «Добавить»
+		clearTimeout(this.timer);
+		this.request++;
 		this.value.value = item.id;
 		this.input.value = item.name;
 		this.root.classList.add('chosen');

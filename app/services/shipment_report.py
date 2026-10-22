@@ -28,7 +28,16 @@ from app.seed import RETURNS_SITE_NAME
 from app.services.shipping import AUTO_CLOSE_NOTE, open_channels
 from app.services.stock import active_sites, stock_at, stock_by_article_site
 from app.services.tasks import plan_sum_by_site
-from app.statuses import MV_SHIP, MV_SHIP_CANCEL, OZON, OZON_TRUCKS
+from app.statuses import (
+    MV_INVENTORY_FIX,
+    MV_LABEL_VOID,
+    MV_SHIP,
+    MV_SHIP_CANCEL,
+    MV_WRITE_OFF,
+    OZON,
+    OZON_TRUCKS,
+    WRITTEN_OFF,
+)
 from app.timeutil import fmt_dt, msk_day_bounds, now_utc, today_msk
 
 # Колонки каналов в порядке гугл-таблицы: (заголовок, канал, машина Ozon или None)
@@ -177,8 +186,22 @@ def shipped_by_article_column(
 
 
 def tasks_done_by_article_site(session: Session, *, day: date) -> dict[tuple[int, int], int]:
-    """Из задач на день уже сделано: этикетки задач, принятые сканом до конца дня."""
+    """Из задач на день уже сделано: этикетки задач, принятые до конца дня.
+
+    Не считаются этикетки, убранные потом как лишние (сдали «Собрал всё», а зеркало не
+    сделали) или списанные — как в отчёте «план/факт».
+    """
     end = msk_day_bounds(day)[1]
+    removed = (
+        select(Movement.id)
+        .where(
+            Movement.unit_id == Unit.id,
+            Movement.to_status == WRITTEN_OFF,
+            Movement.type.in_((MV_WRITE_OFF, MV_LABEL_VOID, MV_INVENTORY_FIX)),
+            Movement.created_at < end,
+        )
+        .exists()
+    )
     rows = session.execute(
         select(Task.article_id, Task.site_id, func.count())
         .join(Unit, Unit.task_id == Task.id)
@@ -187,6 +210,7 @@ def tasks_done_by_article_site(session: Session, *, day: date) -> dict[tuple[int
             Task.kind == "article",
             Unit.accepted_at.is_not(None),
             Unit.accepted_at < end,
+            ~removed,
         )
         .group_by(Task.article_id, Task.site_id)
     ).all()

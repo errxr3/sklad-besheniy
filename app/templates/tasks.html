@@ -18,7 +18,7 @@
 		<input type="hidden" name="day" value="{{ day.isoformat() }}">
 		<input type="hidden" name="site_id" value="{{ site.id }}">
 		<input type="hidden" name="source_day" value="{{ today.isoformat() }}">
-		<button type="submit" class="secondary">Скопировать остаток с сегодняшнего дня</button>
+		<button type="submit" class="secondary">Перенести недоделанное с сегодня</button>
 	</form>
 	{% else %}
 	<p class="muted">Прошедший день — только просмотр.</p>
@@ -27,7 +27,7 @@
 
 {% for worker in workers %}
 <div class="card">
-	<h2>{{ worker.name }} <span class="muted">{{ ROLE_LABELS[worker.role] }}</span></h2>
+	<h2>{{ worker.name }}</h2>
 	{% set items = by_user.get(worker.id, []) %}
 	{% if not items %}<p class="muted">Задач нет</p>{% endif %}
 	{% for item in items %}
@@ -72,7 +72,7 @@
 		<input type="hidden" name="user_id" value="{{ worker.id }}">
 		<input type="hidden" name="kind" value="article">
 		<div class="article-picker" data-article-picker data-site="{{ site.id }}">
-			<input type="search" class="ap-input" placeholder="Артикул — начните вводить, например 60x160"
+			<input type="search" class="ap-input" placeholder="Артикул, например 60x160"
 			       autocomplete="off" aria-label="Артикул">
 			<input type="hidden" name="article_id" class="ap-value">
 			<ul class="ap-list" hidden></ul>

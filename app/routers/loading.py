@@ -23,7 +23,7 @@ from app.services.shipping import (
     site_channels,
 )
 from app.settings_store import get_flag
-from app.statuses import CHANNELS, OZON, OZON_TRUCKS
+from app.statuses import CHANNELS, OZON, OZON_TRUCKS, ROLE_ADMIN
 from app.web import GuardedRoute, page, read_json
 
 logger = logging.getLogger(__name__)
@@ -36,8 +36,9 @@ def loading_page(
 ) -> Response:
     """Экран погрузки: каналы площадки (общие для всех грузчиков), скан, закрытие."""
     user = request.state.user
-    site, _ = site_and_shift(db, user)
-    pallet = db.get(Pallet, pallet_id) if pallet_id else None
+    site, shift_id = site_and_shift(db, user)
+    no_shift = shift_id is None and user.role != ROLE_ADMIN
+    pallet = db.get(Pallet, pallet_id) if pallet_id and not no_shift else None
     if pallet is not None:
         try:
             check_channel_site(pallet, site, user)
@@ -58,6 +59,8 @@ def loading_page(
             "ozon_trucks": OZON_TRUCKS,
             "count": pallet_count(db, pallet.id) if pallet else 0,
             "require_mp": get_flag(db, "require_mp_barcode"),
+            # Без смены грузить нельзя — вместо каналов кнопка «начать смену»
+            "no_shift": no_shift,
             "err": err,
         },
     )

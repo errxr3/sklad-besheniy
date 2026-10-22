@@ -15,7 +15,14 @@ from app.scan import clean_code, is_own_label
 from app.seed import INVENTORY_SERVICE_NAME
 from app.services.task_labels import BUTTON_ACCEPT_NOTE
 from app.services.units import MAX_PRINT_QTY, ScanResult, UnitError, create_printed_units, stock_count
-from app.statuses import IN_STOCK, MV_ACCEPT, MV_INVENTORY_FIX, STATUS_LABELS, WRITTEN_OFF
+from app.statuses import (
+    IN_STOCK,
+    MV_ACCEPT,
+    MV_INVENTORY_FIX,
+    ROLE_STOREKEEPER,
+    STATUS_LABELS,
+    WRITTEN_OFF,
+)
 from app.transitions import apply_transition, lock_unit
 
 MAX_ENTRY_QTY = 300
@@ -93,6 +100,14 @@ def remove_extra(session: Session, *, code: str, actor: User) -> ScanResult:
     if unit is None:
         return ScanResult(False, "Номер не найден", f"Этикетка {number} не выдавалась", number=number)
     article_name = unit.article.name
+    if actor.role == ROLE_STOREKEEPER and actor.home_site_id and unit.site_id != actor.home_site_id:
+        return ScanResult(
+            False,
+            f"Это зеркало площадки {unit.site.name}",
+            "его убирает кладовщица той площадки",
+            number=number,
+            article=article_name,
+        )
     if not _removable(session, unit):
         return ScanResult(
             False,

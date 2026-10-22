@@ -75,7 +75,7 @@ def test_storekeeper_prints_per_assembler_by_plan(client: TestClient, db: Sessio
     token = get_csrf(client, "/labels")
     page = client.get("/labels").text
     assert "Иван Сборщик" in page and "Пётр Сборщик" in page
-    assert "Печать для Иван Сборщик (5)" in page
+    assert "Напечатать всё: Иван Сборщик, 5 шт." in page
     assert "Печать всего на день" not in page
     assert "Допечатать" not in page
 

@@ -49,7 +49,9 @@ def mirror_card(
             {"message": f"Зеркало {number} не найдено", "status_code": 404},
         )
     assemblers = db.scalars(
-        select(User).where(User.active.is_(True), User.role == ROLE_ASSEMBLER).order_by(User.name)
+        select(User)
+        .where(User.active.is_(True), User.role == ROLE_ASSEMBLER, User.is_service.is_(False))
+        .order_by(User.name)
     ).all()
     return page(
         request,

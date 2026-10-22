@@ -241,13 +241,24 @@ def _menu_section(path: str) -> str:
     return "/warehouse" if first in _WAREHOUSE_PAGES else first
 
 
+def _active_menu_url(path: str, urls: list[str]) -> str:
+    """Ровно один подсвеченный пункт меню: точное совпадение адреса, иначе раздел."""
+    if path in urls:
+        return path
+    section = _menu_section(path)
+    if section == "/admin" and path.startswith("/admin/section/"):
+        return ""
+    return section if section in urls else ""
+
+
 def page(request: Request, template: str, context: dict[str, Any] | None = None) -> HTMLResponse:
     """Отрисовать страницу с общими переменными."""
     user = getattr(request.state, "user", None) or load_user(request)
+    menu = menu_for(user.role if user else None)
     data: dict[str, Any] = {
         "user": user,
-        "menu": menu_for(user.role if user else None),
-        "active_url": _menu_section(request.url.path),
+        "menu": menu,
+        "active_url": _active_menu_url(request.url.path, [item.url for item in menu]),
         "current_path": request.url.path,
         "csrf": csrf_token(request),
         "today": today_msk(),

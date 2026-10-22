@@ -57,7 +57,7 @@ def journal(
             "total": total,
             "page_number": max(1, page_number),
             "pages": max(1, (total + 49) // 50),
-            "users": db.scalars(select(User).order_by(User.name)).all(),
+            "users": db.scalars(select(User).where(User.is_service.is_(False)).order_by(User.name)).all(),
             "sites": db.scalars(select(Site).order_by(Site.sort_order)).all(),
             "articles": db.scalars(
                 select(Article).where(Article.kind == "article").order_by(Article.sort_order).limit(500)

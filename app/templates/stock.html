@@ -6,9 +6,10 @@
 {% if ok %}<p class="msg ok">{{ ok }}</p>{% endif %}
 {% if err %}<p class="msg err">{{ err }}</p>{% endif %}
 {% if unmarked %}
-<p class="msg warn">Остатки площадки ещё не достоверны:
-	{% for s in unmarked %}{{ s.name }}{% if not loop.last %}, {% endif %}{% endfor %} —
-	маркировка остатка не завершена.</p>
+<p class="msg warn">Ввод остатков не отмечен как законченный:
+	{% for s in unmarked %}{{ s.name }}{% if not loop.last %}, {% endif %}{% endfor %}.
+	Пока цифры могут быть меньше, чем на полках. Когда закончите, отметьте это в
+	«Администратор → Площадки».</p>
 {% endif %}
 {% if sheets_warning %}<p class="msg warn">{{ sheets_warning }}</p>{% endif %}
 
@@ -19,10 +20,10 @@
 			<input type="date" id="day" name="day" value="{{ day.isoformat() }}">
 		</div>
 		<div>
-			<label for="hide_inactive">Скрыть отключённые артикулы</label>
+			<label for="hide_inactive">Отключённые артикулы</label>
 			<select name="hide_inactive" id="hide_inactive">
-				<option value="0" {% if not hide_inactive %}selected{% endif %}>нет</option>
-				<option value="1" {% if hide_inactive %}selected{% endif %}>да</option>
+				<option value="0" {% if not hide_inactive %}selected{% endif %}>показывать</option>
+				<option value="1" {% if hide_inactive %}selected{% endif %}>скрыть</option>
 			</select>
 		</div>
 		<div><label>&nbsp;</label><button type="submit" class="secondary">Обновить</button></div>
@@ -30,13 +31,13 @@
 	<p class="hint">Данные на момент загрузки: <b>{{ table.built_at }}</b>. Строк: {{ table.row_count }}.
 		Страница не обновляется сама, чтобы цифры не менялись во время копирования.</p>
 	<div class="row tight mt">
-		<button type="button" class="secondary" data-copy="both">Копировать {{ table.sites[0].name if table.sites }}{% if table.sites|length > 1 %} + {{ table.sites[1].name }}{% endif %}</button>
+		<button type="button" class="secondary" data-copy="both">Копировать обе площадки</button>
 		<a class="btn secondary" href="/stock.csv?day={{ day.isoformat() }}">Скачать CSV</a>
 		<a class="btn secondary" href="/stock.xlsx?day={{ day.isoformat() }}">Скачать XLSX</a>
 		{% if user.role in (ROLE_ADMIN, ROLE_SHIFT_LEAD) %}
 		<form method="post" action="/stock/sync">
 			<input type="hidden" name="csrf_token" value="{{ csrf }}">
-			<button type="submit" class="secondary">Выгрузить сейчас</button>
+			<button type="submit" class="secondary">Обновить гугл-таблицу</button>
 		</form>
 		{% endif %}
 	</div>

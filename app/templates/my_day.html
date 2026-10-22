@@ -1,7 +1,7 @@
 {% extends "base.html" %}
 {% block title %}Мой день{% endblock %}
 {% block content %}
-<h1>{% if user.role == ROLE_ASSEMBLER %}Сканер{% else %}Смена{% endif %}</h1>
+<h1>{% if user.role == ROLE_ASSEMBLER %}Мои задачи{% else %}Смена{% endif %}</h1>
 {% if err %}<p class="msg err">{{ err }}</p>{% endif %}
 {% if ok %}<p class="msg ok">{{ ok }}</p>{% endif %}
 
@@ -91,7 +91,7 @@
 <div class="grid2">
 	<a class="card tile" href="/loading"><h2>Погрузка</h2><p class="muted">Канал → скан зеркал → закрыть канал</p></a>
 	<a class="card tile" href="/transfer"><h2>Перемещение</h2><p class="muted">Отправить зеркала на другое производство</p></a>
-	<a class="card tile" href="/transfer/in"><h2>Приёмка перемещения</h2><p class="muted">Принять приехавшие зеркала</p></a>
+	<a class="card tile" href="/transfer/in"><h2>Принять перемещение</h2><p class="muted">Принять приехавшие зеркала</p></a>
 </div>
 {% endif %}
 {% endblock %}

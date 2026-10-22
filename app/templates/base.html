@@ -29,7 +29,7 @@
 </header>
 <nav class="menu">
 	{% for item in menu %}
-		<a href="{{ item.url }}" {% if item.url == current_path or (item.url == active_url and item.url != '/admin') %}class="active"{% endif %}>{{ item.title }}</a>
+		<a href="{{ item.url }}" {% if item.url == active_url %}class="active"{% endif %}>{{ item.title }}</a>
 	{% endfor %}
 </nav>
 <script>

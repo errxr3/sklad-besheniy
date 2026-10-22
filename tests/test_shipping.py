@@ -434,3 +434,12 @@ def test_scan_into_closed_channel_refused(client: TestClient, db: Session) -> No
     assert data["ok"] is False
     assert data["closed"] is True
     assert "уже закрыт" in data["message"]
+
+
+def test_loading_page_without_shift_asks_to_start(client: TestClient, db: Session) -> None:
+    """Без смены вместо каналов — «Смена не начата» и кнопка на главную."""
+    loader = make_user(db, name="Грузчик без смены 2", role=ROLE_LOADER, pin="1234")
+    login(client, loader)
+    page = client.get("/loading").text
+    assert "Смена не начата" in page
+    assert "channel-btn" not in page

@@ -86,7 +86,7 @@ def transfer_page(request: Request, db: Session = Depends(get_db)) -> Response:
             "fields": [
                 {
                     "name": "to_site_id",
-                    "label": "Площадка-получатель",
+                    "label": "Куда везём",
                     "type": "select",
                     "options": [(str(s.id), s.name) for s in others],
                 }
@@ -125,7 +125,7 @@ def transfer_in_page(request: Request, db: Session = Depends(get_db)) -> Respons
         request,
         "scan_op.html",
         {
-            "title": "Приёмка перемещения",
+            "title": "Принять перемещение",
             "hint": f"Приём на площадке {site.name}. Сканируйте приехавшие зеркала.",
             "url": "/transfer/in/scan",
             "button": "Принять",
@@ -209,7 +209,7 @@ def returns_page(request: Request, db: Session = Depends(get_db)) -> Response:
         {
             "title": "Возвраты",
             "hint": f"Скан этикетки BLAGO — зеркало записывается на склад {site.name}. "
-            "Негодное не сканируйте. Зеркало без нашей этикетки — «Печать ШК».",
+            "Негодное не сканируйте. Зеркало без нашей этикетки: «Этикетки без ШК».",
             "url": "/returns/scan",
             "button": "Принять возврат",
         },

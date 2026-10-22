@@ -11,8 +11,8 @@
 		<input type="text" id="scan-input" class="scan-input" placeholder="Сканируйте зеркала на складе"
 		       autocomplete="off" autocapitalize="characters">
 		<div class="row tight mt">
-			<button type="submit" class="big">Учесть</button>
-			<button type="button" class="secondary" id="camera-btn">Камерой</button>
+			<button type="submit" class="big">Посчитать</button>
+			<button type="button" class="secondary" id="camera-btn">Сканировать камерой</button>
 		</div>
 	</form>
 	<div id="camera-box" class="mt" hidden></div>
@@ -48,7 +48,7 @@
 	{% if not finished %}
 	<form method="post" action="/inventory/{{ inventory.id }}/finish" class="mt">
 		<input type="hidden" name="csrf_token" value="{{ csrf }}">
-		<button type="submit" class="danger big">Подтвердить: списать не найденное, оприходовать лишнее</button>
+		<button type="submit" class="danger big">Закончить пересчёт: ненайденное списать, найденное добавить</button>
 	</form>
 	{% else %}
 	<p class="msg ok">{{ inventory.note or 'Инвентаризация завершена' }}</p>

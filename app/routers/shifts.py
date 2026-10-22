@@ -192,7 +192,11 @@ def timesheet_page(
     users = list(
         db.scalars(
             select(User)
-            .where(User.active.is_(True), User.role.in_((ROLE_ASSEMBLER, ROLE_LOADER)))
+            .where(
+                User.active.is_(True),
+                User.is_service.is_(False),
+                User.role.in_((ROLE_ASSEMBLER, ROLE_LOADER)),
+            )
             .order_by(User.name)
         ).all()
     )
