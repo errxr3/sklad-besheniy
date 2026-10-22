@@ -460,3 +460,12 @@ table.shipments { border-collapse: separate; border-spacing: 0; }
 .channel-btn { flex-direction: column; gap: 2px; }
 .channel-btn small { font-size: 14px; font-weight: 600; letter-spacing: 0; }
 .channel-btn.secondary { color: var(--text); }
+
+/* Выбор артикула: весь список площадки с заголовками подгрупп */
+.ap-list { max-height: min(60vh, 460px); }
+.ap-list li.ap-group {
+	position: sticky; top: -4px; z-index: 1; margin: 4px -4px 0; padding: 6px 12px;
+	font-size: 13px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase;
+	color: var(--muted); background: var(--th-bg); cursor: default; border-radius: 0;
+}
+.ap-list li.ap-group:hover { background: var(--th-bg); color: var(--muted); }

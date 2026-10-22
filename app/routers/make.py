@@ -52,9 +52,15 @@ def api_articles(
     site = db.get(Site, site_id) if site_id else None
     if site is not None and site.prefixes:
         query = query.where(or_(*[Article.name.ilike(f"{prefix}%") for prefix in site.prefixes]))
-    rows = db.scalars(query.order_by(*first, Article.sort_order).limit(40)).all()
+    # Весь список площадки (около 200 артикулов) — по группам, как в TOP.xlsx
+    rows = db.scalars(query.order_by(*first, Article.sort_order).limit(500)).all()
     return JSONResponse(
-        {"articles": [{"id": a.id, "name": a.name, "group": a.group} for a in rows]}
+        {
+            "articles": [
+                {"id": a.id, "name": a.name, "group": a.group, "subgroup": a.subgroup or a.group}
+                for a in rows
+            ]
+        }
     )
 
 

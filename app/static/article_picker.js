@@ -82,10 +82,20 @@
 			empty.textContent = 'Ничего не найдено';
 			this.list.appendChild(empty);
 		}
+		var group = null;
 		items.forEach(function (item, index) {
+			// Заголовок подгруппы, как в TOP.xlsx: «Полотна», «Алюминий на ноге»…
+			var title = item.subgroup || item.group || '';
+			if (title && title !== group) {
+				group = title;
+				var head = document.createElement('li');
+				head.className = 'ap-group';
+				head.textContent = title.charAt(0).toUpperCase() + title.slice(1).toLowerCase();
+				self.list.appendChild(head);
+			}
 			var li = document.createElement('li');
 			li.textContent = item.name;
-			li.className = index === 0 ? 'active' : '';
+			li.className = 'ap-item' + (index === 0 ? ' active' : '');
 			li.addEventListener('mousedown', function (event) {
 				event.preventDefault();
 				self.choose(item);
@@ -93,15 +103,22 @@
 			self.list.appendChild(li);
 		});
 		this.list.hidden = false;
+		this.list.scrollTop = 0;
+		// На телефоне поле — наверх экрана, чтобы под ним поместился список
+		if (window.innerWidth < 700 && this.input.scrollIntoView) {
+			var top = this.input.getBoundingClientRect().top;
+			if (top > window.innerHeight * 0.35) this.input.scrollIntoView({ block: 'start', behavior: 'smooth' });
+		}
 	};
 
 	ArticlePicker.prototype.move = function (step) {
 		if (!this.items.length) return;
 		this.active = (this.active + step + this.items.length) % this.items.length;
-		Array.prototype.forEach.call(this.list.children, function (li, index) {
+		var rows = this.list.querySelectorAll('li.ap-item');
+		Array.prototype.forEach.call(rows, function (li, index) {
 			li.classList.toggle('active', index === this.active);
 		}, this);
-		var current = this.list.children[this.active];
+		var current = rows[this.active];
 		if (current && current.scrollIntoView) current.scrollIntoView({ block: 'nearest' });
 	};
 
