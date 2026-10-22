@@ -39,7 +39,7 @@
 </div>
 
 {% if user.role == ROLE_ASSEMBLER %}
-<div class="card">
+<div class="card" id="my-tasks">
 	<h2>Мои задачи</h2>
 	{% if not tasks %}
 	<p class="muted">Задач на сегодня нет — уточните у начальника смены.</p>
@@ -104,8 +104,19 @@
 	var screen = new window.Sklad.ScanScreen({
 		url: '/scan/accept',
 		csrf: '{{ csrf }}',
-		onSuccess: function () {}
+		// После скана карточка «Мои задачи» обновляется: «сдано» растёт, «Собрал всё» уменьшается
+		onSuccess: refreshTasks
 	});
+	function refreshTasks() {
+		fetch('/', { headers: { 'X-Requested-With': 'fetch' } })
+			.then(function (r) { return r.text(); })
+			.then(function (html) {
+				var fresh = new DOMParser().parseFromString(html, 'text/html').getElementById('my-tasks');
+				var card = document.getElementById('my-tasks');
+				if (fresh && card) card.innerHTML = fresh.innerHTML;
+			})
+			.catch(function () {});
+	}
 	var camera = new window.Sklad.CameraScan({
 		onCode: function (text) { screen.send(text); }
 	});

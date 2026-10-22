@@ -159,6 +159,9 @@ def test_full_day_in_browser(server: str, db: Session) -> None:
         worker.press("#scan-input", "Enter")
         worker.wait_for_selector(".scan-result.ok", timeout=10000)
         assert "Zerkalo_60x160" in worker.inner_text("#scan-result")
+        # Карточка «Мои задачи» обновляется сама: 1 сдано, «Собрал всё» на оставшиеся 2
+        worker.wait_for_selector("#my-tasks:has-text('Собрал всё (2 шт.)')", timeout=10000)
+        assert "Сдано на склад: 1" in worker.inner_text("#my-tasks")
 
 
         # --- Грузчик ---
