@@ -469,3 +469,7 @@ table.shipments { border-collapse: separate; border-spacing: 0; }
 	color: var(--muted); background: var(--th-bg); cursor: default; border-radius: 0;
 }
 .ap-list li.ap-group:hover { background: var(--th-bg); color: var(--muted); }
+
+/* Отгрузка: отсканировано в открытый канал — серым, в итог не входит до закрытия */
+.shipments .pending { color: var(--muted); font-weight: 600; font-size: 12px; }
+tr[style*="background"] .pending { color: #6b7280; }

@@ -12,15 +12,7 @@
 		</select>
 		<button type="submit" class="secondary">Показать</button>
 	</form>
-	{% if editable and site %}
-	<form method="post" action="/tasks/copy" class="row tight mt">
-		<input type="hidden" name="csrf_token" value="{{ csrf }}">
-		<input type="hidden" name="day" value="{{ day.isoformat() }}">
-		<input type="hidden" name="site_id" value="{{ site.id }}">
-		<input type="hidden" name="source_day" value="{{ today.isoformat() }}">
-		<button type="submit" class="secondary">Перенести недоделанное с сегодня</button>
-	</form>
-	{% else %}
+	{% if not editable %}
 	<p class="muted">Прошедший день — только просмотр.</p>
 	{% endif %}
 </div>

@@ -15,24 +15,26 @@
 <div class="card">
 	<h2>Выберите канал</h2>
 	<div class="channel-grid">
-		{% for c in channels %}
+		{% for channel, truck, title in channels %}
 		<form method="post" action="/loading/new-pallet">
 			<input type="hidden" name="csrf_token" value="{{ csrf }}">
-			<input type="hidden" name="channel" value="{{ c }}">
-			<button type="submit" class="channel-btn {% if c in open %}is-open{% else %}secondary{% endif %}">
-				{{ c }}
-				{% if c in open %}<small>открыт · {{ counts[c] }} шт.</small>{% endif %}
+			<input type="hidden" name="channel" value="{{ channel }}">
+			<input type="hidden" name="truck" value="{{ truck }}">
+			<button type="submit" class="channel-btn {% if title in open %}is-open{% else %}secondary{% endif %}">
+				{{ title }}
+				{% if title in open %}<small>открыт · {{ counts[title] }} шт.</small>{% endif %}
 			</button>
 		</form>
 		{% endfor %}
 	</div>
-	<p class="hint">Каналы общие для всех грузчиков площадки: если Ozon уже открыт, нажмите его —
-		и сканируйте вместе. Закрывает канал один, когда всё загружено.</p>
+	<p class="hint">Каналы общие для всех грузчиков площадки: если канал уже открыт (синий), нажмите его
+		и сканируйте вместе. Можно грузить разные каналы одновременно: Озон 1 и Озон 2, WB, СДЭК.
+		Одно зеркало дважды не отгрузится. Закрывает канал один, когда всё загружено.</p>
 </div>
 {% else %}
 <div class="card">
 	<div class="line">
-		<h2>Канал {{ pallet.channel }}</h2>
+		<h2>Канал {{ pallet.title }}</h2>
 		<a class="btn secondary small-btn" href="/loading">Другой канал</a>
 	</div>
 	<p class="counter">В канале: <b id="pallet-count">{{ count }}</b></p>
@@ -59,7 +61,9 @@
 	<form method="post" action="/loading/close" id="close-form">
 		<input type="hidden" name="csrf_token" value="{{ csrf }}">
 		<input type="hidden" name="pallet_id" value="{{ pallet.id }}">
-		{% if pallet.channel == ozon %}
+		{% if pallet.channel == ozon and pallet.note in ozon_trucks %}
+		<input type="hidden" name="note" value="{{ pallet.note }}">
+		{% elif pallet.channel == ozon %}
 		<label>Машина</label>
 		<div class="choice-row">
 			{% for truck in ozon_trucks %}
@@ -70,7 +74,7 @@
 		<label for="close-note">Описание (необязательно)</label>
 		<input type="text" name="note" id="close-note" maxlength="200" placeholder="например, машина или номер отправки">
 		{% endif %}
-		<button type="submit" class="big mt">Закрыть канал {{ pallet.channel }}</button>
+		<button type="submit" class="big mt">Закрыть канал {{ pallet.title }}</button>
 		<p class="hint">Канал закроется у всех, кто в нём грузит. После закрытия добавить зеркала в эту
 			отгрузку нельзя — для следующей выберите канал заново.</p>
 	</form>
@@ -125,7 +129,7 @@
 
 	document.getElementById('close-form').addEventListener('submit', function (event) {
 		var count = document.getElementById('pallet-count').textContent;
-		if (!window.confirm('Закрыть канал {{ pallet.channel }} для всех? В канале: ' + count)) event.preventDefault();
+		if (!window.confirm('Закрыть канал {{ pallet.title }} для всех? В канале: ' + count)) event.preventDefault();
 	});
 })();
 </script>

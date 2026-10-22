@@ -13,7 +13,6 @@ from app.db import get_db
 from app.models import Site, Task, User
 from app.services.tasks import (
     TaskError,
-    copy_remaining,
     create_task,
     delete_task,
     done_count,
@@ -163,29 +162,6 @@ def tasks_delete(
     except TaskError as exc:
         return _back(target_day, site_id, err=str(exc))
     return _back(target_day, site_id, message="Задача удалена")
-
-
-@router.post("/tasks/copy")
-def tasks_copy(
-    request: Request,
-    day: str = Form(...),
-    site_id: int = Form(...),
-    source_day: str = Form(...),
-    db: Session = Depends(get_db),
-) -> Response:
-    """Скопировать невыполненный остаток плана на выбранную дату."""
-    target_day = date.fromisoformat(day)
-    try:
-        count = copy_remaining(
-            db,
-            actor=request.state.user,
-            source_day=date.fromisoformat(source_day),
-            target_day=target_day,
-            site_id=site_id,
-        )
-    except TaskError as exc:
-        return _back(target_day, site_id, err=str(exc))
-    return _back(target_day, site_id, message=f"Перенесено задач: {count}")
 
 
 @router.post("/tasks/done")

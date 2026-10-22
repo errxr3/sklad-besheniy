@@ -13,12 +13,13 @@ from sqlalchemy.orm import Session
 from app.models import Movement, Site, Unit, User
 from app.scan import clean_code, is_own_label
 from app.seed import INVENTORY_SERVICE_NAME
-from app.services.task_labels import BUTTON_ACCEPT_NOTE
+from app.services.task_labels import BUTTON_ACCEPT_NOTE, void_units
 from app.services.units import MAX_PRINT_QTY, ScanResult, UnitError, create_printed_units, stock_count
 from app.statuses import (
     IN_STOCK,
     MV_ACCEPT,
     MV_INVENTORY_FIX,
+    PRINTED,
     ROLE_STOREKEEPER,
     STATUS_LABELS,
     WRITTEN_OFF,
@@ -92,7 +93,11 @@ def _removable(session: Session, unit: Unit) -> bool:
 
 
 def remove_extra(session: Session, *, code: str, actor: User) -> ScanResult:
-    """Скан неиспользованной этикетки (ввод остатков или «Собрал всё») — убрать со склада."""
+    """Скан неиспользованной этикетки — убрать.
+
+    На складе (ввод остатков, «Собрал всё») — списывается со склада; ещё не сданная
+    (зеркало по задаче не сделали) — аннулируется.
+    """
     number = clean_code(code)
     if not is_own_label(number):
         return ScanResult(False, "Это не этикетка BLAGO", "Отсканируйте лишнюю этикетку")
@@ -105,6 +110,16 @@ def remove_extra(session: Session, *, code: str, actor: User) -> ScanResult:
             False,
             f"Это зеркало площадки {unit.site.name}",
             "его убирает кладовщица той площадки",
+            number=number,
+            article=article_name,
+        )
+    if unit.status == PRINTED:
+        # Напечатали, а зеркало не сделали: этикетка аннулируется, её скан больше не пройдёт
+        void_units(session, units=[unit], actor=actor)
+        return ScanResult(
+            True,
+            article_name,
+            "Несданная этикетка убрана: зеркало не сделано",
             number=number,
             article=article_name,
         )

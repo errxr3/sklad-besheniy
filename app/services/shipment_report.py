@@ -64,7 +64,8 @@ def _column_index(channel: str, note: str | None) -> int:
     for index, (_, col_channel, truck) in enumerate(CHANNEL_COLUMNS):
         if col_channel != channel:
             continue
-        if truck is None or note == truck:
+        # «Озон2» или «Озон2, закрыт автоматически»
+        if truck is None or note == truck or (note or "").startswith(truck + ","):
             return index
     return 0 if channel == OZON else -1
 
@@ -85,6 +86,8 @@ class ShipmentRow:
     tasks_ship_who: str = ""  # кто делает: «Иван — 5, Пётр — 3»
     tasks_other_who: str = ""
     channels: list[int] = field(default_factory=list)
+    # Отсканировано в ещё открытые каналы — показывается серым «+N», в итог не входит
+    pending: list[int] = field(default_factory=list)
 
     @property
     def shipped(self) -> int:
@@ -130,16 +133,23 @@ class ShipmentTable:
     open_channels: list[Pallet] = field(default_factory=list)  # не закрыты — не в таблице
     auto_closed: list[Pallet] = field(default_factory=list)  # закрыты автоматически в этот день
     totals: list[int] = field(default_factory=list)  # отгружено по каналам за день
+    pending_totals: list[int] = field(default_factory=list)  # в открытых каналах, серым
 
 
 def shipped_by_article_column(
-    session: Session, *, day: date, site_id: int, closed_only: bool = True
+    session: Session,
+    *,
+    day: date,
+    site_id: int,
+    closed_only: bool = True,
+    pending: dict[tuple[int, int], int] | None = None,
 ) -> dict[tuple[int, int], int]:
     """Отгружено за день с площадки: (артикул, колонка канала) → штук.
 
     Считаются движения «Отгрузка» за московские сутки, кроме отменённых позже.
     По умолчанию — только из закрытых каналов: грузчик нажал «Закрыть канал».
     С `closed_only=False` открытые каналы идут в колонку −1 (нужно для «до отгрузок»).
+    В `pending` (если передан) копится отсканированное в открытые каналы по их колонкам.
     """
     start, end = msk_day_bounds(day)
     ships = session.execute(
@@ -176,6 +186,8 @@ def shipped_by_article_column(
         if any(moment >= created_at for moment in cancels.get(int(unit_id), [])):
             continue
         if closed_at is None:
+            if pending is not None:
+                pending[(int(article_id), _column_index(str(channel), note))] += 1
             if not closed_only:
                 result[(int(article_id), -1)] += 1
             continue
@@ -252,16 +264,20 @@ def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
     workers = task_workers(session, day=day)
     shipped: dict[tuple[int, int], int] = {}
     shipped_other: dict[tuple[int, int], int] = {}
+    pending: dict[tuple[int, int], int] = defaultdict(int)
     if ship_site is not None:
-        shipped = shipped_by_article_column(session, day=day, site_id=ship_site.id, closed_only=False)
+        shipped = shipped_by_article_column(
+            session, day=day, site_id=ship_site.id, closed_only=False, pending=pending
+        )
     if other_site is not None:
         shipped_other = shipped_by_article_column(
-            session, day=day, site_id=other_site.id, closed_only=False
+            session, day=day, site_id=other_site.id, closed_only=False, pending=pending
         )
 
     articles = list(session.scalars(select(Article).order_by(Article.sort_order, Article.id)).all())
     rows: list[ShipmentRow] = []
     totals = [0 for _ in CHANNEL_COLUMNS]
+    pending_totals = [0 for _ in CHANNEL_COLUMNS]
     for article in articles:
         if article.kind == "header":
             rows.append(ShipmentRow(name=article.name, is_header=True, color_hex=article.color_hex))
@@ -273,6 +289,7 @@ def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
         ]
         for index, value in enumerate(channels):
             totals[index] += value
+            pending_totals[index] += pending.get((article.id, index), 0)
         other_shipped = sum(
             count for (article_id, _), count in shipped_other.items() if article_id == article.id
         )
@@ -298,6 +315,7 @@ def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
                 tasks_ship_who=workers.get((article.id, ship_site.id), "") if ship_site else "",
                 tasks_other_who=workers.get((article.id, other_site.id), "") if other_site else "",
                 channels=channels,
+                pending=[pending.get((article.id, index), 0) for index in range(len(CHANNEL_COLUMNS))],
             )
         )
     return ShipmentTable(
@@ -307,12 +325,13 @@ def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
         rows=rows,
         built_at=fmt_dt(now_utc()),
         totals=totals,
+        pending_totals=pending_totals,
         is_today=day >= today_msk(),
         open_channels=open_channels(session),
         auto_closed=list(
             session.scalars(
                 select(Pallet).where(
-                    Pallet.note == AUTO_CLOSE_NOTE,
+                    Pallet.note.like(f"%{AUTO_CLOSE_NOTE}"),
                     Pallet.closed_at >= msk_day_bounds(day)[0],
                     Pallet.closed_at < msk_day_bounds(day)[1],
                 )

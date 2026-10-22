@@ -150,11 +150,13 @@ class Pallet(Base):
     __tablename__ = "pallets"
     __table_args__ = (
         UniqueConstraint("number", name="uq_pallets_number"),
-        # Один открытый канал каждого вида на площадке: грузят в него все грузчики площадки
+        # Один открытый канал каждого вида на площадке: грузят в него все грузчики площадки.
+        # У Ozon машина выбирается при открытии (note): Озон1, Озон2, Озон3 — разные каналы
         Index(
             "uq_pallets_one_open_per_channel",
             "site_id",
             "channel",
+            text("coalesce(note, '')"),
             unique=True,
             postgresql_where=text("closed_at IS NULL"),
         ),
@@ -172,6 +174,13 @@ class Pallet(Base):
 
     site: Mapped[Site] = relationship(lazy="joined")
     opener: Mapped[User] = relationship(lazy="joined")
+
+    @property
+    def title(self) -> str:
+        """Название канала для экрана: «Озон 2», «WB»."""
+        if self.channel == "Ozon" and self.note and self.note.startswith("Озон"):
+            return "Озон " + self.note.split(",")[0].removeprefix("Озон").strip()
+        return self.channel
 
     def __repr__(self) -> str:
         return f"<Pallet {self.number}>"

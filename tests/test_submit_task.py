@@ -113,3 +113,20 @@ def test_storekeeper_removes_only_own_site_labels(db: Session) -> None:
     result = remove_extra(db, code=units[0].number, actor=keeper)
     assert not result.ok
     assert "площадки Коминтерна" in result.message
+
+
+def test_storekeeper_scans_away_unmade_labels(db: Session) -> None:
+    """Задачу не доделали — кладовщица сканирует несданные этикетки, они аннулируются (2026-10-22)."""
+    from app.services.stock_entry import remove_extra
+
+    site, _, article, _, units = _task_with_labels(db, 3)
+    keeper = make_user(db, name="Кладовщица Ком", role=ROLE_STOREKEEPER, home_site_id=site.id)
+    result = remove_extra(db, code=units[0].number, actor=keeper)
+    db.commit()
+    assert result.ok, result.message
+    assert "не сделано" in result.detail
+    db.refresh(units[0])
+    assert units[0].status == WRITTEN_OFF
+    assert stock_count(db, article.id, site.id) == 0
+    again = remove_extra(db, code=units[0].number, actor=keeper)
+    assert not again.ok

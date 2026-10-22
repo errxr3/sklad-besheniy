@@ -43,21 +43,28 @@ class LoadResult(ScanResult):
     pallet_count: int = 0
 
 
-def open_channel_at(session: Session, site_id: int, channel: str) -> Pallet | None:
-    """Открытый канал площадки (Ozon на Учительской и т.п.)."""
-    return session.scalar(
-        select(Pallet).where(
-            Pallet.site_id == site_id, Pallet.channel == channel, Pallet.closed_at.is_(None)
-        )
+def open_channel_at(session: Session, site_id: int, channel: str, truck: str = "") -> Pallet | None:
+    """Открытый канал площадки (Озон 2 на Учительской, WB на Коминтерна и т.п.)."""
+    query = select(Pallet).where(
+        Pallet.site_id == site_id, Pallet.channel == channel, Pallet.closed_at.is_(None)
     )
+    query = query.where(Pallet.note == truck) if truck else query.where(Pallet.note.is_(None))
+    return session.scalar(query)
+
+
+# Кнопки каналов на экране погрузки: у Ozon каждая машина — отдельный канал
+CHANNEL_BUTTONS: tuple[tuple[str, str, str], ...] = (
+    *((OZON, truck, "Озон " + truck.removeprefix("Озон")) for truck in OZON_TRUCKS),
+    *((channel, "", channel) for channel in CHANNELS if channel != OZON),
+)
 
 
 def site_channels(session: Session, site_id: int) -> dict[str, Pallet]:
-    """Открытые каналы площадки по названию канала."""
+    """Открытые каналы площадки по названию кнопки («Озон 2», «WB»)."""
     pallets = session.scalars(
         select(Pallet).where(Pallet.site_id == site_id, Pallet.closed_at.is_(None))
     ).all()
-    return {pallet.channel: pallet for pallet in pallets}
+    return {pallet.title: pallet for pallet in pallets}
 
 
 def pallet_loaders(session: Session, pallet_id: int) -> list[tuple[str, int]]:
@@ -76,12 +83,11 @@ def pallet_loaders(session: Session, pallet_id: int) -> list[tuple[str, int]]:
 def check_channel_site(pallet: Pallet, site: Site | None, user: User) -> None:
     """Грузить и закрывать канал можно только на площадке своей смены."""
     if pallet.closed_at is not None:
-        truck = f", {pallet.note}" if pallet.note else ""
-        raise ShippingError(f"Канал {pallet.channel} уже закрыт{truck} — выберите канал заново")
+        raise ShippingError(f"Канал {pallet.title} уже закрыт — выберите канал заново")
     if user.role == ROLE_ADMIN:
         return
     if site is None or pallet.site_id != site.id:
-        raise ShippingError(f"Канал {pallet.channel} открыт на площадке {pallet.site.name}, а вы на другой")
+        raise ShippingError(f"Канал {pallet.title} открыт на площадке {pallet.site.name}, а вы на другой")
 
 
 def next_pallet_number(session: Session) -> str:
@@ -97,22 +103,33 @@ def next_pallet_number(session: Session) -> str:
     return f"{prefix}-{index:02d}"
 
 
-def join_channel(session: Session, *, user: User, site: Site, channel: str) -> Pallet:
+def join_channel(
+    session: Session, *, user: User, site: Site, channel: str, truck: str = ""
+) -> Pallet:
     """Встать на канал: присоединиться к открытому на площадке или открыть его.
 
-    Канал общий — Ozon на Учительской один, и все грузчики на смене там сканируют в него.
+    Канал общий — «Озон 2» на Учительской один, и все грузчики на смене там сканируют в него.
+    Разные каналы (Озон 1 и Озон 2, WB, СДЭК) можно грузить одновременно.
     """
     if channel not in CHANNELS:
         raise ShippingError("Выберите канал: " + ", ".join(CHANNELS))
-    # Блокировка площадки: двое одновременно нажали «Ozon» — канал откроется один
+    if channel == OZON:
+        # Раньше машину выбирали при закрытии; без машины — «Озон 1»
+        truck = truck or OZON_TRUCKS[0]
+        if truck not in OZON_TRUCKS:
+            raise ShippingError("Выберите машину Ozon: " + ", ".join(OZON_TRUCKS))
+    else:
+        truck = ""
+    # Блокировка площадки: двое одновременно нажали «Озон 1» — канал откроется один
     session.execute(select(Site.id).where(Site.id == site.id).with_for_update())
-    existing = open_channel_at(session, site.id, channel)
+    existing = open_channel_at(session, site.id, channel, truck)
     if existing is not None:
         return existing
     pallet = Pallet(
         number=next_pallet_number(session),
         site_id=site.id,
         channel=channel,
+        note=truck or None,
         opened_by=user.id,
         opened_at=now_utc(),
     )
@@ -138,9 +155,14 @@ def close_pallet(
         raise ShippingError("Отгрузка не найдена")
     check_channel_site(pallet, site if site is not None else pallet.site, user)
     text = note.strip()
-    if pallet.channel == OZON and text not in OZON_TRUCKS:
-        raise ShippingError("Для Ozon выберите машину: " + ", ".join(OZON_TRUCKS))
-    pallet.note = text[:200] or None
+    if pallet.channel == OZON:
+        # Машина выбрана при открытии канала; старые каналы без машины — выбрать при закрытии
+        if pallet.note not in OZON_TRUCKS:
+            if text not in OZON_TRUCKS:
+                raise ShippingError("Для Ozon выберите машину: " + ", ".join(OZON_TRUCKS))
+            pallet.note = text
+    else:
+        pallet.note = text[:200] or None
     pallet.closed_at = now_utc()
     session.flush()
     return pallet
@@ -165,7 +187,9 @@ def auto_close_channels(session: Session) -> int:
     closed = 0
     for pallet in open_channels(session):
         pallet.closed_at = moment
-        pallet.note = AUTO_CLOSE_NOTE
+        # У Ozon машина остаётся в пометке: «Озон2, закрыт автоматически»
+        truck = pallet.note if pallet.channel == OZON and pallet.note in OZON_TRUCKS else ""
+        pallet.note = f"{truck}, {AUTO_CLOSE_NOTE}" if truck else AUTO_CLOSE_NOTE
         closed += 1
     session.flush()
     return closed
@@ -404,7 +428,7 @@ def _do_ship(
             pallet_id=pallet.id,
             mp_barcode=mp_barcode,
             ref_id=pallet.id,
-            note=f"канал {pallet.channel}, отгрузка {pallet.number}",
+            note=f"канал {pallet.title}, отгрузка {pallet.number}",
         )
     except TransitionError as exc:
         return LoadResult(False, str(exc), number=unit.number, article=unit.article.name)
@@ -413,7 +437,7 @@ def _do_ship(
     return LoadResult(
         True,
         unit.article.name,
-        f"В канале {pallet.channel}: {count}",
+        f"В канале {pallet.title}: {count}",
         number=unit.number,
         article=unit.article.name,
         stock=stock_count(session, unit.article_id, unit.site_id),

@@ -14,7 +14,7 @@
 		<tr><th>Изготовлено</th><td>{{ unit.made_at|dt }}</td></tr>
 		<tr><th>Принято</th><td>{{ unit.accepted_at|dt or '—' }}</td></tr>
 		<tr><th>Канал</th><td>{{ unit.channel or '—' }}</td></tr>
-		<tr><th>Отгрузка</th><td>{% if unit.pallet %}{{ unit.pallet.channel }}{% if unit.pallet.note %} · {{ unit.pallet.note }}{% endif %} ({{ unit.pallet.number }}){% else %}—{% endif %}</td></tr>
+		<tr><th>Отгрузка</th><td>{% if unit.pallet %}{{ unit.pallet.title }}{% if unit.pallet.note and unit.pallet.channel != 'Ozon' %} · {{ unit.pallet.note }}{% endif %} ({{ unit.pallet.number }}){% else %}—{% endif %}</td></tr>
 		<tr><th>ШК маркетплейса</th><td>{{ unit.mp_barcode or '—' }}</td></tr>
 	</table>
 </div>

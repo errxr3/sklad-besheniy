@@ -27,10 +27,14 @@ def _stock(db: Session, article_id: int, site_name: str, qty: int) -> list[Unit]
 
 
 def _ship(db: Session, loader, units: list[Unit], channel: str, note: str = "") -> None:
-    pallet = open_new_pallet(db, user=loader, site=site_by_name(db, "Коминтерна"), channel=channel)
+    # У Ozon машина выбирается при открытии канала (2026-10-22)
+    truck = note if channel == "Ozon" else ""
+    pallet = open_new_pallet(
+        db, user=loader, site=site_by_name(db, "Коминтерна"), channel=channel, truck=truck
+    )
     for unit in units:
         assert scan_loading(db, code=unit.number, pallet=pallet, actor=loader).ok
-    close_pallet(db, pallet_id=pallet.id, user=loader, note=note)
+    close_pallet(db, pallet_id=pallet.id, user=loader, note="" if truck else note)
     db.commit()
 
 
@@ -224,12 +228,15 @@ def test_open_channel_warned_and_auto_closed(client: TestClient, db: Session) ->
 
     lead = make_user(db, name="Начальник каналов", role=ROLE_SHIFT_LEAD)
     login(client, lead)
-    assert "Канал Ozon открыт у Забывчивый грузчик" in client.get("/shipments").text
-    assert "Открыт канал Ozon у Забывчивый грузчик" in client.get("/board").text
+    assert "Канал Озон 1 (Коминтерна) открыт у Забывчивый грузчик" in client.get("/shipments").text
+    assert "Открыт канал Озон 1 у Забывчивый грузчик" in client.get("/board").text
+    # Пока канал открыт — отсканированное видно серым «+2», в цифры не входит
+    open_row = next(r for r in build_shipment_table(db, day=today_msk()).rows if r.name == "Zerkalo_60x200")
+    assert open_row.channels[0] == 0 and open_row.pending[0] == 2
 
     assert auto_close_channels(db) == 1
     db.commit()
     row = next(r for r in build_shipment_table(db, day=today_msk()).rows if r.name == "Zerkalo_60x200")
-    assert row.channels[0] == 2  # Ozon без машины — в «Озон 1»
+    assert row.channels[0] == 2 and row.pending[0] == 0  # машина сохранилась: «Озон 1»
     page = client.get("/shipments").text
     assert "закрыт автоматически" in page and "открыт у" not in page

@@ -13,12 +13,12 @@
 		<div><label>&nbsp;</label><button type="submit" class="secondary">Показать</button></div>
 	</form>
 	{% for p in table.open_channels %}
-	<p class="msg err">Канал {{ p.channel }} открыт у {{ p.opener.name }} с {{ p.opened_at|dt }} — пока его не закроют,
-		эти зеркала не попадут в колонки отгрузки. Закроется сам в 23:59.</p>
+	<p class="msg warn">Канал {{ p.title }} ({{ p.site.name }}) открыт у {{ p.opener.name }} с {{ p.opened_at|dt }}.
+		Что в нём уже отсканировано, видно серым «+N»; в цифры попадёт после закрытия. Закроется сам в 23:59.</p>
 	{% endfor %}
 	{% for p in table.auto_closed %}
-	<p class="msg warn">Канал {{ p.channel }} ({{ p.opener.name }}) закрыт автоматически
-		{%- if p.channel == 'Ozon' %} — машина не выбрана, посчитан в «Озон 1»{% endif %}.</p>
+	<p class="msg warn">Канал {{ p.title }} ({{ p.opener.name }}) закрыт автоматически
+		{%- if p.channel == 'Ozon' and p.note == 'закрыт автоматически' %}, машина не выбрана, посчитан в «Озон 1»{% endif %}.</p>
 	{% endfor %}
 	<p class="hint">{% if table.is_today %}Сегодня, данные на <b>{{ table.built_at }}</b>{% else %}Итог дня <b>{{ day|date }}</b>: остатки на конец дня{% endif %}</p>
 	<div class="row tight mt">
@@ -47,7 +47,7 @@
 			<tr class="totals">
 				<th class="sticky">Отгружено за день</th>
 				<th colspan="4"></th>
-				{% for value in table.totals %}<th class="num">{{ value or '' }}</th>{% endfor %}
+				{% for value in table.totals %}<th class="num">{{ value or '' }}{% if table.pending_totals[loop.index0] %} <span class="pending">+{{ table.pending_totals[loop.index0] }}</span>{% endif %}</th>{% endfor %}
 				<th colspan="2" class="num">всего {{ table.totals|sum }}</th>
 			</tr>
 		</thead>
@@ -62,7 +62,7 @@
 				<td class="num {% if row.before_ship == 0 %}zero{% endif %}">{{ row.before_ship }}</td>
 				<td class="num {% if row.tasks_other_who %}who{% endif %}" {% if row.tasks_other_who %}data-who="Делают: {{ row.tasks_other_who }}" tabindex="0"{% endif %}>{{ row.tasks_other or '' }}{% if row.tasks_other_done %} <span class="muted">(сделано {{ row.tasks_other_done }})</span>{% endif %}</td>
 				<td class="num {% if row.tasks_ship_who %}who{% endif %}" {% if row.tasks_ship_who %}data-who="Делают: {{ row.tasks_ship_who }}" tabindex="0"{% endif %}>{{ row.tasks_ship or '' }}{% if row.tasks_ship_done %} <span class="muted">(сделано {{ row.tasks_ship_done }})</span>{% endif %}</td>
-				{% for value in row.channels %}<td class="num ch">{{ value or '' }}</td>{% endfor %}
+				{% for value in row.channels %}<td class="num ch">{{ value or '' }}{% if row.pending[loop.index0] %} <span class="pending" title="Отсканировано, канал ещё не закрыт">+{{ row.pending[loop.index0] }}</span>{% endif %}</td>{% endfor %}
 				<td class="num {% if row.after < 0 %}neg{% elif row.after == 0 %}zero{% endif %}">{{ row.after }}</td>
 				<td class="num {% if row.after_with_tasks < 0 %}neg{% elif row.after_with_tasks == 0 %}zero{% endif %}">{{ row.after_with_tasks }}</td>
 			</tr>

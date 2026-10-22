@@ -2,7 +2,7 @@
 
 Вход сборщика → начало смены кнопкой
 → кладовщик печатает этикетки на сборщика по задаче → сборщик сканирует
-→ вход грузчика → канал Ozon → скан → закрытие канала с машиной → остаток 0.
+→ вход грузчика → канал «Озон 2» → скан → закрытие канала → остаток 0.
 """
 
 import os
@@ -166,18 +166,17 @@ def test_full_day_in_browser(server: str, db: Session) -> None:
         _login(carrier, server, "Пётр Грузчик — Грузчик", "2222")
         _start_shift(carrier, server, site.name)
         carrier.goto(f"{server}/loading")
-        carrier.click("button.channel-btn:has-text(\"Ozon\")")
+        carrier.click("button.channel-btn:has-text(\"Озон 2\")")
         carrier.wait_for_selector("#scan-input")
         carrier.fill("#scan-input", number)
         carrier.press("#scan-input", "Enter")
         carrier.wait_for_selector(".scan-result.ok", timeout=10000)
-        assert "В канале Ozon: 1" in carrier.inner_text("#scan-result")
-        # Закрыть канал Ozon с машиной
-        carrier.check("input[name=note][value=\"Озон2\"]")
+        assert "В канале Озон 2: 1" in carrier.inner_text("#scan-result")
+        # Машина выбрана при открытии — закрыть без выбора
         carrier.once("dialog", lambda dialog: dialog.accept())
-        carrier.click("button:has-text(\"Закрыть канал Ozon\")")
+        carrier.click("button:has-text(\"Закрыть канал Озон 2\")")
         carrier.wait_for_selector("text=Канал закрыт", timeout=10000)
-        assert "Озон2" in carrier.inner_text("main")
+        assert "Озон 2" in carrier.inner_text("main")
 
         browser.close()
 

@@ -12,6 +12,7 @@ from app.db import get_db
 from app.models import Pallet
 from app.services.context import site_and_shift
 from app.services.shipping import (
+    CHANNEL_BUTTONS,
     ShippingError,
     check_channel_site,
     close_pallet,
@@ -23,7 +24,7 @@ from app.services.shipping import (
     site_channels,
 )
 from app.settings_store import get_flag
-from app.statuses import CHANNELS, OZON, OZON_TRUCKS, ROLE_ADMIN
+from app.statuses import OZON, OZON_TRUCKS, ROLE_ADMIN
 from app.web import GuardedRoute, page, read_json
 
 logger = logging.getLogger(__name__)
@@ -51,7 +52,7 @@ def loading_page(
         {
             "site": site,
             "pallet": pallet,
-            "channels": CHANNELS,
+            "channels": CHANNEL_BUTTONS,
             "open": channels,
             "counts": {name: pallet_count(db, p.id) for name, p in channels.items()},
             "loaders": pallet_loaders(db, pallet.id) if pallet else [],
@@ -68,13 +69,13 @@ def loading_page(
 
 @router.post("/loading/new-pallet")
 def loading_new_pallet(
-    request: Request, channel: str = Form(...), db: Session = Depends(get_db)
+    request: Request, channel: str = Form(...), truck: str = Form(""), db: Session = Depends(get_db)
 ) -> Response:
     """Встать на канал площадки: открыть его или присоединиться к уже открытому."""
     user = request.state.user
     site, _ = site_and_shift(db, user)
     try:
-        pallet = join_channel(db, user=user, site=site, channel=channel)
+        pallet = join_channel(db, user=user, site=site, channel=channel, truck=truck)
     except ShippingError as exc:
         return RedirectResponse(f"/loading?{urlencode({'err': str(exc)})}", status_code=303)
     logger.info("Грузчик на канале", extra={"user_id": user.id, "status": pallet.number})

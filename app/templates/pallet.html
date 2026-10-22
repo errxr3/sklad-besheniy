@@ -1,7 +1,7 @@
 {% extends "base.html" %}
-{% block title %}Отгрузка {{ pallet.channel }}{% endblock %}
+{% block title %}Отгрузка {{ pallet.title }}{% endblock %}
 {% block content %}
-<h1>Канал {{ pallet.channel }}{% if pallet.note %} · {{ pallet.note }}{% endif %}</h1>
+<h1>Канал {{ pallet.title }}{% if pallet.note and pallet.channel != 'Ozon' %} · {{ pallet.note }}{% endif %}</h1>
 <div class="card">
 	{% if pallet.closed_at %}<p class="msg ok">Канал закрыт — всё готово к отгрузке</p>{% endif %}
 	<p>Площадка: {{ pallet.site.name }} · отгрузка {{ pallet.number }}</p>

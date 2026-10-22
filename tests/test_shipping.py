@@ -362,17 +362,34 @@ def test_ship_movements_count(db: Session) -> None:
     assert count == 3
 
 
-def test_ozon_channel_closes_only_with_truck(db: Session) -> None:
-    """Канал Ozon закрывается только с машиной Озон1…Озон3 (решение владельца 2026-10-20)."""
-    loader, pallet = _loader_with_pallet(db)
-    assert pallet.channel == "Ozon"
-    with pytest.raises(ShippingError) as err:
-        close_pallet(db, pallet_id=pallet.id, user=loader, note="")
-    assert "машину" in str(err.value)
+def test_ozon_trucks_are_separate_channels(db: Session) -> None:
+    """Озон 1, Озон 2, Озон 3 — разные каналы: машина выбирается при открытии (2026-10-22)."""
+    site = site_by_name(db)
+    loader = make_user(db, name="Грузчик Ozon", role=ROLE_LOADER)
     with pytest.raises(ShippingError):
-        close_pallet(db, pallet_id=pallet.id, user=loader, note="Озон9")
-    closed = close_pallet(db, pallet_id=pallet.id, user=loader, note="Озон3")
-    assert closed.note == "Озон3" and closed.closed_at is not None
+        open_new_pallet(db, user=loader, site=site, channel="Ozon", truck="Озон9")
+    first = open_new_pallet(db, user=loader, site=site, channel="Ozon", truck="Озон1")
+    second = open_new_pallet(db, user=loader, site=site, channel="Ozon", truck="Озон2")
+    wb = open_new_pallet(db, user=loader, site=site, channel="WB")
+    assert len({first.id, second.id, wb.id}) == 3
+    assert (first.title, second.title, wb.title) == ("Озон 1", "Озон 2", "WB")
+    # Повторное нажатие «Озон 2» — тот же канал
+    assert open_new_pallet(db, user=loader, site=site, channel="Ozon", truck="Озон2").id == second.id
+    closed = close_pallet(db, pallet_id=second.id, user=loader)
+    assert closed.note == "Озон2" and closed.closed_at is not None
+    db.commit()
+
+
+def test_mirror_not_shipped_twice_across_channels(db: Session) -> None:
+    """Зеркало, отсканированное в один канал, не пикается во второй."""
+    units = _stocked_units(db, 1)
+    site = site_by_name(db)
+    loader = make_user(db, name="Грузчик двух каналов", role=ROLE_LOADER)
+    ozon2 = open_new_pallet(db, user=loader, site=site, channel="Ozon", truck="Озон2")
+    wb = open_new_pallet(db, user=loader, site=site, channel="WB")
+    assert scan_loading(db, code=units[0].number, pallet=ozon2, actor=loader).ok
+    again = scan_loading(db, code=units[0].number, pallet=wb, actor=loader)
+    assert not again.ok and "Уже отгружено" in again.message
 
 
 def test_all_channels_available(db: Session) -> None:
