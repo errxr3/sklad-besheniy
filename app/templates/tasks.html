@@ -14,6 +14,10 @@
 	</form>
 	{% if not editable %}
 	<p class="muted">Прошедший день — только просмотр.</p>
+	{% else %}
+	<div class="row tight mt">
+		<a class="btn secondary" href="/tasks/import{% if site %}?site_id={{ site.id }}{% endif %}">Загрузить из Excel</a>
+	</div>
 	{% endif %}
 </div>
 

@@ -112,6 +112,9 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("GET", "/my-day/data"): ALL_LOGGED_IN,
     # Задачи и отчёты
     ("GET", "/tasks"): LEADS,
+    ("GET", "/tasks/import"): LEADS,
+    ("POST", "/tasks/import/preview"): LEADS,
+    ("POST", "/tasks/import/apply"): LEADS,
     ("POST", "/tasks/create"): LEADS,
     ("POST", "/tasks/update"): LEADS,
     ("POST", "/tasks/delete"): LEADS,

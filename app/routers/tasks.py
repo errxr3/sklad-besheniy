@@ -1,16 +1,18 @@
 """Задачи на день: постановка начальником смены и отметка выполнения (SPEC §6.1–6.2)."""
 
+import json
 import logging
 from datetime import date, timedelta
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Site, Task, User
+from app.models import Article, Site, Task, User
+from app.services.task_import import TasksFileError, parse_tasks_file
 from app.services.tasks import (
     TaskError,
     create_task,
@@ -270,3 +272,145 @@ def reports_home(request: Request) -> Response:
 def progress_for(db: Session, user: User) -> object:
     """Прогресс сотрудника на сегодня (используется главной страницей)."""
     return tasks_progress(db, user_id=user.id, day=today_msk())
+
+
+# ---------- Задачи из Excel ----------
+
+
+def _import_site(db: Session, user: User, site_id: int) -> Site | None:
+    sites = task_sites(db, user)
+    by_id = {s.id: s for s in sites}
+    home = by_id.get(user.home_site_id) if user.home_site_id else None
+    return by_id.get(site_id) or home or (sites[0] if sites else None)
+
+
+@router.get("/tasks/import", response_class=HTMLResponse)
+def tasks_import_form(
+    request: Request, db: Session = Depends(get_db), site_id: int = 0, err: str = ""
+) -> Response:
+    """Форма загрузки задач из Excel."""
+    user = request.state.user
+    sites = task_sites(db, user)
+    site = _import_site(db, user, site_id)
+    return page(
+        request,
+        "tasks_import.html",
+        {
+            "sites": sites,
+            "site": site,
+            "day": today_msk() + timedelta(days=1),
+            "err": err,
+            "preview": None,
+        },
+    )
+
+
+@router.post("/tasks/import/preview", response_class=HTMLResponse)
+async def tasks_import_preview(
+    request: Request,
+    day: str = Form(...),
+    site_id: int = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+) -> Response:
+    """Разобрать файл: всё узнано — поставить задачи сразу, иначе показать, что не сошлось."""
+    user = request.state.user
+    site = _import_site(db, user, site_id)
+    sites = task_sites(db, user)
+    try:
+        target_day = date.fromisoformat(day)
+    except ValueError:
+        return RedirectResponse("/tasks/import", status_code=303)
+    content = await file.read()
+    error, preview = "", None
+    if site is None or site.id != site_id:
+        error = "Эта площадка вам недоступна"
+    elif target_day < today_msk():
+        error = "Задачи за прошедшие дни можно только смотреть"
+    elif not content:
+        error = "Файл пустой"
+    else:
+        try:
+            preview = parse_tasks_file(db, content, site)
+        except TasksFileError as exc:
+            error = str(exc)
+    if site is not None and preview is not None and preview.clean:
+        owner = {c.index: c.user_id for c in preview.columns}
+        wanted: dict[tuple[int, int], int] = {}
+        for cell in preview.cells:
+            key = (owner[cell.col] or 0, cell.article_id)
+            wanted[key] = wanted.get(key, 0) + cell.qty
+        return _place_tasks(db, user, target_day, site.id, wanted, {})
+    return page(
+        request,
+        "tasks_import.html",
+        {"sites": sites, "site": site, "day": target_day, "err": error, "preview": preview},
+    )
+
+
+@router.post("/tasks/import/apply")
+async def tasks_import_apply(request: Request, db: Session = Depends(get_db)) -> Response:
+    """Поставить задачи из предпросмотра: колонки без выбранного сотрудника пропускаются."""
+    form = await request.form()
+    user = request.state.user
+    try:
+        target_day = date.fromisoformat(str(form.get("day", "")))
+        site_id = int(str(form.get("site_id", "0")))
+    except ValueError:
+        return RedirectResponse("/tasks/import", status_code=303)
+    try:
+        cells = json.loads(str(form.get("payload", "[]")))
+        wanted: dict[tuple[int, int], int] = {}
+        skipped_cols: dict[int, int] = {}
+        for item in cells:
+            col, article_id, qty = int(item["col"]), int(item["article_id"]), int(item["qty"])
+            chosen = str(form.get(f"col_{col}", ""))
+            if not chosen.isdigit():
+                skipped_cols[col] = skipped_cols.get(col, 0) + qty
+                continue
+            key = (int(chosen), article_id)
+            wanted[key] = wanted.get(key, 0) + qty
+    except (ValueError, KeyError, TypeError):
+        return _back(target_day, site_id, err="Данные предпросмотра устарели, загрузите файл ещё раз")
+    return _place_tasks(db, user, target_day, site_id, wanted, skipped_cols)
+
+
+def _place_tasks(
+    db: Session,
+    user: User,
+    target_day: date,
+    site_id: int,
+    wanted: dict[tuple[int, int], int],
+    skipped_cols: dict[int, int],
+) -> Response:
+    """Поставить задачи (сотрудник, артикул) → штук и вернуться к задачам дня с итогом."""
+    created, qty_total, problems = 0, 0, []
+    names = {u.id: u.name for u in db.scalars(select(User).where(User.id.in_({k[0] for k in wanted}))).all()}
+    for (worker_id, article_id), qty in sorted(wanted.items()):
+        try:
+            create_task(
+                db,
+                actor=user,
+                day=target_day,
+                site_id=site_id,
+                user_id=worker_id,
+                kind="article",
+                article_id=article_id,
+                qty_plan=qty,
+            )
+            created += 1
+            qty_total += qty
+        except TaskError as exc:
+            article = db.get(Article, article_id)
+            who = names.get(worker_id, str(worker_id))
+            problems.append(f"{who}, {article.name if article else article_id}: {exc}")
+    db.commit()
+    message = f"Поставлено задач: {created} ({qty_total} шт.)"
+    parts = []
+    if skipped_cols:
+        skipped_qty = sum(skipped_cols.values())
+        parts.append(f"пропущено колонок без сотрудника: {len(skipped_cols)} ({skipped_qty} шт.)")
+    if problems:
+        parts.append("не поставлено: " + "; ".join(problems[:6]) + (" и другие" if len(problems) > 6 else ""))
+    logger.info("Задачи загружены из Excel", extra={"user_id": user.id, "status": f"{created} задач"})
+    return _back(target_day, site_id, message=message, err="; ".join(parts))

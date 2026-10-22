@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+{% block title %}Задачи из Excel{% endblock %}
+{% block content %}
+<h1>Задачи из Excel</h1>
+{% if err %}<p class="msg err">{{ err }}</p>{% endif %}
+
+{% if not preview %}
+<div class="card">
+	<form method="post" action="/tasks/import/preview" enctype="multipart/form-data">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<div class="row">
+			<div>
+				<label for="day">На какой день</label>
+				<input type="date" id="day" name="day" value="{{ day.isoformat() }}" required>
+			</div>
+			<div>
+				<label for="site">Площадка</label>
+				<select id="site" name="site_id">
+					{% for s in sites %}<option value="{{ s.id }}" {% if site and s.id == site.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+				</select>
+			</div>
+			<div>
+				<label for="file">Файл .xlsx</label>
+				<input type="file" id="file" name="file" accept=".xlsx" required>
+			</div>
+		</div>
+		<button type="submit" class="mt">Загрузить</button>
+	</form>
+</div>
+
+{% else %}
+<div class="card">
+	<h2>{{ site.name }} · {{ day|date }}</h2>
+	<p>В файле задач: <b>{{ preview.cells|length }}</b> ({{ preview.total_qty }} шт.). Проверьте, что ниже, и нажмите «Поставить задачи».</p>
+</div>
+
+{% if preview.unknown %}
+<div class="card">
+	<h2>Этих артикулов нет в справочнике</h2>
+	<p class="muted">По ним задачи не поставятся.</p>
+	<table>
+		<tr><th>В файле</th><th class="num">Штук</th></tr>
+		{% for label, qty in preview.unknown %}<tr><td>{{ label }}</td><td class="num">{{ qty }}</td></tr>{% endfor %}
+	</table>
+</div>
+{% endif %}
+
+{% if preview.bad_cells %}
+<div class="card">
+	<h2>Клетки, которые не поняли</h2>
+	<ul class="plain">{% for line in preview.bad_cells %}<li>{{ line }}</li>{% endfor %}</ul>
+</div>
+{% endif %}
+
+<form method="post" action="/tasks/import/apply">
+	<input type="hidden" name="csrf_token" value="{{ csrf }}">
+	<input type="hidden" name="day" value="{{ day.isoformat() }}">
+	<input type="hidden" name="site_id" value="{{ site.id }}">
+	<input type="hidden" name="payload" value="{{ preview.payload() }}">
+	<div class="card">
+		<h2>Кто есть кто</h2>
+		<table>
+			<tr><th>В файле</th><th class="num">Штук</th><th>Сотрудник</th></tr>
+			{% for col in preview.columns %}
+			<tr>
+				<td>{{ col.title }}</td>
+				<td class="num">{{ col.total }}</td>
+				<td>
+					<select name="col_{{ col.index }}" style="min-height:38px">
+						<option value="">не ставить</option>
+						{% for uid, name in col.ranked %}<option value="{{ uid }}" {% if uid == col.user_id %}selected{% endif %}>{{ name }}</option>{% endfor %}
+					</select>
+					{% if col.note and col.note != 'найден' and not col.note.startswith('тот же') %}<span class="badge warn">{{ col.note }}</span>{% endif %}
+				</td>
+			</tr>
+			{% endfor %}
+		</table>
+	</div>
+
+	<div class="row tight">
+		<button type="submit" class="big">Поставить задачи</button>
+		<a class="btn secondary" href="/tasks/import?site_id={{ site.id }}">Другой файл</a>
+	</div>
+</form>
+{% endif %}
+{% endblock %}
