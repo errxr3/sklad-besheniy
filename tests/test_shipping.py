@@ -460,3 +460,26 @@ def test_loading_page_without_shift_asks_to_start(client: TestClient, db: Sessio
     page = client.get("/loading").text
     assert "Смена не начата" in page
     assert "channel-btn" not in page
+
+
+def test_two_loaders_open_same_channel_at_once(db: Session, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Гонка: второй не видел открытый канал — уникальный индекс не пустит, он встанет в тот же."""
+    import app.services.shipping as shipping
+
+    site = site_by_name(db)
+    first = make_user(db, name="Грузчик гонка 1", role=ROLE_LOADER)
+    second = make_user(db, name="Грузчик гонка 2", role=ROLE_LOADER)
+    pallet = open_new_pallet(db, user=first, site=site, channel="WB")
+    db.commit()
+
+    real = shipping.open_channel_at
+    calls = {"n": 0}
+
+    def late(*args, **kwargs):  # type: ignore[no-untyped-def]
+        calls["n"] += 1
+        return None if calls["n"] == 1 else real(*args, **kwargs)
+
+    monkeypatch.setattr(shipping, "open_channel_at", late)
+    joined = open_new_pallet(db, user=second, site=site, channel="WB")
+    assert joined.id == pallet.id
+    assert calls["n"] == 2

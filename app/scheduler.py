@@ -5,15 +5,20 @@ import logging
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 from apscheduler.triggers.interval import IntervalTrigger
+from sqlalchemy import Connection, text
 
 from app.config import get_settings
-from app.db import session_scope
+from app.db import get_engine, session_scope
 from app.services.shifts import AUTO_CLOSE_HOUR, AUTO_CLOSE_MINUTE, auto_close_shifts
 from app.timeutil import MOSCOW
 
 logger = logging.getLogger(__name__)
 
 _scheduler: BackgroundScheduler | None = None
+# Сайт работает в нескольких процессах; фоновые задачи — только в одном: тот, кто взял
+# эту блокировку PostgreSQL, держит её, пока жив (иначе каналы и смены закрывались бы дважды)
+SCHEDULER_LOCK_ID = 7_310_001
+_lock_connection: Connection | None = None
 
 
 def job_auto_close_shifts() -> None:
@@ -58,9 +63,18 @@ def job_sync_sheets() -> None:
 def start_scheduler() -> BackgroundScheduler | None:
     """Запустить планировщик, если он включён настройками."""
     global _scheduler
+    global _lock_connection
     settings = get_settings()
     if not settings.scheduler_enabled or _scheduler is not None:
         return _scheduler
+
+    connection = get_engine().connect()
+    if not connection.execute(text("SELECT pg_try_advisory_lock(:id)"), {"id": SCHEDULER_LOCK_ID}).scalar():
+        connection.close()
+        logger.info("Планировщик уже работает в другом процессе")
+        return None
+    connection.commit()
+    _lock_connection = connection
 
     scheduler = BackgroundScheduler(timezone=MOSCOW)
     scheduler.add_job(
@@ -89,12 +103,25 @@ def start_scheduler() -> BackgroundScheduler | None:
 
 def stop_scheduler() -> None:
     """Остановить планировщик."""
-    global _scheduler
+    global _scheduler, _lock_connection
     if _scheduler is not None:
         _scheduler.shutdown(wait=False)
         _scheduler = None
+    if _lock_connection is not None:
+        _lock_connection.close()  # блокировка снимается вместе с подключением
+        _lock_connection = None
 
 
 def scheduler_running() -> bool:
-    """Запущен ли планировщик в этом процессе."""
-    return _scheduler is not None and bool(_scheduler.running)
+    """Работает ли планировщик в каком-нибудь процессе сайта."""
+    if _scheduler is not None and _scheduler.running:
+        return True
+    with get_engine().connect() as connection:
+        held = connection.execute(
+            text(
+                "SELECT EXISTS (SELECT 1 FROM pg_locks"
+                " WHERE locktype = 'advisory' AND objid = :id AND granted)"
+            ),
+            {"id": SCHEDULER_LOCK_ID},
+        ).scalar()
+    return bool(held)

@@ -28,8 +28,14 @@ def get_engine() -> Engine:
         _engine = create_engine(
             settings.database_url,
             pool_pre_ping=True,
-            pool_size=10,
-            max_overflow=20,
+            # Обработчики идут в пуле из 40 потоков, каждый держит подключение: подключений
+            # должно хватать на все потоки с запасом, иначе при 100 людях запросы ждут 30 с
+            # (проверено нагрузкой 2026-10-22). У PostgreSQL по умолчанию 100 подключений.
+            pool_size=20,
+            max_overflow=40,
+            # Страховка: запрос не ждёт чужую блокировку строки дольше 10 с — иначе ожидающие
+            # потоки могут занять весь пул, и сервер зависнет целиком
+            connect_args={"options": "-c lock_timeout=10000"},
             future=True,
         )
     return _engine

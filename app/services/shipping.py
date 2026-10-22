@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from sqlalchemy import func, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.articles import normalize_article
@@ -120,22 +121,30 @@ def join_channel(
             raise ShippingError("Выберите машину Ozon: " + ", ".join(OZON_TRUCKS))
     else:
         truck = ""
-    # Блокировка площадки: двое одновременно нажали «Озон 1» — канал откроется один
-    session.execute(select(Site.id).where(Site.id == site.id).with_for_update())
-    existing = open_channel_at(session, site.id, channel, truck)
-    if existing is not None:
-        return existing
-    pallet = Pallet(
-        number=next_pallet_number(session),
-        site_id=site.id,
-        channel=channel,
-        note=truck or None,
-        opened_by=user.id,
-        opened_at=now_utc(),
-    )
-    session.add(pallet)
-    session.flush()
-    return pallet
+    # Двое одновременно нажали «Озон 1» — канал откроется один: второго не пустит уникальный
+    # индекс открытого канала, и он встанет в уже открытый. Блокировку строки здесь не берём:
+    # под нагрузкой (100 человек) ожидание блокировки занимало все потоки сервера и он зависал
+    for _ in range(5):
+        existing = open_channel_at(session, site.id, channel, truck)
+        if existing is not None:
+            return existing
+        try:
+            with session.begin_nested():
+                pallet = Pallet(
+                    number=next_pallet_number(session),
+                    site_id=site.id,
+                    channel=channel,
+                    note=truck or None,
+                    opened_by=user.id,
+                    opened_at=now_utc(),
+                )
+                session.add(pallet)
+                session.flush()
+            return pallet
+        except IntegrityError:
+            # Канал уже открыл другой грузчик или номер отгрузки заняли — пробуем снова
+            continue
+    raise ShippingError("Не удалось открыть канал, нажмите ещё раз")
 
 
 # Старое имя: тесты и скрипты открывали канал так
