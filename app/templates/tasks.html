@@ -30,6 +30,7 @@
 			</span>
 			<span>{% if item.task.kind == 'article' %}{{ item.done }} / {{ item.task.qty_plan }}{% endif %}</span>
 		</div>
+		{% if item.hanging %}<p class="muted">Напечатано этикеток, зеркала ещё не сданы: <b>{{ item.hanging }}</b></p>{% endif %}
 		{% if editable %}
 		<div class="row tight mt">
 			<form method="post" action="/tasks/update" class="row tight">
@@ -44,7 +45,8 @@
 				{% endif %}
 				<button type="submit" class="secondary">Сохранить</button>
 			</form>
-			<form method="post" action="/tasks/delete">
+			<form method="post" action="/tasks/delete" class="task-delete"
+			      data-confirm="Удалить задачу «{% if item.task.kind == 'article' %}{{ item.task.article.name }}{% else %}{{ item.task.text }}{% endif %}»?{% if item.hanging %} Уже напечатано этикеток: {{ item.hanging }}. Сборщик отдаёт их кладовщице, она уберёт их сканом в «Лишние этикетки».{% endif %}">
 				<input type="hidden" name="csrf_token" value="{{ csrf }}">
 				<input type="hidden" name="task_id" value="{{ item.task.id }}">
 				<input type="hidden" name="day" value="{{ day.isoformat() }}">
@@ -78,4 +80,11 @@
 {% endblock %}
 {% block scripts %}
 <script src="/static/article_picker.js?v={{ STATIC_VERSION }}"></script>
+<script>
+	Array.prototype.forEach.call(document.querySelectorAll('.task-delete'), function (form) {
+		form.addEventListener('submit', function (event) {
+			if (!window.confirm(form.dataset.confirm)) event.preventDefault();
+		});
+	});
+</script>
 {% endblock %}

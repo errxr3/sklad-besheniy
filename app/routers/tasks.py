@@ -30,6 +30,19 @@ logger = logging.getLogger(__name__)
 router = APIRouter(route_class=GuardedRoute)
 
 
+def hanging_count(db: Session, task_id: int) -> int:
+    """Сколько этикеток задачи напечатано, а зеркала ещё не на складе."""
+    from sqlalchemy import func
+
+    from app.models import Unit
+    from app.statuses import PRINTED
+
+    value = db.scalar(
+        select(func.count()).select_from(Unit).where(Unit.task_id == task_id, Unit.status == PRINTED)
+    )
+    return int(value or 0)
+
+
 def _back(day: date, site_id: int, message: str = "", err: str = "") -> RedirectResponse:
     """Вернуться на экран задач с сообщением."""
     params: dict[str, str] = {"day": day.isoformat(), "site_id": str(site_id)}
@@ -71,7 +84,9 @@ def tasks_page(
                 if task.kind == "article" and task.article_id
                 else (1 if task.done_manually_at else 0)
             )
-            by_user.setdefault(task.user_id, []).append({"task": task, "done": done})
+            by_user.setdefault(task.user_id, []).append(
+                {"task": task, "done": done, "hanging": hanging_count(db, task.id)}
+            )
 
     return page(
         request,
@@ -135,7 +150,7 @@ def tasks_update(
     """Изменить задачу."""
     target_day = date.fromisoformat(day)
     try:
-        update_task(
+        task = update_task(
             db,
             actor=request.state.user,
             task_id=task_id,
@@ -144,7 +159,17 @@ def tasks_update(
         )
     except (TaskError, ValueError) as exc:
         return _back(target_day, site_id, err=str(exc))
-    return _back(target_day, site_id, message="Задача изменена")
+    message = "Задача изменена"
+    if task.kind == "article" and task.article_id and task.qty_plan:
+        # План уменьшили, а этикетки уже напечатаны — лишние кладовщица уберёт сканом
+        done = done_count(db, user_id=task.user_id, article_id=task.article_id, day=task.date)
+        extra = hanging_count(db, task.id) - max(0, task.qty_plan - done)
+        if extra > 0:
+            message += (
+                f". Лишних напечатанных этикеток: {extra} — сборщик отдаёт их кладовщице,"
+                " она уберёт их в «Лишние этикетки»"
+            )
+    return _back(target_day, site_id, message=message)
 
 
 @router.post("/tasks/delete")
@@ -157,11 +182,19 @@ def tasks_delete(
 ) -> Response:
     """Удалить задачу."""
     target_day = date.fromisoformat(day)
+    hanging = hanging_count(db, task_id)
     try:
         delete_task(db, actor=request.state.user, task_id=task_id)
     except TaskError as exc:
         return _back(target_day, site_id, err=str(exc))
-    return _back(target_day, site_id, message="Задача удалена")
+    message = "Задача удалена"
+    if hanging:
+        # Этикетки удалённой задачи уже напечатаны: их убирает кладовщица сканом
+        message += (
+            f". Напечатанные этикетки ({hanging} шт.) сборщик отдаёт кладовщице —"
+            " она уберёт их в «Лишние этикетки»"
+        )
+    return _back(target_day, site_id, message=message)
 
 
 @router.post("/tasks/done")
