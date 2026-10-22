@@ -77,8 +77,8 @@ class ShipmentRow:
     name: str
     is_header: bool
     color_hex: str | None
-    before_other: int = 0  # Учительская, до отгрузок
-    before_ship: int = 0  # Коминтерна, до отгрузок
+    before_other: int = 0  # Учительская, остаток на утро (начало дня)
+    before_ship: int = 0  # Коминтерна, остаток на утро (начало дня)
     tasks_other: int = 0
     tasks_ship: int = 0
     tasks_ship_done: int = 0  # из задач дня уже сделано и принято сканом
@@ -88,6 +88,9 @@ class ShipmentRow:
     channels: list[int] = field(default_factory=list)
     # Отсканировано в ещё открытые каналы — показывается серым «+N», в итог не входит
     pending: list[int] = field(default_factory=list)
+    # Склад общий сейчас (обе площадки) + отгруженное за день: утро + сделанное за день
+    # (и прочие приходы: возвраты, ввод остатков). Без него — только утренний остаток.
+    available: int | None = None
 
     @property
     def shipped(self) -> int:
@@ -95,7 +98,9 @@ class ShipmentRow:
 
     @property
     def stock_total(self) -> int:
-        """Склад общий: обе площадки вместе (решение владельца 2026-10-21)."""
+        """Склад общий до отгрузок: утро + сделанное за день (решение владельца 2026-10-21/22)."""
+        if self.available is not None:
+            return self.available
         return self.before_ship + self.before_other
 
     @property
@@ -266,11 +271,13 @@ def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
     ship_site = next((s for s in sites if s.name == SHIP_SITE_NAME), sites[0] if sites else None)
     other_site = next((s for s in sites if ship_site is None or s.id != ship_site.id), None)
 
-    # Сегодня — остаток сейчас; прошедший день — остаток на конец того дня по журналу
+    # Сегодня — остаток сейчас; прошедший день — остаток на конец того дня по журналу.
+    # В «до отгрузок» — остаток на утро: не растёт, пока сборщики сдают зеркала
     if day >= today_msk():
         stock = stock_by_article_site(session)
     else:
         stock = stock_at(session, msk_day_bounds(day)[1])
+    morning = stock_at(session, msk_day_bounds(day)[0])
     plans = plan_sum_by_site(session, day=day)
     done = tasks_done_by_article_site(session, day=day)
     workers = task_workers(session, day=day)
@@ -314,12 +321,12 @@ def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
                 name=article.name,
                 is_header=False,
                 color_hex=article.color_hex,
-                before_other=(stock.get((article.id, other_site.id), 0) + other_shipped)
-                if other_site
-                else 0,
-                before_ship=(stock.get((article.id, ship_site.id), 0) + all_shipped)
-                if ship_site
-                else 0,
+                before_other=morning.get((article.id, other_site.id), 0) if other_site else 0,
+                before_ship=morning.get((article.id, ship_site.id), 0) if ship_site else 0,
+                available=(
+                    (stock.get((article.id, other_site.id), 0) + other_shipped if other_site else 0)
+                    + (stock.get((article.id, ship_site.id), 0) + all_shipped if ship_site else 0)
+                ),
                 tasks_other=plans.get((article.id, other_site.id), 0) if other_site else 0,
                 tasks_ship=plans.get((article.id, ship_site.id), 0) if ship_site else 0,
                 tasks_ship_done=done.get((article.id, ship_site.id), 0) if ship_site else 0,

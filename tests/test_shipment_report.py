@@ -1,6 +1,7 @@
 """Экран «Отгрузка»: как гугл-таблица владельца (2026-10-21)."""
 
 from fastapi.testclient import TestClient
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models import Article, Unit
@@ -13,7 +14,7 @@ from app.timeutil import today_msk
 from tests.helpers import login, make_article, make_user, site_by_name
 
 
-def _stock(db: Session, article_id: int, site_name: str, qty: int) -> list[Unit]:
+def _stock(db: Session, article_id: int, site_name: str, qty: int, backdate: bool = True) -> list[Unit]:
     assembler = make_user(db, name=f"Сборщик {site_name} {article_id} {qty}", role=ROLE_ASSEMBLER)
     units = create_printed_units(
         db, article_id=article_id, qty=qty, site_id=site_by_name(db, site_name).id,
@@ -22,6 +23,16 @@ def _stock(db: Session, article_id: int, site_name: str, qty: int) -> list[Unit]
     db.commit()
     for unit in units:
         accept_unit(db, code=unit.number, actor=assembler)
+    db.commit()
+    if not backdate:
+        return units
+    # Остаток лежал на складе с вечера: «до отгрузок» — это остаток на утро (2026-10-22)
+    db.execute(text("ALTER TABLE movements DISABLE TRIGGER USER"))
+    db.execute(
+        text("UPDATE movements SET created_at = created_at - interval '1 day' WHERE unit_id = ANY(:ids)"),
+        {"ids": [unit.id for unit in units]},
+    )
+    db.execute(text("ALTER TABLE movements ENABLE TRIGGER USER"))
     db.commit()
     return units
 
@@ -105,9 +116,9 @@ def test_shipments_page_for_lead(client: TestClient, db: Session) -> None:
     login(client, lead)
     response = client.get("/shipments")
     assert response.status_code == 200
-    for text in ("ДО отгрузок", "ПОСЛЕ отгрузок", "Озон 1", "Озон 3", "склад − отгрузка"):
+    for word in ("ДО отгрузок", "ПОСЛЕ отгрузок", "Озон 1", "Озон 3", "склад − отгрузка"):
         assert "общее" not in response.text
-        assert text in response.text
+        assert word in response.text
     stock = client.get("/stock").text
     assert 'href="/shipments"' in stock  # вкладки раздела «Склад»
 
@@ -148,7 +159,7 @@ def test_past_day_uses_stock_from_journal(db: Session) -> None:
 
     article = make_article(db, name="Zerkalo_40x160")
     site = site_by_name(db, "Коминтерна")
-    units = _stock(db, article.id, "Коминтерна", 4)
+    units = _stock(db, article.id, "Коминтерна", 4, backdate=False)
     between = now_utc()
     loader = make_user(db, name="Грузчик истории", role=ROLE_LOADER)
     _ship(db, loader, units[:3], "WB")
@@ -165,7 +176,8 @@ def test_past_day_uses_stock_from_journal(db: Session) -> None:
 
     today = build_shipment_table(db, day=today_msk())
     row = next(r for r in today.rows if r.name == "Zerkalo_40x160")
-    assert (row.before_ship, row.shipped, row.after) == (4, 3, 1)
+    # Приняли сегодня: на утро было 0, после отгрузки на складе 1
+    assert (row.before_ship, row.shipped, row.after) == (0, 3, 1)
 
 
 def test_done_part_of_tasks_is_not_counted_twice(db: Session) -> None:
@@ -192,7 +204,9 @@ def test_done_part_of_tasks_is_not_counted_twice(db: Session) -> None:
     db.commit()
 
     row = next(r for r in build_shipment_table(db, day=today_msk()).rows if r.name == "Zerkalo_50x170")
-    assert (row.before_ship, row.tasks_ship, row.tasks_ship_done) == (5, 15, 5)
+    # «До отгрузок» — остаток на утро, сделанное видно в задачах и в «после»
+    assert (row.before_ship, row.tasks_ship, row.tasks_ship_done) == (0, 15, 5)
+    assert row.after == 5
     assert row.after_with_tasks == 15  # 5 на складе + 10 ещё сделают
 
 
