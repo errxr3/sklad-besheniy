@@ -1,0 +1,53 @@
+# Очистка базы перед запуском склада. Запуск вручную:
+# Actions → «Очистка базы» → Run workflow, в поле подтверждения написать ОЧИСТИТЬ.
+# Сначала резервная копия (backups/ на сервере), потом удаляются зеркала, журнал, смены,
+# задачи, каналы и все сотрудники, кроме администраторов. Справочник и площадки остаются.
+name: Очистка базы
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: "Напишите ОЧИСТИТЬ, чтобы подтвердить"
+        required: true
+        default: ""
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  wipe:
+    name: Очистка
+    runs-on: ubuntu-latest
+    env:
+      HOST: ${{ secrets.SERVER_HOST }}
+      SSHPASS: ${{ secrets.SERVER_PASSWORD }}
+      USER_NAME: ${{ secrets.SERVER_USER || 'root' }}
+      CONFIRM: ${{ github.event.inputs.confirm }}
+    steps:
+      - name: Подтверждение
+        run: |
+          if [ "$CONFIRM" != "ОЧИСТИТЬ" ]; then echo "Не подтверждено, ничего не делаю"; exit 1; fi
+          if [ -z "$HOST" ] || [ -z "$SSHPASS" ]; then echo "Нет секретов сервера"; exit 1; fi
+          sudo apt-get install -y -qq sshpass >/dev/null
+      - name: Резервная копия
+        run: |
+          SSH="sshpass -e ssh -o StrictHostKeyChecking=accept-new $USER_NAME@$HOST"
+          $SSH 'cd /opt/sklad && docker compose exec -T backup /bin/sh /tmp/backup.sh once && ls -lh backups | tail -3'
+      - name: Очистка
+        run: |
+          SSH="sshpass -e ssh -o StrictHostKeyChecking=accept-new $USER_NAME@$HOST"
+          # Сайт останавливаем на время очистки, чтобы никто не записал данные посередине
+          $SSH 'cd /opt/sklad && docker compose stop app && docker compose run --rm --no-deps --entrypoint "" app python -m app.cli wipe-data --confirm ОЧИСТИТЬ; RC=$?; docker compose start app; exit $RC'
+          $SSH 'cd /opt/sklad && docker compose exec -T app python -m app.cli list-users' || true
+      - name: Сайт снова работает?
+        run: |
+          SSH="sshpass -e ssh -o StrictHostKeyChecking=accept-new $USER_NAME@$HOST"
+          for i in $(seq 1 40); do
+            if $SSH 'cd /opt/sklad && docker compose exec -T app python -c "import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\", timeout=3)"' 2>/dev/null; then
+              echo "Сайт отвечает"; exit 0
+            fi
+            sleep 3
+          done
+          echo "Сайт не ответил"; exit 1
