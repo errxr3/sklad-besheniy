@@ -8,7 +8,7 @@
 """
 
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 
 from sqlalchemy import and_, func, not_, select
 from sqlalchemy.orm import Session
@@ -16,7 +16,7 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.models import Task, Unit, User
 from app.services.tasks import done_count
-from app.services.units import MAX_PRINT_QTY, UnitError, create_printed_units
+from app.services.units import MAX_PRINT_QTY, UnitError, create_printed_units, future_task_error
 from app.statuses import IN_STOCK, MV_ACCEPT, MV_LABEL_VOID, PRINTED, ROLE_ADMIN, WRITTEN_OFF
 from app.transitions import apply_transition, lock_unit_by_id
 
@@ -185,7 +185,11 @@ class AssemblerTask:
 
 
 def assembler_tasks(session: Session, *, user_id: int, day: date) -> list[AssemblerTask]:
-    """Задачи сборщика на день и более ранние, по которым ещё висят этикетки."""
+    """Задачи сборщика на день и более ранние, по которым ещё висят этикетки.
+
+    Задачи будущих дней сюда не попадают, даже если этикетки на них уже напечатаны:
+    сдать их можно только в их день (см. future_task_error).
+    """
     hanging_by_task: dict[int, int] = {}
     for task_id, count in session.execute(
         select(Unit.task_id, func.count())
@@ -201,6 +205,7 @@ def assembler_tasks(session: Session, *, user_id: int, day: date) -> list[Assemb
             .where(
                 Task.user_id == user_id,
                 Task.kind == "article",
+                Task.date <= day,
                 (Task.date == day) | Task.id.in_(list(hanging_by_task) or [0]),
             )
             .order_by(Task.date, Task.id)
@@ -217,6 +222,17 @@ def assembler_tasks(session: Session, *, user_id: int, day: date) -> list[Assemb
     return result
 
 
+def upcoming_tasks(session: Session, *, user_id: int, day: date) -> list[Task]:
+    """Задачи на следующий день: сборщик видит их заранее, но сдать пока не может."""
+    return list(
+        session.scalars(
+            select(Task)
+            .where(Task.user_id == user_id, Task.kind == "article", Task.date == day + timedelta(days=1))
+            .order_by(Task.id)
+        ).all()
+    )
+
+
 def submit_task(
     session: Session, *, task_id: int, actor: User, shift_id: int | None = None
 ) -> int:
@@ -230,6 +246,9 @@ def submit_task(
         raise UnitError("Задача не найдена")
     if actor.role != ROLE_ADMIN and task.user_id != actor.id:
         raise UnitError("Это задача другого сборщика")
+    early = future_task_error(task)
+    if early:
+        raise UnitError(early)
     units = hanging_units(session, task_ids=[task.id])
     if not units:
         raise UnitError("По этой задаче нет напечатанных этикеток — возьмите их у кладовщицы")

@@ -65,6 +65,13 @@
 	{% endfor %}
 	<p class="hint">Сделали меньше, чем этикеток? Всё равно нажмите «Собрал всё», а лишние этикетки
 		отдайте кладовщице — она уберёт их со склада сканом.</p>
+	{% if upcoming %}
+	<h2 class="mt">Завтра</h2>
+	<p class="hint">Только посмотреть: сдавать эти задачи можно будет завтра.</p>
+	{% for task in upcoming %}
+	<div class="line"><span>{{ task.article.name }}</span><span class="muted">план {{ task.qty_plan }}</span></div>
+	{% endfor %}
+	{% endif %}
 </div>
 
 <div class="card">

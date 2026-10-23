@@ -77,3 +77,16 @@ def test_long_article_is_not_cut() -> None:
     assert len(lines) <= 2
     assert " ".join(lines) == article
     assert size < 16
+
+
+def test_barcode_bars_are_whole_printer_dots() -> None:
+    """Ширина полоски — целое число точек 203 dpi: принтер не округляет полоски по-разному."""
+    from reportlab.lib.units import mm
+
+    from app.labels import PRINTER_DOT, _barcode
+
+    for width_mm in (58, 75, 100):
+        barcode = _barcode("AT0000065", 10 * mm, width_mm * mm)
+        dots = barcode.barWidth / PRINTER_DOT
+        assert abs(dots - round(dots)) < 1e-6 and round(dots) >= 3
+        assert barcode.width <= width_mm * mm

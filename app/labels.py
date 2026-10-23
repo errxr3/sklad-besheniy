@@ -17,6 +17,13 @@ FONT_BOLD = "DejaVuSans-Bold"
 
 _fonts_registered = False
 
+# Термопринтеры этикеток печатают точками 203 dpi (0,125 мм). Ширина полоски штрихкода должна
+# быть целым числом точек, иначе принтер округляет полоски по-разному и код читается плохо.
+PRINTER_DOT = 25.4 / 203 * mm
+BAR_DOTS = (5, 4, 3, 2)  # от самой широкой полоски к самой узкой: берём самую широкую, что влезет
+QUIET_MODULES = 10  # белое поле слева и справа от кода, без него сканер теряет начало кода
+MIN_BARCODE_SHARE = 0.42  # штрихкод занимает не меньше этой доли высоты под шапкой
+
 
 def register_fonts() -> None:
     """Зарегистрировать шрифты с кириллицей (один раз на процесс)."""
@@ -140,12 +147,13 @@ def draw_label(pdf: canvas.Canvas, data: LabelData, width_mm: float, height_mm: 
     area_bottom = footer_baseline + footer_font + 0.8 * mm
     area_height = area_top - area_bottom
 
-    article_size, lines = _fit_article(
-        data.article, content_width, max_lines=2, start=height_mm * 0.42
-    )
-    article_block = len(lines) * article_size * 1.12 + 1.8 * mm
     number_font = max(7.0, min(11.0, height_mm * 0.22))
     number_block = number_font * 1.25
+    # Название не должно съедать штрихкод: на две строки артикула остаётся не больше, чем нужно
+    article_room = area_height * (1 - MIN_BARCODE_SHARE) - number_block - 0.8 * mm - 1.8 * mm
+    article_start = min(height_mm * 0.42, max(6.0, article_room / (2 * 1.12)))
+    article_size, lines = _fit_article(data.article, content_width, max_lines=2, start=article_start)
+    article_block = len(lines) * article_size * 1.12 + 1.8 * mm
     barcode_height = max(5.0 * mm, area_height - article_block - number_block - 0.8 * mm)
 
     # Артикул по центру, как в образце
@@ -155,19 +163,24 @@ def draw_label(pdf: canvas.Canvas, data: LabelData, width_mm: float, height_mm: 
         pdf.drawCentredString(width / 2, text_y - index * article_size * 1.08, line)
 
     # Штрихкод Code 128 и номер цифрами под ним
-    bar_width = 0.33 * mm
-    barcode = code128.Code128(
-        data.number, barHeight=barcode_height, barWidth=bar_width, humanReadable=False, quiet=False
-    )
-    while barcode.width > content_width and bar_width > 0.12 * mm:
-        bar_width -= 0.01 * mm
-        barcode = code128.Code128(
-            data.number, barHeight=barcode_height, barWidth=bar_width, humanReadable=False, quiet=False
-        )
+    barcode = _barcode(data.number, barcode_height, width)
     number_baseline = area_bottom
-    barcode.drawOn(pdf, (width - barcode.width) / 2, number_baseline + number_block)
+    left = round((width - barcode.width) / 2 / PRINTER_DOT) * PRINTER_DOT  # полоски по сетке точек
+    barcode.drawOn(pdf, left, number_baseline + number_block)
     pdf.setFont(FONT_BOLD, number_font)
     pdf.drawCentredString(width / 2, number_baseline + number_font * 0.2, data.number)
+
+
+def _barcode(number: str, bar_height: float, label_width: float) -> code128.Code128:
+    """Code 128 с самой широкой полоской из целых точек принтера, которая влезает с белыми полями."""
+    modules = code128.Code128(number, barWidth=1, quiet=False).width
+    for dots in BAR_DOTS:
+        bar_width = dots * PRINTER_DOT
+        if (modules + 2 * QUIET_MODULES) * bar_width <= label_width:
+            break
+    else:
+        bar_width = label_width / (modules + 2 * QUIET_MODULES)  # очень узкая этикетка
+    return code128.Code128(number, barHeight=bar_height, barWidth=bar_width, humanReadable=False, quiet=False)
 
 
 def build_labels_pdf(labels: list[LabelData], width_mm: float = 58, height_mm: float = 40) -> bytes:

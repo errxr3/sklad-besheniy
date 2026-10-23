@@ -6,7 +6,7 @@ from datetime import timedelta
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models import Article, Movement, Site, Unit, User
+from app.models import Article, Movement, Site, Task, Unit, User
 from app.numbering import next_numbers
 from app.scan import clean_code, is_own_label
 from app.statuses import (
@@ -22,7 +22,7 @@ from app.statuses import (
     STATUS_LABELS,
     WRITTEN_OFF,
 )
-from app.timeutil import fmt_dt, now_utc
+from app.timeutil import fmt_dt, now_utc, today_msk
 from app.transitions import TransitionError, accepted_at_text, apply_transition, lock_unit
 
 MAX_PRINT_QTY = 50
@@ -122,6 +122,14 @@ def create_printed_units(
     return units
 
 
+def future_task_error(task: Task | None) -> str:
+    """Текст ошибки, если задача ещё не наступила: её зеркала засчитаются только в её день."""
+    if task is None or task.date <= today_msk():
+        return ""
+    when = task.date.strftime("%d.%m")
+    return f"Это задача на {when}: сдать её можно будет {when}"
+
+
 def accept_unit(
     session: Session,
     *,
@@ -166,6 +174,10 @@ def accept_unit(
             number=number,
             article=article_name,
         )
+
+    early = future_task_error(session.get(Task, unit.task_id) if unit.task_id else None)
+    if early:
+        return ScanResult(False, "Задача ещё не началась", early, number=number, article=article_name)
 
     target_site = site_id or unit.site_id
     try:

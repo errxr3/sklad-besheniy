@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import Site
 from app.services.shifts import open_shift, shift_sites
-from app.services.task_labels import assembler_tasks
+from app.services.task_labels import assembler_tasks, upcoming_tasks
 from app.statuses import ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_LOADER, ROLE_RETURNS, ROLE_STOREKEEPER
 from app.timeutil import today_msk
 from app.web import GuardedRoute, page
@@ -30,6 +30,9 @@ def home(request: Request, db: Session = Depends(get_db), err: str = "", ok: str
                 "site": site,
                 "sites": shift_sites(db, user),
                 "tasks": assembler_tasks(db, user_id=user.id, day=today_msk())
+                if user.role == ROLE_ASSEMBLER
+                else [],
+                "upcoming": upcoming_tasks(db, user_id=user.id, day=today_msk())
                 if user.role == ROLE_ASSEMBLER
                 else [],
                 "err": err,
