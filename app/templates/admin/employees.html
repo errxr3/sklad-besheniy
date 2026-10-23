@@ -66,7 +66,13 @@
 					<input type="text" name="pin" placeholder="новый PIN" inputmode="numeric" pattern="[0-9]{4,6}" required style="max-width:140px">
 					<button type="submit" class="secondary">Сбросить PIN</button>
 				</form>
-				{% else %}<span class="muted">вход запрещён</span>{% endif %}
+				<form method="post" action="/admin/employees/delete" class="mt" data-name="{{ u.name }}"
+				      onsubmit="return confirm('Удалить «' + this.dataset.name + '»? Вход будет закрыт. Всё сделанное останется в журнале и отчётах.')">
+					<input type="hidden" name="csrf_token" value="{{ csrf }}">
+					<input type="hidden" name="user_id" value="{{ u.id }}">
+					<button type="submit" class="danger">Удалить</button>
+				</form>
+				{% else %}<span class="muted">{{ SERVICE_HINTS.get(u.name, 'вход запрещён') }}</span>{% endif %}
 			</td>
 		</tr>
 		{% endfor %}

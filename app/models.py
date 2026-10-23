@@ -97,6 +97,8 @@ class User(Base):
     locked_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     home_site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id"))
     is_service: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
+    # Удалённый сотрудник: не входит и не виден в списках, но его записи в журнале остаются
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     home_site: Mapped[Site | None] = relationship(lazy="joined")

@@ -1,13 +1,14 @@
 """Администрирование: сотрудники, площадки, настройки (SPEC §4, §5.1)."""
 
+from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import AdminLog, Article, Site, User
 from app.security import LoginError, hash_pin, validate_pin_format
-from app.statuses import ALL_ROLES
+from app.statuses import ALL_ROLES, ROLE_ADMIN
 
 
 class AdminError(Exception):
@@ -102,6 +103,8 @@ def update_user(
         raise AdminError("Сотрудник не найден")
     if user.is_service:
         raise AdminError("Служебного сотрудника менять нельзя")
+    if user.deleted_at is not None:
+        raise AdminError("Сотрудник удалён")
     before = _user_snapshot(user)
     if name is not None and name.strip():
         user.name = name.strip()
@@ -117,6 +120,31 @@ def update_user(
     user.home_site_id = home_site_id
     session.flush()
     log_admin(session, actor_id, "изменён сотрудник", "user", user.id, before, _user_snapshot(user))
+    return user
+
+
+def delete_user(session: Session, *, actor_id: int | None, user_id: int) -> User:
+    """Удалить сотрудника: вход закрыт, в списках не виден, журнал и отчёты с его именем остаются."""
+    user = session.get(User, user_id)
+    if user is None or user.deleted_at is not None:
+        raise AdminError("Сотрудник не найден")
+    if user.is_service:
+        raise AdminError("Служебного сотрудника удалить нельзя")
+    if user.id == actor_id:
+        raise AdminError("Себя удалить нельзя")
+    if user.role == ROLE_ADMIN:
+        admins = session.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.role == ROLE_ADMIN, User.active.is_(True), User.deleted_at.is_(None))
+        )
+        if (admins or 0) <= 1:
+            raise AdminError("Нельзя удалить последнего администратора")
+    before = _user_snapshot(user)
+    user.active = False
+    user.deleted_at = datetime.now(UTC)
+    session.flush()
+    log_admin(session, actor_id, "удалён сотрудник", "user", user.id, before, _user_snapshot(user))
     return user
 
 

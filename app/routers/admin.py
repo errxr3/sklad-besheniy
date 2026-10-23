@@ -14,10 +14,12 @@ from app.db import get_db
 from app.importer import import_top
 from app.menu import ADMIN_SECTION_BY_KEY
 from app.models import Article, Site, User
+from app.seed import INVENTORY_SERVICE_NAME, RETURNS_SERVICE_NAME, SERVICE_ASSEMBLER_NAME
 from app.services.admin import (
     AdminError,
     create_site,
     create_user,
+    delete_user,
     reset_pin,
     set_article_active,
     set_subgroup_color,
@@ -58,15 +60,32 @@ def admin_section(request: Request, key: str) -> Response:
     return page(request, "admin/index.html", {"section": section})
 
 
+# Зачем нужны служебные записи: у каждого зеркала должен быть «сборщик», а эти зеркала никто не собирал
+SERVICE_HINTS = {
+    SERVICE_ASSEMBLER_NAME: "сборщик для зеркал из ввода остатков на запуске",
+    RETURNS_SERVICE_NAME: "сборщик для возвратов без нашей этикетки",
+    INVENTORY_SERVICE_NAME: "сборщик для лишних зеркал, найденных на инвентаризации",
+}
+
+
 @router.get("/employees", response_class=HTMLResponse)
 def employees(request: Request, db: Session = Depends(get_db), ok: str = "", err: str = "") -> Response:
     """Список сотрудников."""
-    users = db.scalars(select(User).order_by(User.active.desc(), User.name)).all()
+    users = db.scalars(
+        select(User).where(User.deleted_at.is_(None)).order_by(User.is_service, User.active.desc(), User.name)
+    ).all()
     sites = db.scalars(select(Site).order_by(Site.sort_order, Site.name)).all()
     return page(
         request,
         "admin/employees.html",
-        {"users": users, "sites": sites, "roles": ALL_ROLES, "ok": ok, "err": err},
+        {
+            "users": users,
+            "sites": sites,
+            "roles": ALL_ROLES,
+            "ok": ok,
+            "err": err,
+            "SERVICE_HINTS": SERVICE_HINTS,
+        },
     )
 
 
@@ -118,6 +137,17 @@ def employees_update(
     except (AdminError, ValueError) as exc:
         return _redirect("/admin/employees", err=str(exc))
     return _redirect("/admin/employees", message="Сохранено")
+
+
+@router.post("/employees/delete")
+def employees_delete(request: Request, user_id: int = Form(...), db: Session = Depends(get_db)) -> Response:
+    """Удалить сотрудника, история остаётся."""
+    try:
+        user = delete_user(db, actor_id=request.state.user.id, user_id=user_id)
+    except AdminError as exc:
+        return _redirect("/admin/employees", err=str(exc))
+    message = f"Сотрудник «{user.name}» удалён, его история в журнале осталась"
+    return _redirect("/admin/employees", message=message)
 
 
 @router.post("/employees/reset-pin")
