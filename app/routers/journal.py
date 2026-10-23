@@ -1,6 +1,7 @@
 """Журнал движений и отчёт «Выработка» (SPEC §6.10)."""
 
 from datetime import date, timedelta
+from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, Response
@@ -17,14 +18,22 @@ from app.web import GuardedRoute, page
 router = APIRouter(route_class=GuardedRoute)
 
 
+def _day(value: str) -> date | None:
+    """Дата из адреса; пустая или кривая — без фильтра, а не ошибка страницы."""
+    try:
+        return date.fromisoformat(value) if value else None
+    except ValueError:
+        return None
+
+
 def _filters(
     date_from: str, date_to: str, article_id: int, user_id: int, movement_type: str, site_id: int,
     number: str,
 ) -> JournalFilters:
     """Собрать фильтры журнала из параметров адреса."""
     return JournalFilters(
-        date_from=date.fromisoformat(date_from) if date_from else None,
-        date_to=date.fromisoformat(date_to) if date_to else None,
+        date_from=_day(date_from),
+        date_to=_day(date_to),
         article_id=article_id or None,
         user_id=user_id or None,
         movement_type=movement_type or None,
@@ -49,6 +58,15 @@ def journal(
     """Журнал движений с фильтрами и пагинацией."""
     filters = _filters(date_from, date_to, article_id, user_id, movement_type, site_id, number)
     rows, total = journal_page(db, filters, page=max(1, page_number))
+    filters_dict = {
+        "date_from": date_from,
+        "date_to": date_to,
+        "article_id": article_id,
+        "user_id": user_id,
+        "movement_type": movement_type,
+        "site_id": site_id,
+        "number": number,
+    }
     return page(
         request,
         "journal.html",
@@ -63,15 +81,8 @@ def journal(
                 select(Article).where(Article.kind == "article").order_by(Article.sort_order).limit(500)
             ).all(),
             "types": [(t, MOVEMENT_LABELS.get(t, t)) for t in ALL_MOVEMENT_TYPES],
-            "filters": {
-                "date_from": date_from,
-                "date_to": date_to,
-                "article_id": article_id,
-                "user_id": user_id,
-                "movement_type": movement_type,
-                "site_id": site_id,
-                "number": number,
-            },
+            "filters": filters_dict,
+            "query": urlencode(filters_dict),
         },
     )
 

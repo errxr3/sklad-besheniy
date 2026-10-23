@@ -9,6 +9,7 @@ from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session, joinedload
 
 from app.models import Article, Movement, Unit, User
+from app.scan import clean_code
 from app.statuses import (
     MOVEMENT_LABELS,
     MV_ACCEPT,
@@ -59,7 +60,7 @@ def _apply_filters(query: Select, filters: JournalFilters) -> Select:
         if filters.article_id:
             query = query.where(Unit.article_id == filters.article_id)
         if filters.number:
-            query = query.where(Unit.number == filters.number.strip().upper())
+            query = query.where(Unit.number == clean_code(filters.number))
     return query
 
 

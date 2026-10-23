@@ -109,3 +109,24 @@ def test_journal_page_through_http(client: TestClient, db: Session) -> None:
 
     # «Выработка» — только администратору (решение владельца 2026-10-20)
     assert client.get("/reports/output").status_code == 403
+
+
+def test_journal_form_sends_chosen_filters(client: TestClient, db: Session) -> None:
+    """Кнопка «Показать» в той же форме, что и фильтры: уходит выбранное, а не прошлое."""
+    import re
+
+    _, _, units = _work(db, 2)
+    lead = make_user(db, name="Начальник фильтров", role=ROLE_SHIFT_LEAD, pin="1234")
+    login(client, lead)
+
+    html = client.get("/journal").text
+    form = re.search(r'<form method="get" action="/journal".*?</form>', html, re.S)
+    assert form is not None
+    assert 'name="user_id"' in form.group(0) and ">Показать</button>" in form.group(0)
+    assert 'formaction="/journal.csv"' in form.group(0)
+
+    # Номер с русской раскладки и кривая дата не ломают страницу
+    number = units[0].number.replace("Z", "Я")
+    filtered = client.get("/journal", params={"number": number, "date_from": "31.02"})
+    assert filtered.status_code == 200
+    assert "(2)" in filtered.text  # печать и приёмка одного зеркала
