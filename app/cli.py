@@ -134,6 +134,52 @@ def cmd_close_shifts(args: argparse.Namespace) -> int:
     return 0
 
 
+# Рабочие данные: зеркала, журнал, смены, задачи, каналы. Справочник, площадки и настройки остаются.
+WIPE_TABLES = (
+    "movements",
+    "inventory_scans",
+    "inventories",
+    "task_log",
+    "tasks",
+    "mp_shipments",
+    "units",
+    "pallets",
+    "shifts",
+    "admin_log",
+)
+WIPE_CONFIRM = "ОЧИСТИТЬ"
+
+
+def cmd_wipe_data(args: argparse.Namespace) -> int:
+    """Начать с чистого листа: удалить рабочие данные и всех, кроме администраторов."""
+    if args.confirm != WIPE_CONFIRM:
+        print(f"Ничего не удалено: для очистки добавьте --confirm {WIPE_CONFIRM}", file=sys.stderr)
+        return 2
+    with get_engine().begin() as conn:
+        admins = conn.execute(
+            text("SELECT count(*) FROM users WHERE role = :role AND active"), {"role": ROLE_ADMIN}
+        ).scalar_one()
+        if not admins:
+            print("Ничего не удалено: нет ни одного активного администратора", file=sys.stderr)
+            return 1
+        # Журнал движений защищён триггером от удаления — снимаем его только на время очистки
+        conn.execute(text("ALTER TABLE movements DISABLE TRIGGER USER"))
+        conn.execute(text(f"TRUNCATE {', '.join(WIPE_TABLES)} RESTART IDENTITY"))
+        conn.execute(text("ALTER TABLE movements ENABLE TRIGGER USER"))
+        keep = "role = :role OR is_service"
+        conn.execute(
+            text(
+                "UPDATE api_keys SET created_by = NULL"
+                f" WHERE created_by IN (SELECT id FROM users WHERE NOT ({keep}))"
+            ),
+            {"role": ROLE_ADMIN},
+        )
+        removed = conn.execute(text(f"DELETE FROM users WHERE NOT ({keep})"), {"role": ROLE_ADMIN}).rowcount
+    print(f"Готово: удалено сотрудников {removed}, зеркала, журнал, смены, задачи и каналы очищены.")
+    print("Остались: администраторы, служебный сборщик, справочник артикулов, площадки, настройки.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     """Разбор аргументов командной строки."""
     parser = argparse.ArgumentParser(prog="python -m app.cli", description="Управление системой склада")
@@ -165,6 +211,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_verify = sub.add_parser("verify-stock", help="сверить остатки с журналом движений")
     p_verify.add_argument("--limit", type=int, default=20, help="сколько расхождений показать")
     p_verify.set_defaults(func=cmd_verify_stock)
+
+    p_wipe = sub.add_parser("wipe-data", help="удалить рабочие данные и всех, кроме администраторов")
+    p_wipe.add_argument("--confirm", default="", help=f"подтверждение: {WIPE_CONFIRM}")
+    p_wipe.set_defaults(func=cmd_wipe_data)
 
     return parser
 
