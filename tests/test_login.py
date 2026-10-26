@@ -1,4 +1,4 @@
-"""SPEC §12 п. 14 и 17: блокировка входа после 5 неверных PIN и защита CSRF."""
+"""SPEC §12 п. 14 и 17: вход по логину и паролю, блокировка после 5 ошибок, защита CSRF."""
 
 from datetime import timedelta
 
@@ -30,10 +30,10 @@ def test_wrong_pin_shows_attempts_left(client: TestClient, db: Session) -> None:
     token = get_csrf(client)
     response = client.post(
         "/login",
-        data={"user_id": str(user.id), "pin": "2222", "next": "/", "csrf_token": token},
+        data={"login": user.login, "password": "2222", "next": "/", "csrf_token": token},
     )
     assert response.status_code == 200
-    assert "Неверный PIN" in response.text
+    assert "Неверный логин или пароль" in response.text
     assert "Осталось попыток: 4" in response.text
 
 
@@ -44,7 +44,7 @@ def test_lock_after_five_wrong_pins(client: TestClient, db: Session) -> None:
     for _ in range(5):
         client.post(
             "/login",
-            data={"user_id": str(user.id), "pin": "9999", "next": "/", "csrf_token": token},
+            data={"login": user.login, "password": "9999", "next": "/", "csrf_token": token},
         )
 
     db.expire_all()
@@ -56,7 +56,7 @@ def test_lock_after_five_wrong_pins(client: TestClient, db: Session) -> None:
     # Даже верный PIN теперь не пускает
     response = client.post(
         "/login",
-        data={"user_id": str(user.id), "pin": "1111", "next": "/", "csrf_token": token},
+        data={"login": user.login, "password": "1111", "next": "/", "csrf_token": token},
     )
     assert "заблокирован" in response.text
     assert client.get("/", follow_redirects=False).status_code == 303
@@ -69,7 +69,7 @@ def test_unlock_after_fifteen_minutes(client: TestClient, db: Session) -> None:
     for _ in range(5):
         client.post(
             "/login",
-            data={"user_id": str(user.id), "pin": "9999", "next": "/", "csrf_token": token},
+            data={"login": user.login, "password": "9999", "next": "/", "csrf_token": token},
         )
     db.refresh(user)
     assert user.locked_until is not None
@@ -80,7 +80,7 @@ def test_unlock_after_fifteen_minutes(client: TestClient, db: Session) -> None:
 
     response = client.post(
         "/login",
-        data={"user_id": str(user.id), "pin": "1111", "next": "/", "csrf_token": token},
+        data={"login": user.login, "password": "1111", "next": "/", "csrf_token": token},
         follow_redirects=False,
     )
     assert response.status_code == 303
@@ -96,7 +96,7 @@ def test_counter_resets_after_success(client: TestClient, db: Session) -> None:
     for _ in range(3):
         client.post(
             "/login",
-            data={"user_id": str(user.id), "pin": "9999", "next": "/", "csrf_token": token},
+            data={"login": user.login, "password": "9999", "next": "/", "csrf_token": token},
         )
     db.refresh(user)
     assert user.failed_logins == 3
@@ -112,9 +112,9 @@ def test_inactive_user_cannot_login(client: TestClient, db: Session) -> None:
     token = get_csrf(client)
     response = client.post(
         "/login",
-        data={"user_id": str(user.id), "pin": "1111", "next": "/", "csrf_token": token},
+        data={"login": user.login, "password": "1111", "next": "/", "csrf_token": token},
     )
-    assert "не найден" in response.text
+    assert "Неверный логин или пароль" in response.text
 
 
 def test_service_user_cannot_login(client: TestClient, db: Session) -> None:
@@ -129,17 +129,39 @@ def test_service_user_cannot_login(client: TestClient, db: Session) -> None:
     token = get_csrf(client)
     response = client.post(
         "/login",
-        data={"user_id": str(service.id), "pin": "1234", "next": "/", "csrf_token": token},
+        data={"login": service.login, "password": "1234", "next": "/", "csrf_token": token},
     )
-    assert "не найден" in response.text
+    assert "Неверный логин или пароль" in response.text
 
 
-def test_service_user_not_in_login_list(client: TestClient, db: Session) -> None:
-    """Служебного сотрудника нет в списке на экране входа."""
-    make_user(db, name="Обычный", role=ROLE_ASSEMBLER)
-    page = client.get("/login")
-    assert "Обычный" in page.text
-    assert "Остаток на запуск" not in page.text
+def test_login_page_shows_nobody(client: TestClient, db: Session) -> None:
+    """На экране входа нет списка: не видно ни имён, ни должностей."""
+    make_user(db, name="Обычный Сборщик", role=ROLE_ASSEMBLER)
+    page = client.get("/login").text
+    assert "Обычный" not in page and "Сборщик зеркал" not in page and "Остаток на запуск" not in page
+    assert 'name="login"' in page and 'name="password"' in page
+
+
+def test_login_case_insensitive_and_letters_in_password(client: TestClient, db: Session) -> None:
+    """Логин без учёта регистра, пароль может быть с буквами."""
+    user = make_user(db, name="Пётр Иванов", role=ROLE_ASSEMBLER, pin="Склад-2026!", login="Petrov")
+    token = get_csrf(client)
+    response = client.post(
+        "/login",
+        data={"login": "PETROV", "password": "Склад-2026!", "next": "/", "csrf_token": token},
+        follow_redirects=False,
+    )
+    assert response.status_code == 303
+    assert user.login == "Petrov"
+
+
+def test_unknown_login_looks_like_wrong_password(client: TestClient, db: Session) -> None:
+    """Про несуществующий логин сайт говорит то же, что про неверный пароль."""
+    token = get_csrf(client)
+    response = client.post(
+        "/login", data={"login": "nobody", "password": "1234", "next": "/", "csrf_token": token}
+    )
+    assert "Неверный логин или пароль" in response.text
 
 
 def test_post_without_csrf_rejected(client: TestClient, db: Session) -> None:
@@ -172,6 +194,6 @@ def test_login_post_without_csrf_rejected(client: TestClient, db: Session) -> No
     user = make_user(db, name="Без токена", role=ROLE_ASSEMBLER, pin="1234")
     client.get("/login")
     response = client.post(
-        "/login", data={"user_id": str(user.id), "pin": "1234", "next": "/"}, follow_redirects=False
+        "/login", data={"login": user.login, "password": "1234", "next": "/"}, follow_redirects=False
     )
     assert response.status_code == 403

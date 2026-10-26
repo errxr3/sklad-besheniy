@@ -9,14 +9,17 @@
 	<form method="post" action="/admin/employees/create">
 		<input type="hidden" name="csrf_token" value="{{ csrf }}">
 		<div class="row">
-			<div><label>Имя</label><input type="text" name="name" required maxlength="120"></div>
+			<div><label>Имя</label><input type="text" name="first_name" required maxlength="60"></div>
+			<div><label>Фамилия</label><input type="text" name="last_name" required maxlength="60"></div>
+			<div><label>Логин</label><input type="text" name="login" required maxlength="40"
+				autocapitalize="none" autocorrect="off" spellcheck="false" placeholder="например, ivanov"></div>
 			<div><label>Роль</label>
 				<select name="role" required>
 					{% for r in roles %}<option value="{{ r }}">{{ ROLE_LABELS[r] }}</option>{% endfor %}
 				</select>
 			</div>
-			<div><label>PIN (4–6 цифр)</label>
-				<input type="text" name="pin" inputmode="numeric" pattern="[0-9]{4,6}" required></div>
+			<div><label>Пароль (от 4 символов)</label>
+				<input type="text" name="password" required minlength="4" maxlength="64" autocomplete="new-password"></div>
 			<div><label>Площадка по умолчанию</label>
 				<select name="home_site_id">
 					<option value="">—</option>
@@ -31,10 +34,11 @@
 <div class="card">
 	<h2>Список</h2>
 	<table>
-		<tr><th>Имя</th><th>Роль</th><th>Площадка</th><th>Статус</th><th>Действия</th></tr>
+		<tr><th>Сотрудник</th><th>Логин</th><th>Роль</th><th>Площадка</th><th>Статус</th><th>Действия</th></tr>
 		{% for u in users %}
 		<tr>
 			<td>{{ u.name }}{% if u.is_service %} <span class="badge">служебный</span>{% endif %}</td>
+			<td>{{ u.login or '—' }}</td>
 			<td>{{ ROLE_LABELS[u.role] }}</td>
 			<td>{{ u.home_site.name if u.home_site else '—' }}</td>
 			<td>
@@ -46,7 +50,9 @@
 				<form method="post" action="/admin/employees/update" class="row tight">
 					<input type="hidden" name="csrf_token" value="{{ csrf }}">
 					<input type="hidden" name="user_id" value="{{ u.id }}">
-					<input type="text" name="name" value="{{ u.name }}" style="min-width:160px">
+					<input type="text" name="first_name" value="{{ u.first_name or '' }}" placeholder="Имя" required maxlength="60" style="min-width:110px">
+					<input type="text" name="last_name" value="{{ u.last_name or '' }}" placeholder="Фамилия" required maxlength="60" style="min-width:130px">
+					<input type="text" name="login" value="{{ u.login or '' }}" placeholder="Логин" required maxlength="40" autocapitalize="none" style="min-width:110px">
 					<select name="role">
 						{% for r in roles %}<option value="{{ r }}" {% if r == u.role %}selected{% endif %}>{{ ROLE_LABELS[r] }}</option>{% endfor %}
 					</select>
@@ -63,8 +69,8 @@
 				<form method="post" action="/admin/employees/reset-pin" class="row tight mt">
 					<input type="hidden" name="csrf_token" value="{{ csrf }}">
 					<input type="hidden" name="user_id" value="{{ u.id }}">
-					<input type="text" name="pin" placeholder="новый PIN" inputmode="numeric" pattern="[0-9]{4,6}" required style="max-width:140px">
-					<button type="submit" class="secondary">Сбросить PIN</button>
+					<input type="text" name="password" placeholder="новый пароль" required minlength="4" maxlength="64" autocomplete="new-password" style="max-width:180px">
+					<button type="submit" class="secondary">Сменить пароль</button>
 				</form>
 				<form method="post" action="/admin/employees/delete" class="mt" data-name="{{ u.name }}"
 				      onsubmit="return confirm('Удалить «' + this.dataset.name + '»? Вход будет закрыт. Всё сделанное останется в журнале и отчётах.')">

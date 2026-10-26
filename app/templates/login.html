@@ -8,40 +8,18 @@
 <div class="card login-card">
 	<h1>Вход</h1>
 	{% if error %}<p class="msg err">{{ error }}</p>{% endif %}
-	{% if not users %}
-		<p class="msg warn">Сотрудников пока нет. Создайте администратора командой
-			<code>python -m app.cli create-admin</code>.</p>
-	{% else %}
-	<form method="post" action="/login" id="login-form">
+	<form method="post" action="/login">
 		<input type="hidden" name="csrf_token" value="{{ csrf }}">
 		<input type="hidden" name="next" value="{{ next_url }}">
-		<label for="search">Сотрудник</label>
-		<input type="search" id="search" placeholder="Поиск по имени" autocomplete="off">
-		<select name="user_id" id="user-select" size="6" required>
-			{% for u in users %}
-				<option value="{{ u.id }}" data-name="{{ u.name|lower }}">{{ u.name }} — {{ ROLE_LABELS[u.role] }}</option>
-			{% endfor %}
-		</select>
-		<label for="pin">PIN</label>
-		<input type="password" name="pin" id="pin" inputmode="numeric" pattern="[0-9]*"
-		       maxlength="6" minlength="4" required autocomplete="off">
-		<div class="pin-dots" id="pin-dots" aria-hidden="true"></div>
-		<div class="pinpad">
-			{% for d in ['1','2','3','4','5','6','7','8','9'] %}
-				<button type="button" class="pin-key" data-d="{{ d }}">{{ d }}</button>
-			{% endfor %}
-			<button type="button" class="secondary" id="pin-clear">Сброс</button>
-			<button type="button" class="pin-key" data-d="0">0</button>
-			<button type="button" class="secondary" id="pin-back">←</button>
-		</div>
+		<label for="login">Логин</label>
+		<input type="text" name="login" id="login" value="{{ login }}" required maxlength="40"
+		       autocomplete="username" autocapitalize="none" autocorrect="off" spellcheck="false" autofocus>
+		<label for="password">Пароль</label>
+		<input type="password" name="password" id="password" required maxlength="64" autocomplete="current-password">
 		<button type="submit" class="big mt">Войти</button>
 	</form>
-	{% endif %}
 </div>
 <div class="login-theme">
 	<button type="button" class="secondary small-btn" data-theme-toggle>Светлая / тёмная тема</button>
 </div>
-{% endblock %}
-{% block scripts %}
-<script src="/static/login.js?v={{ STATIC_VERSION }}"></script>
 {% endblock %}

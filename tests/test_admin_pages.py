@@ -16,7 +16,7 @@ TOP_PATH = Path(__file__).resolve().parent.parent / "docs" / "input" / "TOP.xlsx
 
 def _admin(client: TestClient, db: Session) -> User:
     """Войти администратором."""
-    user = make_user(db, name="Главный", role=ROLE_ADMIN, pin="1234")
+    user = make_user(db, name="Главный", role=ROLE_ADMIN, pin="1234", login="glavny")
     login(client, user)
     return user
 
@@ -29,46 +29,63 @@ def test_admin_creates_employee(client: TestClient, db: Session) -> None:
         "/admin/employees/create",
         data={
             "csrf_token": token,
-            "name": "Грузчик Вася",
+            "first_name": "Вася",
+            "last_name": "Грузчиков",
+            "login": "vasya",
             "role": ROLE_LOADER,
-            "pin": "5678",
+            "password": "5678",
             "home_site_id": "",
         },
         follow_redirects=True,
     )
     assert response.status_code == 200
-    created = db.scalar(select(User).where(User.name == "Грузчик Вася"))
+    created = db.scalar(select(User).where(User.name == "Вася Грузчиков"))
     assert created is not None and created.role == ROLE_LOADER
+    assert (created.first_name, created.last_name, created.login) == ("Вася", "Грузчиков", "vasya")
     logged = db.scalar(select(AdminLog).where(AdminLog.action == "создан сотрудник"))
     assert logged is not None
 
 
 def test_new_employee_can_login(client: TestClient, db: Session) -> None:
-    """У созданного сотрудника работает вход с заданным PIN."""
+    """У созданного сотрудника работает вход по логину и паролю с буквами."""
     _admin(client, db)
     token = get_csrf(client, "/admin/employees")
     client.post(
         "/admin/employees/create",
-        data={"csrf_token": token, "name": "Сборщик Коля", "role": ROLE_ASSEMBLER, "pin": "4455"},
+        data={
+            "csrf_token": token, "first_name": "Коля", "last_name": "Сборщиков", "login": "kolya",
+            "role": ROLE_ASSEMBLER, "password": "зеркало44",
+        },
     )
-    created = db.scalar(select(User).where(User.name == "Сборщик Коля"))
+    created = db.scalar(select(User).where(User.name == "Коля Сборщиков"))
     assert created is not None
     with TestClient(client.app) as fresh:
-        login(fresh, created, pin="4455")
+        login(fresh, created, pin="зеркало44")
         assert fresh.get("/").status_code == 200
 
 
-def test_short_pin_rejected(client: TestClient, db: Session) -> None:
-    """PIN короче 4 цифр не принимается."""
-    _admin(client, db)
+def test_short_password_and_bad_login_rejected(client: TestClient, db: Session) -> None:
+    """Пароль короче 4 символов, занятый логин и пустая фамилия не принимаются."""
+    admin = _admin(client, db)
     token = get_csrf(client, "/admin/employees")
-    response = client.post(
+    base = {"csrf_token": token, "first_name": "Плохой", "last_name": "Пароль", "role": ROLE_ASSEMBLER}
+    short = client.post(
+        "/admin/employees/create", data={**base, "login": "bad", "password": "12"}, follow_redirects=True
+    )
+    assert "Пароль — от 4" in short.text
+    taken = client.post(
         "/admin/employees/create",
-        data={"csrf_token": token, "name": "Плохой PIN", "role": ROLE_ASSEMBLER, "pin": "12"},
+        data={**base, "login": (admin.login or "").upper(), "password": "1234"},
         follow_redirects=True,
     )
-    assert "PIN" in response.text
-    assert db.scalar(select(User).where(User.name == "Плохой PIN")) is None
+    assert "уже занят" in taken.text
+    no_last = client.post(
+        "/admin/employees/create",
+        data={**base, "last_name": " ", "login": "nolast", "password": "1234"},
+        follow_redirects=True,
+    )
+    assert "имя и фамилию" in no_last.text
+    assert db.scalar(select(User).where(User.first_name == "Плохой")) is None
 
 
 def test_role_change_and_deactivation(client: TestClient, db: Session) -> None:
@@ -81,7 +98,9 @@ def test_role_change_and_deactivation(client: TestClient, db: Session) -> None:
         data={
             "csrf_token": token,
             "user_id": str(worker.id),
-            "name": "Работник",
+            "first_name": "Работник",
+            "last_name": "Новиков",
+            "login": "rabotnik",
             "role": ROLE_LOADER,
             "active": "0",
             "home_site_id": "",
@@ -90,6 +109,7 @@ def test_role_change_and_deactivation(client: TestClient, db: Session) -> None:
     db.refresh(worker)
     assert worker.role == ROLE_LOADER
     assert worker.active is False
+    assert (worker.name, worker.login) == ("Работник Новиков", "rabotnik")
 
 
 def test_reset_pin_unlocks_user(client: TestClient, db: Session) -> None:
@@ -107,7 +127,7 @@ def test_reset_pin_unlocks_user(client: TestClient, db: Session) -> None:
     token = get_csrf(client, "/admin/employees")
     client.post(
         "/admin/employees/reset-pin",
-        data={"csrf_token": token, "user_id": str(worker.id), "pin": "9876"},
+        data={"csrf_token": token, "user_id": str(worker.id), "password": "9876"},
     )
     db.refresh(worker)
     assert worker.locked_until is None

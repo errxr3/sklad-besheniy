@@ -232,7 +232,9 @@ def test_shift_code_pdf_contains_qr(client: TestClient, db: Session) -> None:
     from app.services.admin import create_user
     from app.statuses import ROLE_ADMIN
 
-    admin = create_user(db, actor_id=None, name="Админ кодов", role=ROLE_ADMIN, pin="1234")
+    admin = create_user(
+        db, actor_id=None, first_name="Админ", last_name="Кодов", login="codes", role=ROLE_ADMIN, pin="1234"
+    )
     db.commit()
     login(client, admin)
     site = site_by_name(db)

@@ -1,5 +1,6 @@
 """Помощники тестов: создание сотрудников и вход."""
 
+import itertools
 import re
 
 from fastapi.testclient import TestClient
@@ -11,6 +12,7 @@ from app.security import hash_pin
 from app.statuses import ROLE_ADMIN
 
 CSRF_RE = re.compile(r'name="csrf_token" value="([^"]+)"')
+_LOGINS = itertools.count(1)
 
 
 def make_user(
@@ -21,10 +23,15 @@ def make_user(
     pin: str = "1234",
     active: bool = True,
     home_site_id: int | None = None,
+    login: str | None = None,
 ) -> User:
-    """Создать сотрудника с известным PIN."""
+    """Создать сотрудника с известным паролем; логин по умолчанию уникальный user<число>."""
+    first, _, last = name.partition(" ")
     user = User(
         name=name,
+        first_name=first,
+        last_name=last or None,
+        login=login or f"user{next(_LOGINS)}",
         role=role,
         pin_hash=hash_pin(pin),
         active=active,
@@ -88,7 +95,7 @@ def login(client: TestClient, user: User, pin: str = "1234") -> None:
     token = get_csrf(client)
     response = client.post(
         "/login",
-        data={"user_id": str(user.id), "pin": pin, "next": "/", "csrf_token": token},
+        data={"login": user.login or "", "password": pin, "next": "/", "csrf_token": token},
         follow_redirects=False,
     )
     assert response.status_code == 303, response.text[:400]

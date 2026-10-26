@@ -10,7 +10,7 @@ from sqlalchemy import select, text
 from app.db import get_engine, session_scope
 from app.importer import import_top
 from app.models import Site, User
-from app.security import validate_pin_format
+from app.security import validate_password
 from app.seed import apply_seed
 from app.services.admin import AdminError, create_user
 from app.services.verify import verify_stock
@@ -43,26 +43,26 @@ def cmd_seed(args: argparse.Namespace) -> int:
 
 
 def _ask_pin() -> str:
-    """Спросить PIN скрытым вводом.
+    """Спросить пароль скрытым вводом.
 
-    Цифры намеренно не отображаются на экране, поэтому об этом предупреждаем:
+    Символы намеренно не отображаются на экране, поэтому об этом предупреждаем:
     иначе кажется, что клавиатура не работает.
     """
-    print("PIN вводится скрытно — цифры на экране не появятся.")
-    print("Наберите 4–6 цифр и нажмите Enter.")
+    print("Пароль вводится скрытно — символы на экране не появятся.")
+    print("Наберите от 4 символов и нажмите Enter.")
     try:
-        return getpass.getpass("PIN (4–6 цифр): ").strip()
+        return getpass.getpass("Пароль: ")
     except Exception:
         # Терминал без скрытого ввода — спрашиваем обычным способом
-        return input("PIN (4–6 цифр, будет виден): ").strip()
+        return input("Пароль (будет виден): ")
 
 
 def cmd_create_admin(args: argparse.Namespace) -> int:
     """Создать администратора (первый вход в систему)."""
-    name = args.name or input("Имя администратора: ").strip()
-    pin = args.pin or _ask_pin()
+    name = args.name or input("Имя и фамилия администратора: ").strip()
+    pin = args.password or args.pin or _ask_pin()
     try:
-        validate_pin_format(pin)
+        validate_password(pin)
     except Exception as exc:
         print(f"Ошибка: {exc}", file=sys.stderr)
         return 2
@@ -77,13 +77,21 @@ def cmd_create_admin(args: argparse.Namespace) -> int:
                 return 2
             site_id = site.id
         try:
+            first, _, last = name.partition(" ")
             user = create_user(
-                session, actor_id=None, name=name, role=ROLE_ADMIN, pin=pin, home_site_id=site_id
+                session,
+                actor_id=None,
+                first_name=first,
+                last_name=last or "BLAGO",  # фамилию можно поправить потом в «Сотрудниках»
+                login=args.login,
+                role=ROLE_ADMIN,
+                pin=pin,
+                home_site_id=site_id,
             )
         except AdminError as exc:
             print(f"Ошибка: {exc}", file=sys.stderr)
             return 2
-        print(f"Администратор «{user.name}» создан")
+        print(f"Администратор «{user.name}» создан, логин: {user.login}")
     return 0
 
 
@@ -104,7 +112,7 @@ def cmd_list_users(args: argparse.Namespace) -> int:
         for user in users:
             state = "активен" if user.active else "отключён"
             service = " (служебный)" if user.is_service else ""
-            print(f"{user.id:>4}  {user.name:<30} {user.role:<12} {state}{service}")
+            print(f"{user.id:>4}  {user.name:<30} {user.login or '—':<16} {user.role:<12} {state}{service}")
     return 0
 
 
@@ -194,7 +202,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     p_admin = sub.add_parser("create-admin", help="создать администратора")
     p_admin.add_argument("--name", help="имя администратора")
-    p_admin.add_argument("--pin", help="PIN 4–6 цифр (иначе спросит скрытым вводом)")
+    p_admin.add_argument("--login", default="admin", help="логин для входа (по умолчанию admin)")
+    p_admin.add_argument("--password", help="пароль от 4 символов (иначе спросит скрытым вводом)")
+    p_admin.add_argument("--pin", help="то же, что --password (старое название)")
     p_admin.add_argument("--site", help="площадка по умолчанию")
     p_admin.set_defaults(func=cmd_create_admin)
 

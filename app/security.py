@@ -8,7 +8,7 @@ from datetime import timedelta
 from argon2 import PasswordHasher
 from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from fastapi import Request
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.config import get_settings
@@ -41,39 +41,53 @@ def verify_pin(pin_hash: str, pin: str) -> bool:
         return False
 
 
-def validate_pin_format(pin: str) -> None:
-    """PIN — 4–6 цифр (SPEC §4)."""
-    if not pin.isdigit() or not 4 <= len(pin) <= 6:
-        raise LoginError("PIN — от 4 до 6 цифр")
+PASSWORD_MIN = 4
+PASSWORD_MAX = 64
+WRONG_LOGIN = "Неверный логин или пароль"
 
 
-def authenticate(db: Session, user_id: int, pin: str) -> User:
-    """Проверить сотрудника и PIN, учитывая блокировку после неудачных попыток.
+def validate_password(password: str) -> None:
+    """Пароль: любые буквы, цифры и знаки, от 4 до 64 символов (решение владельца 2026-10-26)."""
+    if not PASSWORD_MIN <= len(password) <= PASSWORD_MAX:
+        raise LoginError(f"Пароль — от {PASSWORD_MIN} до {PASSWORD_MAX} символов")
+    if password != password.strip():
+        raise LoginError("Пароль не должен начинаться или заканчиваться пробелом")
 
-    Счётчик неудач и время блокировки хранятся в БД (SPEC §4).
+
+def find_by_login(db: Session, login: str) -> User | None:
+    """Сотрудник по логину, без учёта регистра."""
+    value = login.strip().lower()
+    if not value:
+        return None
+    return db.scalar(select(User).where(func.lower(User.login) == value))
+
+
+def authenticate(db: Session, login: str, password: str) -> User:
+    """Проверить логин и пароль, учитывая блокировку после неудачных попыток.
+
+    Счётчик неудач и время блокировки хранятся в БД (SPEC §4). Про несуществующий логин
+    и неверный пароль говорим одинаково, чтобы логины нельзя было подобрать.
     """
     settings = get_settings()
-    user = db.get(User, user_id)
-    if user is None or not user.active or user.is_service:
-        raise LoginError("Сотрудник не найден")
+    user = find_by_login(db, login)
+    if user is None or not user.active or user.is_service or user.deleted_at is not None:
+        raise LoginError(WRONG_LOGIN)
 
     now = now_utc()
     if user.locked_until and user.locked_until > now:
         minutes = max(1, int((user.locked_until - now).total_seconds() // 60) + 1)
         raise LoginError(f"Вход заблокирован, попробуйте через {minutes} мин")
 
-    if not pin.isdigit() or not verify_pin(user.pin_hash, pin):
+    if not verify_pin(user.pin_hash, password):
         user.failed_logins += 1
         if user.failed_logins >= settings.pin_max_attempts:
             user.locked_until = now + timedelta(minutes=settings.pin_lock_minutes)
             user.failed_logins = 0
             db.flush()
-            raise LoginError(
-                f"Неверный PIN. Вход заблокирован на {settings.pin_lock_minutes} мин"
-            )
+            raise LoginError(f"{WRONG_LOGIN}. Вход заблокирован на {settings.pin_lock_minutes} мин")
         left = settings.pin_max_attempts - user.failed_logins
         db.flush()
-        raise LoginError(f"Неверный PIN. Осталось попыток: {left}")
+        raise LoginError(f"{WRONG_LOGIN}. Осталось попыток: {left}")
 
     user.failed_logins = 0
     user.locked_until = None

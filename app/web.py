@@ -10,7 +10,6 @@ from fastapi import HTTPException, Request, Response
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.routing import APIRoute
 from fastapi.templating import Jinja2Templates
-from sqlalchemy import select
 
 from app.db import get_session_factory
 from app.menu import menu_for
@@ -267,16 +266,3 @@ def page(request: Request, template: str, context: dict[str, Any] | None = None)
     }
     data.update(context or {})
     return templates.TemplateResponse(request, template, data)
-
-
-def active_users_for_login() -> list[User]:
-    """Список активных сотрудников для экрана входа (без служебных)."""
-    with get_session_factory()() as session:
-        users = session.scalars(
-            select(User)
-            .where(User.active.is_(True), User.is_service.is_(False))
-            .order_by(User.name)
-        ).all()
-        for user in users:
-            session.expunge(user)
-        return list(users)

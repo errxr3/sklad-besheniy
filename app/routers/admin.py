@@ -92,32 +92,38 @@ def employees(request: Request, db: Session = Depends(get_db), ok: str = "", err
 @router.post("/employees/create")
 def employees_create(
     request: Request,
-    name: str = Form(...),
+    first_name: str = Form(""),
+    last_name: str = Form(""),
+    login: str = Form(""),
     role: str = Form(...),
-    pin: str = Form(...),
+    password: str = Form(""),
     home_site_id: str = Form(""),
     db: Session = Depends(get_db),
 ) -> Response:
     """Создать сотрудника."""
     try:
-        create_user(
+        user = create_user(
             db,
             actor_id=request.state.user.id,
-            name=name,
+            first_name=first_name,
+            last_name=last_name,
+            login=login,
             role=role,
-            pin=pin,
+            pin=password,
             home_site_id=int(home_site_id) if home_site_id else None,
         )
     except (AdminError, ValueError) as exc:
         return _redirect("/admin/employees", err=str(exc))
-    return _redirect("/admin/employees", message=f"Сотрудник «{name}» создан")
+    return _redirect("/admin/employees", message=f"Сотрудник «{user.name}» создан, логин: {user.login}")
 
 
 @router.post("/employees/update")
 def employees_update(
     request: Request,
     user_id: int = Form(...),
-    name: str = Form(""),
+    first_name: str = Form(""),
+    last_name: str = Form(""),
+    login: str = Form(""),
     role: str = Form(...),
     active: str = Form(""),
     home_site_id: str = Form(""),
@@ -129,7 +135,9 @@ def employees_update(
             db,
             actor_id=request.state.user.id,
             user_id=user_id,
-            name=name or None,
+            first_name=first_name,
+            last_name=last_name,
+            login=login,
             role=role,
             active=active == "1",
             home_site_id=int(home_site_id) if home_site_id else None,
@@ -154,15 +162,15 @@ def employees_delete(request: Request, user_id: int = Form(...), db: Session = D
 def employees_reset_pin(
     request: Request,
     user_id: int = Form(...),
-    pin: str = Form(...),
+    password: str = Form(""),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Сбросить PIN сотрудника."""
+    """Задать сотруднику новый пароль."""
     try:
-        reset_pin(db, actor_id=request.state.user.id, user_id=user_id, pin=pin)
+        reset_pin(db, actor_id=request.state.user.id, user_id=user_id, pin=password)
     except AdminError as exc:
         return _redirect("/admin/employees", err=str(exc))
-    return _redirect("/admin/employees", message="PIN изменён")
+    return _redirect("/admin/employees", message="Пароль изменён")
 
 
 @router.get("/sites", response_class=HTMLResponse)

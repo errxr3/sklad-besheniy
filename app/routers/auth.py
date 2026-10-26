@@ -8,7 +8,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.security import LoginError, authenticate, login_session, logout_session, session_user_id
-from app.web import GuardedRoute, active_users_for_login, page
+from app.web import GuardedRoute, page
 
 logger = logging.getLogger(__name__)
 router = APIRouter(route_class=GuardedRoute)
@@ -23,37 +23,29 @@ def _safe_next(value: str | None) -> str:
 
 @router.get("/login", response_class=HTMLResponse)
 def login_form(request: Request, next: str = "/") -> Response:
-    """Экран входа: выбор сотрудника и PIN."""
+    """Экран входа: логин и пароль."""
     if session_user_id(request) is not None:
         return RedirectResponse("/", status_code=303)
-    return page(
-        request,
-        "login.html",
-        {"users": active_users_for_login(), "next_url": _safe_next(next), "error": None},
-    )
+    return page(request, "login.html", {"next_url": _safe_next(next), "error": None, "login": ""})
 
 
 @router.post("/login")
 def login_submit(
     request: Request,
-    user_id: int = Form(...),
-    pin: str = Form(...),
+    login: str = Form(""),
+    password: str = Form(""),
     next: str = Form("/"),
     db: Session = Depends(get_db),
 ) -> Response:
-    """Проверить PIN и открыть сессию."""
+    """Проверить логин и пароль и открыть сессию."""
     try:
-        user = authenticate(db, user_id, pin)
+        user = authenticate(db, login, password)
     except LoginError as exc:
-        logger.warning("Неудачный вход", extra={"user_id": user_id})
+        logger.warning("Неудачный вход", extra={"status": login[:40]})
         return page(
             request,
             "login.html",
-            {
-                "users": active_users_for_login(),
-                "next_url": _safe_next(next),
-                "error": str(exc),
-            },
+            {"next_url": _safe_next(next), "error": str(exc), "login": login},
         )
     login_session(request, user)
     logger.info("Вход выполнен", extra={"user_id": user.id})

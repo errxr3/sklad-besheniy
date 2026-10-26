@@ -26,7 +26,6 @@ from app.services.units import create_printed_units, label_rows, stock_count
 from app.statuses import (
     IN_STOCK,
     ROLE_ASSEMBLER,
-    ROLE_LABELS,
     ROLE_LOADER,
     ROLE_SHIFT_LEAD,
     ROLE_STOREKEEPER,
@@ -91,10 +90,10 @@ def server(_prepare_database: str) -> Iterator[str]:
         process.wait(timeout=10)
 
 
-def _login(page, base: str, label: str, pin: str) -> None:  # type: ignore[no-untyped-def]
+def _login(page, base: str, login: str, password: str) -> None:  # type: ignore[no-untyped-def]
     page.goto(f"{base}/login")
-    page.select_option("#user-select", label=label)
-    page.fill("#pin", pin)
+    page.fill("#login", login)
+    page.fill("#password", password)
     page.click("button[type=submit]")
     page.wait_for_load_state("networkidle")
 
@@ -112,10 +111,12 @@ def test_full_day_in_browser(server: str, db: Session) -> None:
 
     site = site_by_name(db)
     article = make_article(db, name="Zerkalo_60x160")
-    assembler = make_user(db, name="Иван Сборщик", role=ROLE_ASSEMBLER, pin="1111")
-    make_user(db, name="Пётр Грузчик", role=ROLE_LOADER, pin="2222")
-    lead = make_user(db, name="Ольга Начальник", role=ROLE_SHIFT_LEAD, pin="3333")
-    make_user(db, name="Мария Кладовщик", role=ROLE_STOREKEEPER, pin="4444", home_site_id=site.id)
+    assembler = make_user(db, name="Иван Сборщик", role=ROLE_ASSEMBLER, pin="1111", login="ivan")
+    make_user(db, name="Пётр Грузчик", role=ROLE_LOADER, pin="2222", login="petr")
+    lead = make_user(db, name="Ольга Начальник", role=ROLE_SHIFT_LEAD, pin="3333", login="olga")
+    make_user(
+        db, name="Мария Кладовщик", role=ROLE_STOREKEEPER, pin="4444", home_site_id=site.id, login="maria"
+    )
     create_task(
         db, actor=lead, day=today_msk(), site_id=site.id, user_id=assembler.id,
         kind="article", article_id=article.id, qty_plan=3,
@@ -127,7 +128,7 @@ def test_full_day_in_browser(server: str, db: Session) -> None:
 
         # --- Сборщик ---
         worker = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
-        _login(worker, server, "Иван Сборщик — Сборщик зеркал", "1111")
+        _login(worker, server, "ivan", "1111")
         assert "Смена не начата" in worker.content()
         _start_shift(worker, server, site.name)
 
@@ -136,7 +137,7 @@ def test_full_day_in_browser(server: str, db: Session) -> None:
 
         # Печать: кладовщик заранее печатает этикетки на сборщика (PDF уходит в новую вкладку)
         keeper = browser.new_context().new_page()
-        _login(keeper, server, "Мария Кладовщик — Кладовщик", "4444")
+        _login(keeper, server, "maria", "4444")
         keeper.goto(f"{server}/labels")
         assert "Иван Сборщик" in keeper.inner_text("main")
         form = keeper.locator("form.print-form", has=keeper.locator("input[name=user_id]")).first
@@ -166,7 +167,7 @@ def test_full_day_in_browser(server: str, db: Session) -> None:
 
         # --- Грузчик ---
         carrier = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
-        _login(carrier, server, "Пётр Грузчик — Грузчик", "2222")
+        _login(carrier, server, "petr", "2222")
         _start_shift(carrier, server, site.name)
         carrier.goto(f"{server}/loading")
         carrier.click("button.channel-btn:has-text(\"Озон 2\")")
@@ -206,7 +207,7 @@ def test_camera_reads_printed_label(server: str, db: Session, tmp_path: Path) ->
     pdfium = pytest.importorskip("pypdfium2")
 
     article = make_article(db, name="Zerkalo_100x200")
-    worker = make_user(db, name="Сборщик Камера", role=ROLE_ASSEMBLER, pin="4444")
+    worker = make_user(db, name="Сборщик Камера", role=ROLE_ASSEMBLER, pin="4444", login="camera")
     open_shift(db, worker)
     units = create_printed_units(
         db,
@@ -217,7 +218,6 @@ def test_camera_reads_printed_label(server: str, db: Session, tmp_path: Path) ->
         actor_id=worker.id,
     )
     db.commit()
-    login_label = f"Сборщик Камера — {ROLE_LABELS[ROLE_ASSEMBLER]}"
     pdf_bytes = build_labels_pdf([LabelData(*row) for row in label_rows(units)])
 
     label = pdfium.PdfDocument(pdf_bytes)[0].render(scale=4).to_pil().convert("RGB")
@@ -239,7 +239,7 @@ def test_camera_reads_printed_label(server: str, db: Session, tmp_path: Path) ->
             ],
         )
         page = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
-        _login(page, server, login_label, "4444")
+        _login(page, server, "camera", "4444")
         page.goto(f"{server}/")
         page.click("#camera-btn")
         page.wait_for_selector(".scan-result.ok", timeout=15000)
@@ -255,13 +255,13 @@ def test_camera_reads_printed_label(server: str, db: Session, tmp_path: Path) ->
 def test_scan_mode_switch_remembered(server: str, db: Session) -> None:
     """«Сканер / Камера»: в режиме камеры поле не держит фокус; выбор запоминается."""
     sync_api = pytest.importorskip("playwright.sync_api")
-    worker = make_user(db, name="Сборщик Режим", role=ROLE_ASSEMBLER, pin="5555")
+    worker = make_user(db, name="Сборщик Режим", role=ROLE_ASSEMBLER, pin="5555", login="mode")
     open_shift(db, worker)
 
     with sync_api.sync_playwright() as playwright:
         browser = playwright.chromium.launch(executable_path=_chromium(), args=["--no-sandbox"])
         page = browser.new_context(viewport={"width": 390, "height": 844}).new_page()
-        _login(page, server, f"Сборщик Режим — {ROLE_LABELS[ROLE_ASSEMBLER]}", "5555")
+        _login(page, server, "mode", "5555")
         page.goto(f"{server}/")
         assert page.inner_text(".scan-mode button.active") == "Сканер"
         assert page.evaluate("document.activeElement.id") == "scan-input"

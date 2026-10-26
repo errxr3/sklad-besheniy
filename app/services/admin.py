@@ -1,5 +1,6 @@
 """Администрирование: сотрудники, площадки, настройки (SPEC §4, §5.1)."""
 
+import re
 from datetime import UTC, datetime
 from typing import Any
 
@@ -7,7 +8,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.models import AdminLog, Article, Site, User
-from app.security import LoginError, hash_pin, validate_pin_format
+from app.security import LoginError, find_by_login, hash_pin, validate_password
 from app.statuses import ALL_ROLES, ROLE_ADMIN
 
 
@@ -37,18 +38,50 @@ def log_admin(
     )
 
 
+LOGIN_RE = re.compile(r"^[\w.\-]{3,40}$")
+
+
 def _check_pin(pin: str) -> None:
-    """Проверить формат PIN и сообщить об ошибке языком администратора."""
+    """Проверить пароль и сообщить об ошибке языком администратора."""
     try:
-        validate_pin_format(pin)
+        validate_password(pin)
     except LoginError as exc:
         raise AdminError(str(exc)) from exc
+
+
+def _full_name(first_name: str, last_name: str) -> tuple[str, str, str]:
+    """Имя и фамилия обязательны; полное имя «Имя Фамилия» показывается везде на сайте."""
+    first = " ".join(first_name.split())
+    last = " ".join(last_name.split())
+    if not first or not last:
+        raise AdminError("Укажите имя и фамилию")
+    if len(first) > 60 or len(last) > 60:
+        raise AdminError("Имя и фамилия — до 60 символов")
+    return first, last, f"{first} {last}"
+
+
+def _check_login(session: Session, login: str, user_id: int | None = None) -> str:
+    """Логин: 3–40 букв, цифр, точек, дефисов или подчёркиваний, без повторов (регистр не важен)."""
+    value = login.strip()
+    if not LOGIN_RE.match(value):
+        raise AdminError("Логин — от 3 до 40 букв или цифр, можно точку, дефис и подчёркивание, без пробелов")
+    other = find_by_login(session, value)
+    if other is not None and other.id != user_id:
+        raise AdminError(f"Логин «{value}» уже занят")
+    return value
+
+
+def _check_unique_name(session: Session, name: str, user_id: int | None = None) -> None:
+    other = session.scalar(select(User).where(User.name == name, User.deleted_at.is_(None)))
+    if other is not None and other.id != user_id:
+        raise AdminError(f"Сотрудник «{name}» уже есть")
 
 
 def _user_snapshot(user: User) -> dict[str, Any]:
     """Состояние сотрудника для журнала."""
     return {
         "name": user.name,
+        "login": user.login,
         "role": user.role,
         "active": user.active,
         "home_site_id": user.home_site_id,
@@ -59,23 +92,26 @@ def create_user(
     session: Session,
     *,
     actor_id: int | None,
-    name: str,
+    first_name: str,
+    last_name: str,
+    login: str,
     role: str,
     pin: str,
     home_site_id: int | None = None,
 ) -> User:
-    """Создать сотрудника."""
-    name = name.strip()
-    if not name:
-        raise AdminError("Укажите имя сотрудника")
+    """Создать сотрудника: имя, фамилия, логин и пароль."""
+    first, last, name = _full_name(first_name, last_name)
     if role not in ALL_ROLES:
         raise AdminError("Неизвестная роль")
+    login = _check_login(session, login)
     _check_pin(pin)
-    if session.scalar(select(User).where(User.name == name)) is not None:
-        raise AdminError(f"Сотрудник «{name}» уже есть")
+    _check_unique_name(session, name)
 
     user = User(
         name=name,
+        first_name=first,
+        last_name=last,
+        login=login,
         role=role,
         pin_hash=hash_pin(pin),
         active=True,
@@ -92,12 +128,14 @@ def update_user(
     *,
     actor_id: int | None,
     user_id: int,
-    name: str | None = None,
+    first_name: str | None = None,
+    last_name: str | None = None,
+    login: str | None = None,
     role: str | None = None,
     active: bool | None = None,
     home_site_id: int | None = None,
 ) -> User:
-    """Изменить сотрудника: имя, роль, площадку, активность."""
+    """Изменить сотрудника: имя, фамилию, логин, роль, площадку, активность."""
     user = session.get(User, user_id)
     if user is None:
         raise AdminError("Сотрудник не найден")
@@ -106,8 +144,15 @@ def update_user(
     if user.deleted_at is not None:
         raise AdminError("Сотрудник удалён")
     before = _user_snapshot(user)
-    if name is not None and name.strip():
-        user.name = name.strip()
+    if first_name is not None or last_name is not None:
+        first, last, name = _full_name(
+            first_name if first_name is not None else (user.first_name or ""),
+            last_name if last_name is not None else (user.last_name or ""),
+        )
+        _check_unique_name(session, name, user.id)
+        user.first_name, user.last_name, user.name = first, last, name
+    if login is not None:
+        user.login = _check_login(session, login, user.id)
     if role is not None:
         if role not in ALL_ROLES:
             raise AdminError("Неизвестная роль")

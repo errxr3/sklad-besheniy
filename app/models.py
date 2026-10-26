@@ -89,7 +89,10 @@ class User(Base):
     __table_args__ = (CheckConstraint(_in_list("role", ALL_ROLES), name="ck_users_role"),)
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    name: Mapped[str] = mapped_column(String(120))
+    name: Mapped[str] = mapped_column(String(120))  # «Имя Фамилия», как показывается везде
+    first_name: Mapped[str | None] = mapped_column(String(60))
+    last_name: Mapped[str | None] = mapped_column(String(60))
+    login: Mapped[str | None] = mapped_column(String(40))  # у служебных нет, войти под ними нельзя
     role: Mapped[str] = mapped_column(String(20))
     pin_hash: Mapped[str] = mapped_column(String(255))
     active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
