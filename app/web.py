@@ -26,7 +26,7 @@ from app.statuses import (
     ROLES_NEED_SHIFT,
     STATUS_LABELS,
 )
-from app.timeutil import fmt_date, fmt_day_month, fmt_dt, fmt_time, today_msk
+from app.timeutil import fmt_date, fmt_day_month, fmt_dt, fmt_hours, fmt_time, today_msk
 
 logger = logging.getLogger(__name__)
 BASE_DIR = Path(__file__).resolve().parent
@@ -59,6 +59,7 @@ templates.env.filters.update(
     time=fmt_time,
     date=fmt_date,
     day_month=fmt_day_month,
+    hours=fmt_hours,
 )
 
 

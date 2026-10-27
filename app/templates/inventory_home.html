@@ -4,14 +4,20 @@
 <h1>Инвентаризация</h1>
 {% if err %}<p class="msg err">{{ err }}</p>{% endif %}
 <div class="card">
-	<p class="muted">Площадка: <b>{{ site.name }}</b></p>
+	<form method="get" action="/inventory" class="line">
+		<label for="inv-site" style="margin:0">Площадка</label>
+		<select id="inv-site" name="site_id" onchange="this.form.submit()" style="max-width:280px">
+			{% for s in sites %}<option value="{{ s.id }}" {% if s.id == site.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
+		</select>
+	</form>
 	{% if current %}
 		<p class="msg warn">Инвентаризация идёт с {{ current.started_at|dt }}</p>
 		<a class="btn big" href="/inventory/{{ current.id }}">Продолжить пересчёт</a>
 	{% else %}
 		<form method="post" action="/inventory/start">
 			<input type="hidden" name="csrf_token" value="{{ csrf }}">
-			<button type="submit" class="big">Начать инвентаризацию площадки</button>
+			<input type="hidden" name="site_id" value="{{ site.id }}">
+			<button type="submit" class="big mt">Начать инвентаризацию: {{ site.name }}</button>
 		</form>
 		<p class="hint">Пока идёт инвентаризация, отгрузки и перемещения разрешены: зеркала,
 			прошедшие через них после старта, в расхождения не попадут.</p>

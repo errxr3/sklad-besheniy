@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Inventory, Site
+from app.models import Inventory, Site, User
 from app.routers.make import labels_pdf_response
 from app.services.context import site_and_shift
 from app.services.shipping import cancel_ship
@@ -281,10 +281,12 @@ async def ship_cancel_scan(request: Request, db: Session = Depends(get_db)) -> J
 
 
 @router.get("/inventory", response_class=HTMLResponse)
-def inventory_home(request: Request, db: Session = Depends(get_db), err: str = "") -> Response:
-    """Начало инвентаризации или переход к идущей."""
+def inventory_home(
+    request: Request, db: Session = Depends(get_db), err: str = "", site_id: int = 0
+) -> Response:
+    """Начало инвентаризации или переход к идущей; площадку можно выбрать."""
     user = request.state.user
-    site, _ = site_and_shift(db, user)
+    site = _inventory_site(db, user, site_id)
     current = active_inventory(db, site.id)
     history = list(
         db.scalars(
@@ -297,19 +299,35 @@ def inventory_home(request: Request, db: Session = Depends(get_db), err: str = "
     return page(
         request,
         "inventory_home.html",
-        {"site": site, "current": current, "history": history, "err": err},
+        {
+            "site": site,
+            "sites": db.scalars(select(Site).where(Site.active.is_(True)).order_by(Site.sort_order)).all(),
+            "current": current,
+            "history": history,
+            "err": err,
+        },
     )
 
 
+def _inventory_site(db: Session, user: User, site_id: int) -> Site:
+    """Выбранная площадка, иначе площадка смены или своя (у администратора своей может не быть)."""
+    chosen = db.get(Site, site_id) if site_id else None
+    if chosen is not None and chosen.active:
+        return chosen
+    site, _ = site_and_shift(db, user)
+    return site
+
+
 @router.post("/inventory/start")
-def inventory_start(request: Request, db: Session = Depends(get_db)) -> Response:
+def inventory_start(request: Request, db: Session = Depends(get_db), site_id: int = Form(0)) -> Response:
     """Начать инвентаризацию всей площадки."""
     user = request.state.user
-    site, _ = site_and_shift(db, user)
+    site = _inventory_site(db, user, site_id)
     try:
         inventory = start_inventory(db, site_id=site.id, actor=user)
     except WarehouseError as exc:
-        return RedirectResponse(f"/inventory?{urlencode({'err': str(exc)})}", status_code=303)
+        query = urlencode({"err": str(exc), "site_id": site.id})
+        return RedirectResponse(f"/inventory?{query}", status_code=303)
     logger.info("Начата инвентаризация", extra={"user_id": user.id})
     return RedirectResponse(f"/inventory/{inventory.id}", status_code=303)
 

@@ -55,3 +55,14 @@ def fmt_date(day: date | None) -> str:
 def fmt_day_month(day: date) -> str:
     """Короткая дата как в гугл-таблице: 13.10."""
     return day.strftime("%d.%m")
+
+
+def fmt_hours(hours: float | None) -> str:
+    """Часы для людей: 8.5 → «8 ч 30 мин», 0.03 → «2 мин»."""
+    if hours is None:
+        return "—"
+    minutes = round(hours * 60)
+    h, m = divmod(minutes, 60)
+    if not h:
+        return f"{m} мин"
+    return f"{h} ч {m:02d} мин" if m else f"{h} ч"

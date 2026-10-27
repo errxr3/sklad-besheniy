@@ -29,7 +29,10 @@
 	<h2>Изменить сборщика</h2>
 	<form method="post" action="/mirror/{{ unit.number }}/assembler" class="row tight">
 		<input type="hidden" name="csrf_token" value="{{ csrf }}">
-		<select name="assembler_id">
+		<select name="assembler_id" required>
+			{% if unit.assembler_id not in assemblers|map(attribute='id')|list %}
+			<option value="" selected disabled>сейчас: {{ unit.assembler.name if unit.assembler else '—' }} — выберите нового</option>
+			{% endif %}
 			{% for a in assemblers %}
 			<option value="{{ a.id }}" {% if unit.assembler_id == a.id %}selected{% endif %}>{{ a.name }}</option>
 			{% endfor %}

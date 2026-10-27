@@ -23,11 +23,11 @@
 			<td>{{ row.day|date }}</td>
 			<td>{{ row.started_at|time }}</td>
 			<td>{{ row.ended_at|time if row.ended_at else '—' }}</td>
-			<td class="num">{{ row.hours }}</td>
+			<td class="num">{{ row.hours|hours }}</td>
 			<td>{{ row.closed_label }}</td>
 		</tr>
 		{% endfor %}
-		<tr><td colspan="3"><b>Итого</b></td><td class="num"><b>{{ total_hours }}</b></td><td></td></tr>
+		<tr><td colspan="3"><b>Итого</b></td><td class="num"><b>{{ total_hours|hours }}</b></td><td></td></tr>
 	</table>
 </div>
 {% endblock %}
