@@ -109,3 +109,24 @@ def test_api_does_not_need_csrf(client: TestClient, db: Session) -> None:
         headers={"X-API-Key": plain},
     )
     assert response.status_code == 200
+
+
+def test_demand_and_batch_api(client: TestClient, db: Session) -> None:
+    """BLAGO OTGRUZKI: заказы дня → решения; партия этикеток → строки для погрузки."""
+    plain = _key(db)
+    make_article(db, name="Zerkalo_50x130")
+    headers = {"X-API-Key": plain}
+    line = {"market": "ozon", "channel": "Ozon", "truck": "Озон1", "posting": "API-1",
+            "article": "Zerkalo_50x130", "qty": 1, "production": "Коминтерна"}
+    demand = client.post("/api/v1/demand", json={"lines": [line]}, headers=headers).json()
+    assert demand["ok"] and demand["postings"]["API-1"]["decision"] == "no"  # на складе пусто
+    batch = client.post("/api/v1/batches", headers=headers, json={
+        "market": "ozon", "channel": "Ozon", "truck": "Озон2", "source": "тест",
+        "items": [{"posting": "API-1", "article": "Zerkalo_50x130", "production": "Коминтерна",
+                   "codes": ["%1234"]}],
+    }).json()
+    assert batch == {"ok": True, "batch": "Озон 2", "added": 1, "updated": 0, "kept": [], "unknown": []}
+    wrong = {"market": "ozon", "channel": "Луна", "items": []}
+    bad = client.post("/api/v1/batches", headers=headers, json=wrong)
+    assert bad.status_code == 400 and "Неизвестный канал" in bad.json()["error"]
+    assert client.post("/api/v1/demand", json={"lines": [line]}).status_code == 401
