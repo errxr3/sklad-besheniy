@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Вопросы и срочное{% endblock %}
+{% block content %}
+{% include "_warehouse_tabs.html" %}
+<h1>Вопросы по отгрузке</h1>
+{% if ok %}<p class="msg ok">{{ ok }}</p>{% endif %}
+{% if err %}<p class="msg err">{{ err }}</p>{% endif %}
+{% if not questions %}
+<div class="card"><p class="muted">Вопросов нет: на отгрузки сегодня зеркал хватает.</p></div>
+{% endif %}
+{% for q in questions %}
+<div class="card">
+	<h2>{{ q.article.name }} · {{ q.site.name }}</h2>
+	<p>Нужно <b>{{ q.need }}</b> ({{ q.channels or 'отгрузка' }}), на складе <b>{{ q.stock }}</b>, в работе <b>{{ q.in_work }}</b>.
+		Не хватает <b>{{ q.short - q.promised }}</b>{% if q.promised %} (уже обещано {{ q.promised }}){% endif %}.</p>
+	{% if busy[q.id] %}<p class="hint">Делают сейчас: {% for v in busy[q.id] %}{{ v.task.user.name }} — {{ v.done }} из {{ v.plan }}{% if not loop.last %}, {% endif %}{% endfor %}</p>{% endif %}
+	<form method="post" action="/ship/questions/{{ q.id }}/answer" class="row">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<div><label>Сборщик</label><select name="assembler_id">
+			{% for w in workers[q.site_id] %}<option value="{{ w.id }}">{{ w.name }}</option>{% endfor %}
+		</select></div>
+		<div><label>Сколько</label><input type="number" name="qty" min="1" value="{{ q.short - q.promised }}"></div>
+		<div><label>К какому времени</label><input type="time" name="due" value="14:00"></div>
+		<div class="row tight" style="flex-basis:100%">
+			<button type="submit" name="answer" value="yes">Сделаем — поставить срочно</button>
+			<button type="submit" name="answer" value="no" class="secondary" formnovalidate>Нет, не успеем</button>
+		</div>
+	</form>
+</div>
+{% endfor %}
+<h2>Срочные задачи сегодня</h2>
+<div class="card">
+	{% if not urgent %}<p class="muted">Срочных задач нет.</p>{% endif %}
+	<table class="dense">
+		{% for u in urgent %}
+		<tr class="{% if u.overdue %}overdue{% elif u.left == 0 %}done{% endif %}">
+			<td>{{ u.task.user.name }}</td><td>{{ u.task.article.name if u.task.article else '' }}</td>
+			<td class="num">сдано {{ u.done }} из {{ u.task.urgent_qty }}</td>
+			<td>к {{ u.task.urgent_due|time }}{% if u.overdue %} · просрочено{% endif %}</td>
+			<td class="muted">{{ u.task.urgent_note or '' }}</td>
+		</tr>
+		{% endfor %}
+	</table>
+</div>
+{% endblock %}

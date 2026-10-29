@@ -237,7 +237,9 @@ tr[style*="background"], td[style*="background"] {
 .scan-result:empty { display: none; }
 .scan-result.ok { background: var(--ok-bg); color: var(--ok); border: 2px solid var(--ok); }
 .scan-result.err { background: var(--err-bg); color: var(--err); border: 2px solid var(--err); }
-.scan-result.ok::before, .scan-result.err::before {
+.scan-result.warn { background: var(--warn-bg); color: var(--warn); border: 2px solid var(--warn); }
+.scan-result.warn::before { content: "!"; background: var(--warn); }
+.scan-result.ok::before, .scan-result.err::before, .scan-result.warn::before {
 	position: absolute; left: 16px; top: 18px; width: 32px; height: 32px; border-radius: 4px;
 	display: flex; align-items: center; justify-content: center; color: var(--card); font-size: 20px;
 }
@@ -249,6 +251,9 @@ tr[style*="background"], td[style*="background"] {
 .scan-history li { padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 16px; }
 .scan-history li.ok { border-left: 4px solid var(--ok); }
 .scan-history li.err { border-left: 4px solid var(--err); }
+.scan-history li.warn { border-left: 4px solid var(--warn); }
+#batch-table tr.done td { color: var(--muted); }
+#batch-table tr.short td:first-child { color: var(--err); font-weight: 600; }
 
 /* Прогресс задач */
 .progress { height: 10px; background: var(--group-bg); border-radius: 2px; overflow: hidden; }
@@ -503,3 +508,10 @@ tr[style*="background"] .pending { color: #6b7280; }
 /* Отгрузка: «20 (сделано 20)» в одну строку — иначе строки таблицы разъезжаются */
 .shipments td.num { white-space: nowrap; }
 .shipments td.num .muted { font-size: 11px; }
+
+/* Партии BLAGO OTGRUZKI и вопросы по нехватке */
+.ship-alert { display: block; padding: 10px 16px; background: var(--err-bg); color: var(--err); font-weight: 700; text-decoration: none; border-bottom: 1px solid var(--err); }
+tr.ship-moved td { background: var(--warn-bg); }
+tr.ship-removed td { color: var(--muted); }
+tr.ship-loaded td { color: var(--muted); }
+tr.overdue td { color: var(--err); font-weight: 600; }

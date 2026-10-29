@@ -144,6 +144,11 @@ def cmd_close_shifts(args: argparse.Namespace) -> int:
 
 # Рабочие данные: зеркала, журнал, смены, задачи, каналы. Справочник, площадки и настройки остаются.
 WIPE_TABLES = (
+    "ship_codes",
+    "ship_items",
+    "ship_batches",
+    "ship_demand",
+    "ship_questions",
     "movements",
     "inventory_scans",
     "inventories",

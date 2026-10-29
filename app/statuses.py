@@ -97,8 +97,24 @@ ROLES_NEED_SHIFT: Final[tuple[str, ...]] = (ROLE_ASSEMBLER, ROLE_LOADER)
 # --- Каналы отгрузки (SPEC §6.4) ---
 CHANNELS: Final[tuple[str, ...]] = ("Ozon", "WB", "СГТ", "КГТ", "СДЭК")
 OZON: Final = "Ozon"
-# Машины Ozon: при закрытии канала Ozon грузчик выбирает, в какую машину погружено
-OZON_TRUCKS: Final[tuple[str, ...]] = ("Озон1", "Озон2", "Озон3")
+# Машины Ozon: при закрытии канала Ozon грузчик выбирает, в какую машину погружено.
+# «Озон 4» — добить то, что не успели погрузить в первые три машины
+OZON_TRUCKS: Final[tuple[str, ...]] = ("Озон1", "Озон2", "Озон3", "Озон4")
+
+# --- Партии BLAGO OTGRUZKI: этикетки маркетплейсов, которые сегодня едут ---
+MARKETS: Final[tuple[str, ...]] = ("ozon", "wb", "cdek")
+SHIP_WAIT: Final = "wait"
+SHIP_LOADED: Final = "loaded"
+SHIP_REMOVED: Final = "removed"
+SHIP_STATES: Final[tuple[str, ...]] = (SHIP_WAIT, SHIP_LOADED, SHIP_REMOVED)
+SHIP_STATE_LABELS: Final[dict[str, str]] = {
+    SHIP_WAIT: "ждёт погрузки",
+    SHIP_LOADED: "погружено",
+    SHIP_REMOVED: "снято с отгрузки",
+}
+# Кто первым получает зеркала, если не хватает на всех заказы одного дня (решение владельца 2026-10-28)
+CHANNEL_PRIORITY: Final[tuple[str, ...]] = ("СГТ", "WB", "СДЭК", "Ozon", "КГТ")
+REMOVE_REASONS: Final[tuple[str, ...]] = ("брак", "нет на складе", "потеряно", "другое")
 
 # --- Причины списания (SPEC §6.7) ---
 WRITE_OFF_REASONS: Final[tuple[str, ...]] = (

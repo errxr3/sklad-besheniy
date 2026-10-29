@@ -131,6 +131,7 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("POST", "/loading/scan"): LOADERS,
     ("POST", "/loading/close"): LOADERS,
     ("GET", "/loading/pallet/{pallet_id}"): (*LOADERS, ROLE_SHIFT_LEAD),
+    ("GET", "/loading/batch/{pallet_id}"): (*LOADERS, ROLE_SHIFT_LEAD),
     # Перемещение между площадками (грузчик отправляет и принимает)
     ("GET", "/transfer"): LOADERS,
     ("POST", "/transfer/scan"): LOADERS,
@@ -154,6 +155,11 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("POST", "/inventory/{inventory_id}/scan"): ADMIN_ONLY,
     ("POST", "/inventory/{inventory_id}/finish"): ADMIN_ONLY,
     # Журнал
+    ("GET", "/shipments/batches"): LEADS,
+    ("POST", "/shipments/batches/remove"): LEADS,
+    ("POST", "/shipments/batches/return"): LEADS,
+    ("GET", "/ship/questions"): LEADS,
+    ("POST", "/ship/questions/{question_id}/answer"): LEADS,
     ("GET", "/journal"): LEADS,
     ("GET", "/journal.csv"): LEADS,
     # Остатки и выгрузки
@@ -167,6 +173,8 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("GET", "/api/v1/stock"): API_KEY,
     ("POST", "/api/v1/shipments"): API_KEY,
     ("GET", "/api/v1/ping"): API_KEY,
+    ("POST", "/api/v1/demand"): API_KEY,
+    ("POST", "/api/v1/batches"): API_KEY,
     # Ключи API, состояние системы и документация API
     ("GET", "/admin/api-keys"): ADMIN_ONLY,
     ("POST", "/admin/api-keys/create"): ADMIN_ONLY,

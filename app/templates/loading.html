@@ -51,10 +51,36 @@
 		</div>
 	</form>
 	<div id="camera-box" class="mt" hidden></div>
-	{% if require_mp %}
+	{% if batch_mode %}
+	<p class="hint">Отгрузка по партии BLAGO OTGRUZKI: на каждом зеркале две этикетки — BLAGO и маркетплейса.
+		Сканируйте обе, в любом порядке.</p>
+	{% elif require_mp %}
 	<p class="hint">Включён обязательный второй скан: после этикетки зеркала отсканируйте ШК маркетплейса.</p>
 	{% endif %}
 </div>
+
+{% if batch_mode %}
+<div class="card" id="batch-card">
+	<div class="line">
+		<h2 style="margin:0">Что грузить · {{ pallet.title }}</h2>
+		<span class="muted" id="batch-left"></span>
+	</div>
+	<table class="dense mt" id="batch-table">
+		<tr><th>Артикул</th><th class="num">Погружено</th><th class="num">Осталось</th><th class="num">На складе</th></tr>
+		{% for line in batch_lines %}
+		<tr class="{% if line.left == 0 %}done{% elif line.in_stock < line.left %}short{% endif %}">
+			<td>{{ line.article }}</td>
+			<td class="num">{{ line.loaded }} из {{ line.total }}</td>
+			<td class="num">{{ line.left }}{% if line.removed %} <span class="muted">(снято {{ line.removed }})</span>{% endif %}</td>
+			<td class="num">{{ line.in_stock }}</td>
+		</tr>
+		{% else %}
+		<tr><td colspan="4" class="muted">В партии этой машины пусто — сюда можно догрузить остатки других машин.</td></tr>
+		{% endfor %}
+	</table>
+	<p class="hint">Красным — на складе меньше, чем осталось погрузить: ждите, пока сборщики сдадут.</p>
+</div>
+{% endif %}
 
 <div class="card">
 	<h2>Закрыть канал</h2>
@@ -94,7 +120,11 @@
 <script>
 (function () {
 	var pendingUnit = null;
+	var pendingCode = null;
 	var input = document.getElementById('scan-input');
+	var batchMode = {{ 'true' if batch_mode else 'false' }};
+	var basePlaceholder = batchMode ? 'Отсканируйте этикетку BLAGO или маркетплейса' : 'Отсканируйте этикетку зеркала';
+	input.placeholder = basePlaceholder;
 
 	var screen = new window.Sklad.ScanScreen({
 		url: '/loading/scan',
@@ -102,25 +132,60 @@
 		extra: function () {
 			var data = { pallet_id: {{ pallet.id }} };
 			if (pendingUnit) data.unit_number = pendingUnit;
+			if (pendingCode) data.ship_code = pendingCode;
 			return data;
 		},
 		onResult: function (data) {
 			// Канал закрыл другой грузчик — возвращаемся к выбору канала
 			if (data.closed) setTimeout(function () { window.location.href = '/loading'; }, 2500);
+			// Ошибка на втором скане: начинаем зеркало заново с любой этикетки
+			if (!data.ok) { pendingUnit = null; pendingCode = null; input.placeholder = basePlaceholder; }
 		},
 		onSuccess: function (data) {
 			if (data.await_mp) {
-				pendingUnit = data.number;
-				input.placeholder = 'Отсканируйте ШК маркетплейса';
+				pendingUnit = data.number; pendingCode = null;
+				input.placeholder = 'Теперь этикетку маркетплейса';
+			} else if (data.await_unit) {
+				pendingCode = data.ship_code; pendingUnit = null;
+				input.placeholder = 'Теперь этикетку BLAGO на этом зеркале';
 			} else {
-				pendingUnit = null;
-				input.placeholder = 'Отсканируйте этикетку зеркала';
+				pendingUnit = null; pendingCode = null;
+				input.placeholder = basePlaceholder;
+				if (batchMode) refreshBatch();
 			}
 			if (typeof data.pallet_count === 'number') {
 				document.getElementById('pallet-count').textContent = data.pallet_count;
 			}
 		}
 	});
+
+	// Список «что грузить» обновляется сам: грузят несколько человек, сборщики сдают зеркала
+	function refreshBatch() {
+		fetch('/loading/batch/{{ pallet.id }}', { headers: { 'X-Requested-With': 'fetch' } })
+			.then(function (r) { return r.json(); })
+			.then(function (data) {
+				var table = document.getElementById('batch-table');
+				if (!table || !data.lines) return;
+				while (table.rows.length > 1) table.deleteRow(1);
+				var left = 0;
+				data.lines.forEach(function (line) {
+					left += line.left;
+					var row = table.insertRow(-1);
+					row.className = line.left === 0 ? 'done' : (line.in_stock < line.left ? 'short' : '');
+					[line.article, line.loaded + ' из ' + line.total,
+					 line.left + (line.removed ? ' (снято ' + line.removed + ')' : ''), line.in_stock]
+						.forEach(function (text, index) {
+							var cell = row.insertCell(-1);
+							cell.textContent = text;
+							if (index) cell.className = 'num';
+						});
+				});
+				document.getElementById('batch-left').textContent = left ? 'осталось ' + left : 'всё погружено';
+				if (typeof data.count === 'number') document.getElementById('pallet-count').textContent = data.count;
+			})
+			.catch(function () {});
+	}
+	if (batchMode) { refreshBatch(); setInterval(refreshBatch, 20000); }
 
 	var camera = new window.Sklad.CameraScan({
 		onCode: function (text) { screen.send(text); }
@@ -129,7 +194,9 @@
 
 	document.getElementById('close-form').addEventListener('submit', function (event) {
 		var count = document.getElementById('pallet-count').textContent;
-		if (!window.confirm('Закрыть канал {{ pallet.title }} для всех? В канале: ' + count)) event.preventDefault();
+		var left = (document.getElementById('batch-left') || {}).textContent || '';
+		var warn = left.indexOf('осталось') === 0 ? '\nВ партии ' + left + ' — они не погружены.' : '';
+		if (!window.confirm('Закрыть канал {{ pallet.title }} для всех? В канале: ' + count + warn)) event.preventDefault();
 	});
 })();
 </script>

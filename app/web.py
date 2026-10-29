@@ -251,6 +251,17 @@ def _active_menu_url(path: str, urls: list[str]) -> str:
     return section if section in urls else ""
 
 
+def _ship_question_count(user: User | None) -> int:
+    """Сколько вопросов по отгрузке ждёт ответа начальника (его площадки)."""
+    if user is None or user.role not in (ROLE_ADMIN, ROLE_SHIFT_LEAD):
+        return 0
+    from app.services.batches import count_open_questions
+
+    with get_session_factory()() as session:
+        site_ids = [user.home_site_id] if user.role == ROLE_SHIFT_LEAD and user.home_site_id else None
+        return count_open_questions(session, site_ids=site_ids)
+
+
 def page(request: Request, template: str, context: dict[str, Any] | None = None) -> HTMLResponse:
     """Отрисовать страницу с общими переменными."""
     user = getattr(request.state, "user", None) or load_user(request)
@@ -264,6 +275,8 @@ def page(request: Request, template: str, context: dict[str, Any] | None = None)
         "today": today_msk(),
         # Показывать ссылку, только если у роли есть доступ к странице
         "can": lambda path, method="GET": can(user.role if user else None, path, method),
+        # Вопросы по нехватке для отгрузки — красная плашка у начальника на всех страницах
+        "ship_questions": lambda: _ship_question_count(user),
     }
     data.update(context or {})
     return templates.TemplateResponse(request, template, data)

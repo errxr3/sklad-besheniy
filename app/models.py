@@ -373,6 +373,11 @@ class Task(Base):
     qty_plan: Mapped[int | None] = mapped_column(Integer)
     text: Mapped[str | None] = mapped_column(Text)
     done_manually_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Срочно: «5 шт. к 14:00 · на Озон 2» — считается сданное после urgent_since
+    urgent_qty: Mapped[int | None] = mapped_column(Integer)
+    urgent_due: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    urgent_since: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    urgent_note: Mapped[str | None] = mapped_column(String(120))
     created_by: Mapped[int] = mapped_column(ForeignKey("users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
@@ -411,6 +416,132 @@ class MpShipment(Base):
     # nullable указан явно: имя поля `date` затеняет тип `date` в аннотации
     date: Mapped[date | None] = mapped_column(Date, nullable=True)
     received_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ShipBatch(Base):
+    """Партия BLAGO OTGRUZKI: этикетки маркетплейса, которые сегодня едут одной машиной/поставкой.
+
+    Канал склада: Ozon + машина (Озон1…Озон4), КГТ, WB, СГТ, СДЭК. Партия одна на день и канал:
+    повторная отправка той же волны дополняет её.
+    """
+
+    __tablename__ = "ship_batches"
+    __table_args__ = (UniqueConstraint("day", "channel", "truck", name="uq_ship_batches_kind"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    day: Mapped[date] = mapped_column(Date)
+    market: Mapped[str] = mapped_column(String(10))
+    channel: Mapped[str] = mapped_column(String(20))
+    truck: Mapped[str] = mapped_column(String(10), default="", server_default="")
+    source: Mapped[str | None] = mapped_column(String(160))  # отчёт или поставка в BLAGO OTGRUZKI
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    @property
+    def title(self) -> str:
+        """«Озон 2», «WB»."""
+        if self.truck:
+            return "Озон " + self.truck.removeprefix("Озон")
+        return self.channel
+
+
+class ShipItem(Base):
+    """Одна этикетка маркетплейса в партии = одно зеркало, которое должно уехать."""
+
+    __tablename__ = "ship_items"
+    __table_args__ = (
+        UniqueConstraint("market", "posting", name="uq_ship_items_posting"),
+        Index("ix_ship_items_batch", "batch_id"),
+        Index("ix_ship_items_site_state", "site_id", "state"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    batch_id: Mapped[int] = mapped_column(ForeignKey("ship_batches.id"))
+    market: Mapped[str] = mapped_column(String(10))
+    posting: Mapped[str] = mapped_column(String(64))  # номер отправления Ozon / задания WB
+    article_name: Mapped[str] = mapped_column(String(200))
+    article_id: Mapped[int | None] = mapped_column(ForeignKey("articles.id"))
+    site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id"))  # производство
+    ordered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    state: Mapped[str] = mapped_column(String(10), default="wait", server_default="wait")
+    unit_id: Mapped[int | None] = mapped_column(ForeignKey("units.id"))
+    pallet_id: Mapped[int | None] = mapped_column(ForeignKey("pallets.id"))
+    loaded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    loaded_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    # Погружено не в свою машину: «Озон 1 → Озон 2»
+    moved_note: Mapped[str | None] = mapped_column(String(120))
+    removed_reason: Mapped[str | None] = mapped_column(String(200))
+    removed_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    removed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    batch: Mapped[ShipBatch] = relationship(lazy="joined")
+    article: Mapped[Article | None] = relationship(lazy="joined")
+    site: Mapped[Site | None] = relationship(lazy="joined")
+    unit: Mapped[Unit | None] = relationship(lazy="select")
+
+
+class ShipCode(Base):
+    """Код с этикетки маркетплейса → строка партии (на этикетке их несколько)."""
+
+    __tablename__ = "ship_codes"
+
+    code: Mapped[str] = mapped_column(String(80), primary_key=True)
+    item_id: Mapped[int] = mapped_column(ForeignKey("ship_items.id", ondelete="CASCADE"))
+
+
+class ShipDemand(Base):
+    """Заказ дня из BLAGO OTGRUZKI: по ним склад решает, что едет, а что нет."""
+
+    __tablename__ = "ship_demand"
+    __table_args__ = (
+        UniqueConstraint("market", "posting", "article_name", name="uq_ship_demand_line"),
+        Index("ix_ship_demand_day", "day"),
+    )
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    day: Mapped[date] = mapped_column(Date)
+    market: Mapped[str] = mapped_column(String(10))
+    channel: Mapped[str] = mapped_column(String(20))
+    truck: Mapped[str] = mapped_column(String(10), default="", server_default="")
+    posting: Mapped[str] = mapped_column(String(64))
+    article_name: Mapped[str] = mapped_column(String(200))
+    article_id: Mapped[int | None] = mapped_column(ForeignKey("articles.id"))
+    site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id"))
+    qty: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
+    ordered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    decision: Mapped[str] = mapped_column(String(10), default="no", server_default="no")
+    reason: Mapped[str | None] = mapped_column(String(200))
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class ShipQuestion(Base):
+    """Вопрос начальнику: на складе не хватает, но артикул в работе — доделают к сроку?"""
+
+    __tablename__ = "ship_questions"
+    __table_args__ = (UniqueConstraint("day", "site_id", "article_id", name="uq_ship_questions_kind"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    day: Mapped[date] = mapped_column(Date)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id"))
+    article_id: Mapped[int] = mapped_column(ForeignKey("articles.id"))
+    need: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # в заказах
+    stock: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # на складе свободно
+    in_work: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    short: Mapped[int] = mapped_column(Integer, default=0, server_default="0")  # не хватает
+    channels: Mapped[str | None] = mapped_column(String(120))  # куда: «Озон 2, WB»
+    # Ответ начальника: open — ждёт, yes — «сделаем», no — «не успеем» (колонка status)
+    answer: Mapped[str] = mapped_column("status", String(10), default="open", server_default="open")
+    promised: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
+    due_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    answered_by: Mapped[int | None] = mapped_column(ForeignKey("users.id"))
+    answered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    site: Mapped[Site] = relationship(lazy="joined")
+    article: Mapped[Article] = relationship(lazy="joined")
+    answerer: Mapped[User | None] = relationship(lazy="joined", foreign_keys=[answered_by])
 
 
 class Setting(Base):

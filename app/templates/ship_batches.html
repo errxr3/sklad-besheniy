@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% block title %}Партии{% endblock %}
+{% block content %}
+{% include "_warehouse_tabs.html" %}
+<h1>Партии BLAGO OTGRUZKI</h1>
+{% if ok %}<p class="msg ok">{{ ok }}</p>{% endif %}
+{% if err %}<p class="msg err">{{ err }}</p>{% endif %}
+<div class="card">
+	<form method="get" action="/shipments/batches" class="row tight">
+		<div><label for="day">День</label><input type="date" id="day" name="day" value="{{ day.isoformat() }}"></div>
+		<div><label>&nbsp;</label><button type="submit" class="secondary">Показать</button></div>
+	</form>
+</div>
+{% if not batches %}
+<div class="card"><p class="muted">За этот день партий нет. Они появляются, когда BLAGO OTGRUZKI скачивает этикетки.</p></div>
+{% endif %}
+{% for b in batches %}
+<div class="card">
+	<div class="line">
+		<h2 style="margin:0">{{ b.batch.title }}</h2>
+		<span class="muted">погружено {{ b.loaded }} из {{ b.total }}{% if b.removed %} · снято {{ b.removed }}{% endif %}{% if b.left %} · осталось {{ b.left }}{% endif %}</span>
+	</div>
+	{% if b.batch.source %}<p class="hint">{{ b.batch.source }}</p>{% endif %}
+	<form method="post" action="/shipments/batches/remove">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<input type="hidden" name="day" value="{{ day.isoformat() }}">
+		<table class="dense mt">
+			<tr><th></th><th>Артикул</th><th>Отправление</th><th>Состояние</th><th>Пометка</th></tr>
+			{% for item in b.items %}
+			<tr class="ship-{{ item.state }}{% if item.moved_note %} ship-moved{% endif %}">
+				<td>{% if item.state == 'wait' %}<input type="checkbox" name="item_id" value="{{ item.id }}">{% endif %}</td>
+				<td>{{ item.article.name if item.article else item.article_name }}</td>
+				<td>{{ item.posting }}</td>
+				<td>{{ state_labels[item.state] }}</td>
+				<td>{% if item.moved_note %}{{ item.moved_note }}{% elif item.removed_reason %}{{ item.removed_reason }}{% endif %}</td>
+			</tr>
+			{% endfor %}
+		</table>
+		{% if b.left %}
+		<div class="row tight mt">
+			<select name="reason">{% for r in reasons %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select>
+			<input type="text" name="reason_text" placeholder="если «другое» — почему" maxlength="200">
+			<button type="submit" class="danger">Снять отмеченные с отгрузки</button>
+		</div>
+		{% endif %}
+	</form>
+</div>
+{% endfor %}
+{% endblock %}

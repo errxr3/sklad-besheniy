@@ -15,7 +15,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import Site
 from app.services.sheets import is_configured, last_sync, minutes_since_sync, sync_stock_to_sheets
-from app.services.shipment_report import CHANNEL_COLUMNS, build_shipment_table, shipment_xlsx
+from app.services.shipment_report import build_shipment_table, shipment_xlsx
 from app.services.stock import build_stock_table, site_locative
 from app.timeutil import now_utc, today_msk
 from app.web import GuardedRoute, page
@@ -49,7 +49,7 @@ def shipments_page(request: Request, db: Session = Depends(get_db), day: str = "
         {
             "table": table,
             "day": target_day,
-            "channels": [title for title, _, _ in CHANNEL_COLUMNS],
+            "channels": table.columns,
         },
     )
 

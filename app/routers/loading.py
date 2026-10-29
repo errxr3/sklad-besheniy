@@ -14,6 +14,8 @@ from app.services.context import site_and_shift
 from app.services.shipping import (
     CHANNEL_BUTTONS,
     ShippingError,
+    batch_mode,
+    channel_batch_lines,
     check_channel_site,
     close_pallet,
     join_channel,
@@ -60,6 +62,9 @@ def loading_page(
             "ozon_trucks": OZON_TRUCKS,
             "count": pallet_count(db, pallet.id) if pallet else 0,
             "require_mp": get_flag(db, "require_mp_barcode"),
+            # Сегодня есть партия BLAGO OTGRUZKI для канала: двойной скан и список «что грузить»
+            "batch_mode": batch_mode(db, pallet) if pallet else False,
+            "batch_lines": channel_batch_lines(db, pallet) if pallet else [],
             # Без смены грузить нельзя — вместо каналов кнопка «начать смену»
             "no_shift": no_shift,
             "err": err,
@@ -88,6 +93,7 @@ async def loading_scan(request: Request, db: Session = Depends(get_db)) -> JSONR
     payload = await read_json(request)
     code = str(payload.get("code") or "").strip()
     unit_number = payload.get("unit_number")
+    ship_code = payload.get("ship_code")
     user = request.state.user
     site, shift_id = site_and_shift(db, user)
 
@@ -113,6 +119,7 @@ async def loading_scan(request: Request, db: Session = Depends(get_db)) -> JSONR
         actor=user,
         shift_id=shift_id,
         unit_number=str(unit_number) if unit_number else None,
+        ship_code=str(ship_code) if ship_code else None,
     )
     return JSONResponse(
         {
@@ -122,7 +129,29 @@ async def loading_scan(request: Request, db: Session = Depends(get_db)) -> JSONR
             "number": result.number,
             "article": result.article,
             "await_mp": result.await_mp,
+            "await_unit": result.await_unit,
+            "ship_code": result.ship_code,
+            "level": result.level,
             "pallet_count": result.pallet_count,
+        }
+    )
+
+
+@router.get("/loading/batch/{pallet_id}")
+def loading_batch(request: Request, pallet_id: int, db: Session = Depends(get_db)) -> JSONResponse:
+    """Список «что грузить» канала — обновляется на экране грузчика сам."""
+    pallet = db.get(Pallet, pallet_id)
+    if pallet is None:
+        return JSONResponse({"lines": []})
+    return JSONResponse(
+        {
+            "count": pallet_count(db, pallet.id),
+            "closed": pallet.closed_at is not None,
+            "lines": [
+                {"article": line.article, "total": line.total, "loaded": line.loaded,
+                 "removed": line.removed, "left": line.left, "in_stock": line.in_stock}
+                for line in channel_batch_lines(db, pallet)
+            ],
         }
     )
 

@@ -13,8 +13,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.articles import normalize_article
-from app.models import Article, Movement, MpShipment, Pallet, Site, Unit, User
+from app.models import Article, Movement, MpShipment, Pallet, ShipBatch, ShipCode, ShipItem, Site, Unit, User
 from app.scan import clean_code, is_own_label
+from app.services.batches import clean_ship_code
 from app.services.units import ScanResult, stock_count
 from app.settings_store import get_flag, get_int
 from app.statuses import (
@@ -25,6 +26,9 @@ from app.statuses import (
     OZON,
     OZON_TRUCKS,
     ROLE_ADMIN,
+    SHIP_LOADED,
+    SHIP_REMOVED,
+    SHIP_WAIT,
     SHIPPED,
     STATUS_LABELS,
 )
@@ -42,6 +46,10 @@ class LoadResult(ScanResult):
 
     await_mp: bool = False
     pallet_count: int = 0
+    # Партии: первой отсканирована этикетка маркетплейса — ждём этикетку BLAGO
+    await_unit: bool = False
+    ship_code: str = ""
+    level: str = ""  # «warn» — погружено, но не в свою машину (жёлтый экран)
 
 
 def open_channel_at(session: Session, site_id: int, channel: str, truck: str = "") -> Pallet | None:
@@ -243,11 +251,17 @@ def scan_loading(
     actor: User,
     shift_id: int | None = None,
     unit_number: str | None = None,
+    ship_code: str | None = None,
 ) -> LoadResult:
     """Скан на погрузке: этикетка зеркала или ШК маркетплейса (SPEC §6.4)."""
     value = clean_code(code)
     if not value:
         return LoadResult(False, "Пустой скан")
+    if batch_mode(session, pallet):
+        return scan_batch(
+            session, value=value, pallet=pallet, actor=actor, shift_id=shift_id,
+            unit_number=unit_number, ship_code=ship_code,
+        )
 
     require_mp = get_flag(session, "require_mp_barcode")
     verify_order = get_flag(session, "verify_order")
@@ -415,6 +429,227 @@ def _scan_mp_barcode(
     )
 
 
+# ---------- погрузка по партиям BLAGO OTGRUZKI ----------
+
+
+def pallet_truck(pallet: Pallet) -> str:
+    """Машина Ozon канала: «Озон2» (или пусто для остальных каналов)."""
+    if pallet.channel != OZON or not pallet.note:
+        return ""
+    return pallet.note.split(",")[0].strip()
+
+
+def batch_mode(session: Session, pallet: Pallet) -> bool:
+    """В канал грузят по партиям: сегодня есть партия этого канала с этикетками этой площадки.
+
+    У Ozon — любая сегодняшняя машина: в «Озон 4» добивают остатки Озон 1–3.
+    """
+    found = session.scalar(
+        select(ShipItem.id)
+        .join(ShipBatch, ShipBatch.id == ShipItem.batch_id)
+        .where(
+            ShipBatch.day == today_msk(),
+            ShipBatch.channel == pallet.channel,
+            ShipItem.site_id == pallet.site_id,
+        )
+        .limit(1)
+    )
+    return found is not None
+
+
+def find_ship_item(session: Session, code: str) -> ShipItem | None:
+    """Строка партии по любому коду с этикетки маркетплейса."""
+    owner = session.get(ShipCode, clean_ship_code(code))
+    return session.get(ShipItem, owner.item_id) if owner else None
+
+
+@dataclass
+class BatchLine:
+    """Строка списка «что грузить» в канале: артикул и сколько погружено."""
+
+    article: str
+    total: int
+    loaded: int
+    removed: int
+    in_stock: int
+
+    @property
+    def left(self) -> int:
+        return max(0, self.total - self.loaded - self.removed)
+
+
+def channel_batch_lines(session: Session, pallet: Pallet) -> list[BatchLine]:
+    """Что грузить в канал: этикетки сегодняшней партии этой машины на этой площадке."""
+    truck = pallet_truck(pallet)
+    items = session.scalars(
+        select(ShipItem)
+        .join(ShipBatch, ShipBatch.id == ShipItem.batch_id)
+        .where(
+            ShipBatch.day == today_msk(),
+            ShipBatch.channel == pallet.channel,
+            ShipBatch.truck == truck,
+            ShipItem.site_id == pallet.site_id,
+        )
+    ).all()
+    # Погружено в этот канал из других машин — тоже показываем, это уже сделанная работа
+    moved = session.scalars(
+        select(ShipItem).where(ShipItem.pallet_id == pallet.id, ShipItem.moved_note.is_not(None))
+    ).all()
+    stock = {
+        int(article_id): int(count)
+        for article_id, count in session.execute(
+            select(Unit.article_id, func.count())
+            .where(Unit.status == IN_STOCK, Unit.site_id == pallet.site_id)
+            .group_by(Unit.article_id)
+        ).all()
+    }
+    lines: dict[str, BatchLine] = {}
+    for item in [*items, *[m for m in moved if m not in items]]:
+        name = item.article.name if item.article else item.article_name
+        line = lines.setdefault(
+            name, BatchLine(name, 0, 0, 0, stock.get(item.article_id or 0, 0))
+        )
+        line.total += 1
+        line.loaded += item.state == SHIP_LOADED
+        line.removed += item.state == SHIP_REMOVED
+    return sorted(lines.values(), key=lambda line: (line.left == 0, line.article))
+
+
+def scan_batch(
+    session: Session,
+    *,
+    value: str,
+    pallet: Pallet,
+    actor: User,
+    shift_id: int | None,
+    unit_number: str | None,
+    ship_code: str | None,
+) -> LoadResult:
+    """Двойной скан: этикетка BLAGO + этикетка маркетплейса, в любом порядке."""
+    if is_own_label(value):
+        unit = lock_unit(session, value)
+        problem = _unit_problem(session, unit, value, pallet)
+        if problem is not None:
+            return problem
+        assert unit is not None
+        if ship_code:
+            item = find_ship_item(session, ship_code)
+            if item is None:
+                return LoadResult(False, "Этикетка маркетплейса потерялась", "отсканируйте обе ещё раз")
+            return _ship_by_item(session, unit=unit, item=item, code=ship_code, pallet=pallet,
+                                 actor=actor, shift_id=shift_id)
+        return LoadResult(
+            True, unit.article.name, "Теперь этикетку маркетплейса на этом зеркале",
+            number=unit.number, article=unit.article.name, await_mp=True,
+            pallet_count=pallet_count(session, pallet.id),
+        )
+
+    item = find_ship_item(session, value)
+    problem = _item_problem(item, value, pallet)
+    if problem is not None:
+        return problem
+    assert item is not None
+    article = item.article.name if item.article else item.article_name
+    if unit_number:
+        unit = lock_unit(session, clean_code(unit_number))
+        problem = _unit_problem(session, unit, unit_number, pallet)
+        if problem is not None:
+            return problem
+        assert unit is not None
+        return _ship_by_item(session, unit=unit, item=item, code=value, pallet=pallet,
+                             actor=actor, shift_id=shift_id)
+    return LoadResult(
+        True, f"Нужно: {article}", "Теперь этикетку BLAGO на этом зеркале",
+        article=article, await_unit=True, ship_code=value, pallet_count=pallet_count(session, pallet.id),
+    )
+
+
+def _unit_problem(session: Session, unit: Unit | None, number: str, pallet: Pallet) -> LoadResult | None:
+    """Зеркало нельзя грузить: нет такого, уже отгружено, не на складе, другая площадка."""
+    if unit is None:
+        return LoadResult(False, "Номер не найден", f"Этикетка {number} не выдавалась", number=number)
+    if unit.status == SHIPPED:
+        shipped = session.get(Pallet, unit.pallet_id) if unit.pallet_id else None
+        return LoadResult(
+            False, "Уже отгружено", f"канал {shipped.title if shipped else '—'}",
+            number=unit.number, article=unit.article.name,
+        )
+    if unit.status != IN_STOCK:
+        return LoadResult(
+            False, f"Нельзя отгрузить: статус «{STATUS_LABELS.get(unit.status, unit.status)}»",
+            number=unit.number, article=unit.article.name,
+        )
+    if unit.site_id != pallet.site_id:
+        return LoadResult(
+            False, f"Зеркало числится на площадке {unit.site.name}",
+            f"а канал открыт на площадке {pallet.site.name}", number=unit.number, article=unit.article.name,
+        )
+    return None
+
+
+def _item_problem(item: ShipItem | None, code: str, pallet: Pallet) -> LoadResult | None:
+    """Этикетку маркетплейса нельзя грузить в этот канал."""
+    if item is None:
+        return LoadResult(False, "Этикетки нет в сегодняшних отгрузках", f"код {code}")
+    article = item.article.name if item.article else item.article_name
+    if item.state == SHIP_LOADED:
+        when = fmt_dt(item.loaded_at)
+        return LoadResult(False, "Эта этикетка уже погружена", when, article=article)
+    if item.state == SHIP_REMOVED:
+        return LoadResult(False, "Снято с отгрузки", item.removed_reason or "", article=article)
+    if item.batch.channel != pallet.channel:
+        hint = f"грузите её в канал {item.batch.channel}"
+        return LoadResult(False, f"Это этикетка {item.batch.title}", hint, article=article)
+    if item.site_id is not None and item.site_id != pallet.site_id:
+        site = item.site.name if item.site else "другой площадки"
+        return LoadResult(False, f"Этикетка производства {site}", "грузите на той площадке", article=article)
+    return None
+
+
+def _ship_by_item(
+    session: Session,
+    *,
+    unit: Unit,
+    item: ShipItem,
+    code: str,
+    pallet: Pallet,
+    actor: User,
+    shift_id: int | None,
+) -> LoadResult:
+    """Сверить артикул и отгрузить зеркало по этикетке маркетплейса."""
+    article = item.article.name if item.article else item.article_name
+    same = (
+        unit.article_id == item.article_id
+        if item.article_id is not None
+        else normalize_article(unit.article.name) == normalize_article(item.article_name)
+    )
+    if not same:
+        return LoadResult(
+            False, f"Зеркало {unit.article.name}, а этикетка на {article}", "зеркало осталось на складе",
+            number=unit.number, article=unit.article.name,
+        )
+    moved = ""
+    truck = pallet_truck(pallet)
+    if item.batch.truck != truck or item.batch.day != today_msk():
+        source = item.batch.title + ("" if item.batch.day == today_msk() else f" от {item.batch.day:%d.%m}")
+        moved = f"{source} → {pallet.title}"
+    result = _do_ship(session, unit=unit, pallet=pallet, actor=actor, shift_id=shift_id,
+                      mp_barcode=clean_ship_code(code)[:64])
+    if not result.ok:
+        return result
+    item.state = SHIP_LOADED
+    item.unit_id = unit.id
+    item.pallet_id = pallet.id
+    item.loaded_at = now_utc()
+    item.loaded_by = actor.id
+    item.moved_note = moved or None
+    session.flush()
+    if moved:
+        result.level = "warn"
+        result.detail = f"{moved} · в канале: {result.pallet_count}"
+    return result
+
+
 def _do_ship(
     session: Session,
     *,
@@ -483,6 +718,10 @@ def cancel_ship(session: Session, *, number: str, actor: User, shift_id: int | N
 
     current_pallet = session.get(Pallet, unit.pallet_id) if unit.pallet_id else None
     pallet_number = current_pallet.number if current_pallet else "—"
+    # Этикетка маркетплейса снова ждёт погрузки
+    for item in session.scalars(select(ShipItem).where(ShipItem.unit_id == unit.id)).all():
+        item.state, item.unit_id, item.pallet_id = SHIP_WAIT, None, None
+        item.loaded_at = item.loaded_by = item.moved_note = None
     apply_transition(
         session,
         unit,

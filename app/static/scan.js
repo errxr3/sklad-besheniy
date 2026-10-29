@@ -110,9 +110,9 @@
 		}
 	};
 
-	ScanScreen.prototype.show = function (ok, message, detail) {
+	ScanScreen.prototype.show = function (ok, message, detail, level) {
 		if (!this.result) return;
-		this.result.className = 'scan-result ' + (ok ? 'ok' : 'err');
+		this.result.className = 'scan-result ' + (ok ? (level === 'warn' ? 'warn' : 'ok') : 'err');
 		this.result.innerHTML = '';
 		var head = document.createElement('div');
 		head.textContent = message;
@@ -126,10 +126,10 @@
 		beep(ok);
 	};
 
-	ScanScreen.prototype.remember = function (ok, code, message) {
+	ScanScreen.prototype.remember = function (ok, code, message, level) {
 		if (!this.history) return;
 		var item = document.createElement('li');
-		item.className = ok ? 'ok' : 'err';
+		item.className = ok ? (level === 'warn' ? 'warn' : 'ok') : 'err';
 		var time = new Date();
 		var stamp = ('0' + time.getHours()).slice(-2) + ':' + ('0' + time.getMinutes()).slice(-2);
 		item.textContent = stamp + ' · ' + (code || '—') + ' · ' + message;
@@ -173,8 +173,8 @@
 			if (ok && typeof data.stock === 'number') {
 				detail = detail ? detail + ' · остаток ' + data.stock : 'остаток ' + data.stock;
 			}
-			self.show(ok, message, detail);
-			self.remember(ok, data.number || code, message);
+			self.show(ok, message, detail, data.level);
+			self.remember(ok, data.number || code, message, data.level);
 			self.input.value = '';
 			self.focus();
 			if (ok) self.onSuccess(data);
@@ -220,7 +220,10 @@
 		return global.BarcodeDetector.getSupportedFormats().then(function (formats) {
 			if (formats.indexOf('code_128') < 0) return null;
 			var wanted = ['code_128'];
-			if (formats.indexOf('qr_code') >= 0) wanted.push('qr_code');
+			// Этикетки маркетплейсов: QR и DataMatrix
+			['qr_code', 'data_matrix'].forEach(function (name) {
+				if (formats.indexOf(name) >= 0) wanted.push(name);
+			});
 			return new global.BarcodeDetector({ formats: wanted });
 		}).catch(function () { return null; });
 	}
@@ -351,7 +354,7 @@
 		}
 		var image = ctx.getImageData(0, 0, this.canvas.width, this.canvas.height);
 		return global.ZXingWASM.readBarcodes(image, {
-			formats: ['Code128', 'QRCode'],
+			formats: ['Code128', 'QRCode', 'DataMatrix'],
 			tryHarder: true,
 			tryRotate: false,
 			tryInvert: false,

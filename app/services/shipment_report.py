@@ -49,7 +49,10 @@ CHANNEL_COLUMNS: tuple[tuple[str, str, str | None], ...] = (
     ("СГТ", "СГТ", None),
     ("Озон 2", OZON, OZON_TRUCKS[1]),
     ("Озон 3", OZON, OZON_TRUCKS[2]),
+    # Появляется, только если в этот день грузчики открывали канал «Озон 4»
+    ("Озон 4", OZON, OZON_TRUCKS[3]),
 )
+OPTIONAL_TRUCK = OZON_TRUCKS[3]
 
 # Площадка, с которой идут отгрузки (колонки «ком» в таблице)
 SHIP_SITE_NAME = RETURNS_SITE_NAME
@@ -136,6 +139,7 @@ class ShipmentTable:
     built_at: str
     is_today: bool = True
     open_channels: list[Pallet] = field(default_factory=list)  # не закрыты — не в таблице
+    columns: list[str] = field(default_factory=lambda: [title for title, _, _ in CHANNEL_COLUMNS])
 
     @property
     def open_by_column(self) -> list[str]:
@@ -143,11 +147,11 @@ class ShipmentTable:
         notes: list[list[str]] = [[] for _ in CHANNEL_COLUMNS]
         for pallet in self.open_channels:
             index = _column_index(pallet.channel, pallet.note)
-            if index >= 0:
+            if 0 <= index < len(self.columns):
                 notes[index].append(
                     f"Открыт: {pallet.opener.name}, {pallet.site.name}, с {fmt_time(pallet.opened_at)}"
                 )
-        return ["\n".join(lines) for lines in notes]
+        return ["\n".join(lines) for lines in notes][: len(self.columns)]
     auto_closed: list[Pallet] = field(default_factory=list)  # закрыты автоматически в этот день
     totals: list[int] = field(default_factory=list)  # отгружено по каналам за день
     pending_totals: list[int] = field(default_factory=list)  # в открытых каналах, серым
@@ -337,8 +341,24 @@ def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
                 pending=[pending.get((article.id, index), 0) for index in range(len(CHANNEL_COLUMNS))],
             )
         )
+    # «Озон 4» — только если в этот день его открывали; иначе столбца нет совсем
+    start, end = msk_day_bounds(day)
+    truck4 = session.scalar(
+        select(Pallet.id).where(
+            Pallet.channel == OZON,
+            Pallet.note.like(f"{OPTIONAL_TRUCK}%"),
+            Pallet.opened_at >= start,
+            Pallet.opened_at < end,
+        ).limit(1)
+    )
+    count = len(CHANNEL_COLUMNS) if truck4 is not None else len(CHANNEL_COLUMNS) - 1
+    for row in rows:
+        if not row.is_header:
+            row.channels, row.pending = row.channels[:count], row.pending[:count]
+    totals, pending_totals = totals[:count], pending_totals[:count]
     return ShipmentTable(
         day=day,
+        columns=[title for title, _, _ in CHANNEL_COLUMNS[:count]],
         ship_site=ship_site,
         other_site=other_site,
         rows=rows,
@@ -373,7 +393,7 @@ def shipment_xlsx(table: ShipmentTable) -> bytes:
 
     other = table.other_site.name if table.other_site else ""
     ship = table.ship_site.name if table.ship_site else ""
-    channel_letters = ["I", "J", "K", "L", "M", "N", "O"]
+    channel_letters = ["I", "J", "K", "L", "M", "N", "O", "P"][: len(table.columns)]
 
     workbook = Workbook()
     sheet = workbook.active
@@ -408,7 +428,7 @@ def shipment_xlsx(table: ShipmentTable) -> bytes:
         "R": "Артикул", "S": "склад - отгрузка", "T": "СКЛАД + задачи - отгрузки",
         "U": f"Задачи на {ship}", "V": f"Задачи на {other}",
     }
-    for letter, (title, _, _) in zip(channel_letters, CHANNEL_COLUMNS, strict=True):
+    for letter, title in zip(channel_letters, table.columns, strict=True):
         headers[letter] = title
     for letter, title in headers.items():
         cell = sheet[f"{letter}2"]
@@ -468,6 +488,8 @@ def shipment_xlsx(table: ShipmentTable) -> bytes:
     for letter in ("B", "R"):
         sheet.column_dimensions[letter].width = 26
     for letter in ("A", "E", "H", "P", "Q"):
+        if letter in channel_letters:
+            continue
         sheet.column_dimensions[letter].width = 3
     for letter in ("C", "D", "F", "G", "S", "T", "U", "V", *channel_letters):
         sheet.column_dimensions[letter].width = 11

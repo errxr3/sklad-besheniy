@@ -1,7 +1,7 @@
 """Задачи на день: постановка, прогресс, копирование, отчёт (SPEC §6.1–6.2)."""
 
 from dataclasses import dataclass, field
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from sqlalchemy import func, select
@@ -264,6 +264,98 @@ def create_task(
     return task
 
 
+def set_urgent(
+    session: Session,
+    *,
+    actor: User,
+    day: date,
+    site_id: int,
+    user_id: int,
+    article_id: int,
+    qty: int,
+    due_at: datetime,
+    note: str = "",
+) -> Task:
+    """Срочно: «5 шт. к 14:00» — к уже поставленной задаче сборщика или новой задачей.
+
+    Если в задаче осталось сделать меньше, чем просят срочно, план увеличивается.
+    Срочное считается выполненным, когда после постановки сдано не меньше `qty`.
+    """
+    if qty < 1:
+        raise TaskError("Укажите, сколько сделать срочно")
+    task = session.scalar(
+        select(Task).where(
+            Task.date == day, Task.user_id == user_id, Task.article_id == article_id, Task.kind == "article"
+        )
+    )
+    if task is None:
+        task = create_task(
+            session, actor=actor, day=day, site_id=site_id, user_id=user_id, kind="article",
+            article_id=article_id, qty_plan=qty,
+        )
+    else:
+        check_task_site(session, actor, task.site_id)
+        done = done_count(session, user_id=user_id, article_id=article_id, day=day)
+        if (task.qty_plan or 0) - done < qty:
+            task.qty_plan = done + qty
+    before = _snapshot(task)
+    task.urgent_qty = qty
+    task.urgent_due = due_at
+    task.urgent_since = now_utc()
+    task.urgent_note = note[:120] or None
+    session.flush()
+    log_task(
+        session, task_id=task.id, user_id=actor.id, action="срочно", before=before, after=_snapshot(task)
+    )
+    return task
+
+
+def urgent_done(session: Session, task: Task) -> int:
+    """Сколько сдано по срочной задаче с момента постановки срочного."""
+    if not task.urgent_qty or task.urgent_since is None or task.article_id is None:
+        return 0
+    value = session.scalar(
+        select(func.count())
+        .select_from(Unit)
+        .where(
+            Unit.assembler_id == task.user_id,
+            Unit.article_id == task.article_id,
+            Unit.accepted_at.is_not(None),
+            Unit.accepted_at >= task.urgent_since,
+        )
+    )
+    return int(value or 0)
+
+
+@dataclass
+class UrgentView:
+    """Срочная задача: сколько надо, сколько уже сдано, просрочена ли."""
+
+    task: Task
+    done: int
+
+    @property
+    def left(self) -> int:
+        return max(0, (self.task.urgent_qty or 0) - self.done)
+
+    @property
+    def overdue(self) -> bool:
+        return self.left > 0 and self.task.urgent_due is not None and self.task.urgent_due < now_utc()
+
+
+def urgent_tasks(
+    session: Session, *, day: date, user_id: int | None = None, site_ids: list[int] | None = None
+) -> list[UrgentView]:
+    """Срочные задачи дня (несделанные — первыми)."""
+    query = select(Task).where(Task.date == day, Task.urgent_qty.is_not(None))
+    if user_id is not None:
+        query = query.where(Task.user_id == user_id)
+    if site_ids is not None:
+        query = query.where(Task.site_id.in_(site_ids or [0]))
+    views = [UrgentView(task=t, done=urgent_done(session, t)) for t in session.scalars(query).all()]
+    return sorted(views, key=lambda v: (v.left == 0, v.task.urgent_due or now_utc()))
+
+
 def update_task(
     session: Session, *, actor: User, task_id: int, qty_plan: int | None = None, text: str | None = None
 ) -> Task:
@@ -453,3 +545,16 @@ def stock_now(session: Session, *, article_id: int, site_id: int) -> int:
         .where(Unit.status == IN_STOCK, Unit.article_id == article_id, Unit.site_id == site_id)
     )
     return int(value or 0)
+
+
+def tasks_for_article(session: Session, *, day: date, site_id: int, article_id: int) -> list[TaskView]:
+    """Кто делает этот артикул сегодня: подсказка начальнику, кому дать срочное."""
+    tasks = session.scalars(
+        select(Task).where(
+            Task.date == day, Task.site_id == site_id, Task.article_id == article_id, Task.kind == "article"
+        )
+    ).all()
+    return [
+        TaskView(task=t, done=done_count(session, user_id=t.user_id, article_id=article_id, day=day))
+        for t in tasks
+    ]

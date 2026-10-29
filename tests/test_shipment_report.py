@@ -5,7 +5,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.models import Article, Unit
-from app.services.shipment_report import CHANNEL_COLUMNS, build_shipment_table
+from app.services.shipment_report import build_shipment_table
 from app.services.shipping import cancel_ship, close_pallet, open_new_pallet, scan_loading
 from app.services.tasks import create_task
 from app.services.units import accept_unit, create_printed_units
@@ -73,7 +73,7 @@ def test_channels_trucks_and_after_columns(db: Session) -> None:
 
     table = build_shipment_table(db, day=today_msk())
     row = next(r for r in table.rows if r.name == "Zerkalo_100x200")
-    titles = [title for title, _, _ in CHANNEL_COLUMNS]
+    titles = build_shipment_table(db, day=today_msk()).columns
     by_title = dict(zip(titles, row.channels, strict=True))
     assert by_title == {
         "Озон 1": 3, "КГТ": 0, "СДЭК": 0, "WB": 1, "СГТ": 1, "Озон 2": 0, "Озон 3": 2,
@@ -137,7 +137,7 @@ def test_only_closed_channels_and_repeats_are_summed(db: Session) -> None:
     db.commit()
 
     row = next(r for r in build_shipment_table(db, day=today_msk()).rows if r.name == "Zerkalo_80x200")
-    titles = [title for title, _, _ in CHANNEL_COLUMNS]
+    titles = build_shipment_table(db, day=today_msk()).columns
     by_title = dict(zip(titles, row.channels, strict=True))
     assert by_title["Озон 1"] == 3
     assert by_title["WB"] == 0  # канал не закрыт
@@ -257,3 +257,14 @@ def test_open_channel_warned_and_auto_closed(client: TestClient, db: Session) ->
     assert row.channels[0] == 2 and row.pending[0] == 0  # машина сохранилась: «Озон 1»
     page = client.get("/shipments").text
     assert "закрыт автоматически" in page and 'class="open-mark tip"' not in page
+
+
+def test_ozon4_column_only_when_opened(db: Session) -> None:
+    """Столбца «Озон 4» нет, пока грузчики не открыли этот канал; открыли — сразу появляется."""
+    loader = make_user(db, name="Грузчик Озон 4", role=ROLE_LOADER)
+    assert "Озон 4" not in build_shipment_table(db, day=today_msk()).columns
+    open_new_pallet(db, user=loader, site=site_by_name(db, "Коминтерна"), channel="Ozon", truck="Озон4")
+    db.commit()
+    table = build_shipment_table(db, day=today_msk())
+    assert table.columns[-1] == "Озон 4"
+    assert all(len(r.channels) == len(table.columns) for r in table.rows if not r.is_header)

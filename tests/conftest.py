@@ -22,6 +22,11 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 # Таблицы, которые чистятся между тестами (все, кроме alembic_version)
 TABLES = (
+    "ship_codes",
+    "ship_items",
+    "ship_batches",
+    "ship_demand",
+    "ship_questions",
     "movements",
     "inventory_scans",
     "inventories",

@@ -19,6 +19,7 @@ PATH_PARAMS: dict[str, str] = {
     "pallet_id": "1",
     "task_id": "1",
     "inventory_id": "1",
+    "question_id": "1",
     "article_id": "1",
     "shift_id": "1",
     "key": "lead",
