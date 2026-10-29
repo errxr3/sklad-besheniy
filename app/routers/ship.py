@@ -12,6 +12,7 @@ from app.db import get_db
 from app.models import User
 from app.services.batches import (
     BatchError,
+    answer_all,
     answer_question,
     day_batches,
     open_questions,
@@ -119,19 +120,44 @@ def questions_page(request: Request, db: Session = Depends(get_db), ok: str = ""
     )
 
 
+def _due_today(raw: object) -> datetime | None:
+    """«14:00» → сегодня 14:00 по Москве."""
+    try:
+        hours, minutes = (int(x) for x in str(raw or "").split(":")[:2])
+        return datetime.combine(today_msk(), time(hours, minutes), tzinfo=MOSCOW)
+    except ValueError:
+        return None
+
+
+@router.post("/ship/questions/answer-all")
+async def questions_answer_all(request: Request, db: Session = Depends(get_db)) -> Response:
+    """«Сделаем» на все вопросы: срочное тем, кто уже делает эти артикулы."""
+    form = await request.form()
+    user = request.state.user
+    due_at = _due_today(form.get("due"))
+    if due_at is None:
+        return _back("/ship/questions", err="Укажите время, например 14:00")
+    try:
+        answered, skipped = answer_all(db, actor=user, due_at=due_at, site_ids=lead_site_ids(db, user))
+    except (BatchError, TaskError) as exc:
+        return _back("/ship/questions", err=str(exc))
+    logger.info("Ответ на все вопросы", extra={"user_id": user.id, "status": f"{answered} / {skipped}"})
+    ok = f"Срочное поставлено по {answered} артикулам"
+    err = ""
+    if skipped:
+        err = f"Осталось {skipped}: эти артикулы сегодня никто не делает — выберите сборщика сами"
+    return _back("/ship/questions", ok=ok, err=err)
+
+
 @router.post("/ship/questions/{question_id}/answer")
 async def question_answer(request: Request, question_id: int, db: Session = Depends(get_db)) -> Response:
     """«Сделаем к 14:00» (срочная задача сборщику) или «Нет, не успеем»."""
     form = await request.form()
     user = request.state.user
     yes = str(form.get("answer")) == "yes"
-    due_at = None
-    if yes:
-        try:
-            hours, minutes = (int(x) for x in str(form.get("due") or "").split(":")[:2])
-            due_at = datetime.combine(today_msk(), time(hours, minutes), tzinfo=MOSCOW)
-        except ValueError:
-            return _back("/ship/questions", err="Укажите время, например 14:00")
+    due_at = _due_today(form.get("due")) if yes else None
+    if yes and due_at is None:
+        return _back("/ship/questions", err="Укажите время, например 14:00")
     try:
         assembler = int(str(form.get("assembler_id") or 0))
         qty = int(str(form.get("qty") or 0))

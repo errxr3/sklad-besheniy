@@ -453,12 +453,15 @@ class ShipItem(Base):
         UniqueConstraint("market", "posting", name="uq_ship_items_posting"),
         Index("ix_ship_items_batch", "batch_id"),
         Index("ix_ship_items_site_state", "site_id", "state"),
+        Index("ix_ship_items_origin", "market", "origin"),
     )
 
     id: Mapped[int] = mapped_column(primary_key=True)
     batch_id: Mapped[int] = mapped_column(ForeignKey("ship_batches.id"))
     market: Mapped[str] = mapped_column(String(10))
     posting: Mapped[str] = mapped_column(String(64))  # номер отправления Ozon / задания WB
+    # Номер из утреннего отчёта, если при сборке Ozon дал отправлению новый номер
+    origin: Mapped[str | None] = mapped_column(String(64))
     article_name: Mapped[str] = mapped_column(String(200))
     article_id: Mapped[int | None] = mapped_column(ForeignKey("articles.id"))
     site_id: Mapped[int | None] = mapped_column(ForeignKey("sites.id"))  # производство

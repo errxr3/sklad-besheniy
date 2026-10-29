@@ -8,6 +8,18 @@
 {% if not questions %}
 <div class="card"><p class="muted">Вопросов нет: на отгрузки сегодня зеркал хватает.</p></div>
 {% endif %}
+{% if questions|length > 1 %}
+<div class="card">
+	<h2>Ответить «сделаем» на все {{ questions|length }}</h2>
+	<p class="hint">Срочное получат те, кто уже делает эти артикулы по задачам: больше тому, кому больше
+		осталось. Если артикул никто не делает, вопрос останется — ответьте на него ниже сами.</p>
+	<form method="post" action="/ship/questions/answer-all" class="row tight">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<div><label>К какому времени</label><input type="time" name="due" value="14:00" required></div>
+		<button type="submit">Сделаем — поставить срочно всем</button>
+	</form>
+</div>
+{% endif %}
 {% for q in questions %}
 <div class="card">
 	<h2>{{ q.article.name }} · {{ q.site.name }}</h2>

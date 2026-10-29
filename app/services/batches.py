@@ -17,13 +17,24 @@ BLAGO OTGRUZKI отдаёт складу две вещи:
 import re
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.articles import normalize_article
-from app.models import Article, ShipBatch, ShipCode, ShipDemand, ShipItem, ShipQuestion, Site, User
+from app.models import (
+    Article,
+    Pallet,
+    ShipBatch,
+    ShipCode,
+    ShipDemand,
+    ShipItem,
+    ShipQuestion,
+    Site,
+    Unit,
+    User,
+)
 from app.services.stock import active_sites, stock_by_article_site
 from app.statuses import (
     CHANNEL_PRIORITY,
@@ -34,10 +45,13 @@ from app.statuses import (
     SHIP_LOADED,
     SHIP_REMOVED,
     SHIP_WAIT,
+    SHIPPED,
 )
-from app.timeutil import MOSCOW, now_utc, to_moscow, today_msk
+from app.timeutil import MOSCOW, msk_day_bounds, now_utc, to_moscow, today_msk
 
 GO, ASK, NO = "go", "ask", "no"
+HISTORY = timedelta(days=14)  # заказы и партии старше двух недель в расчёт не берём
+ALLOCATE_LOCK = 70014
 STATE_ORDER = {SHIP_WAIT: 0, SHIP_REMOVED: 1, SHIP_LOADED: 2}
 MAX_CODES = 8
 
@@ -138,6 +152,7 @@ def receive_batch(
     Этикетка, которая уже погружена, или уже лежит в другой сегодняшней партии и ждёт там,
     остаётся где была. Снятая с отгрузки или из партии прошлого дня — переезжает в эту.
     """
+    _lock(session)
     channel, truck = channel_of(market, channel, truck)
     batch = session.scalar(
         select(ShipBatch).where(ShipBatch.day == day, ShipBatch.channel == channel, ShipBatch.truck == truck)
@@ -183,6 +198,8 @@ def receive_batch(
         item.article_id = article.id if article else None
         item.site_id = site.id if site else None
         item.ordered_at = _parse_time(raw.get("ordered_at"))
+        origin = str(raw.get("origin") or "").strip()[:64]
+        item.origin = origin if origin and origin != posting else None
         session.flush()
         codes = {clean_ship_code(posting)}
         codes.update(clean_ship_code(code) for code in (raw.get("codes") or [])[:MAX_CODES])
@@ -222,6 +239,7 @@ def receive_demand(
     `replace_markets` — утренний полный список: заказы этих маркетплейсов, которых нет в новом
     списке и на которые ещё не скачаны этикетки, убираются (их отменили или уже отгрузили).
     """
+    _lock(session)
     catalog = Catalog(session)
     seen: dict[tuple[str, str, str], ShipDemand] = {}
     for raw in lines:
@@ -261,6 +279,7 @@ def receive_demand(
     session.flush()
     if replace_markets:
         printed = set(session.scalars(select(ShipItem.posting)).all())
+        printed |= {o for o in session.scalars(select(ShipItem.origin)).all() if o}
         for line in session.scalars(select(ShipDemand).where(ShipDemand.market.in_(replace_markets))).all():
             if (line.market, line.posting, line.article_name) not in seen and line.posting not in printed:
                 session.delete(line)
@@ -293,19 +312,80 @@ def _priority(line: ShipDemand) -> tuple[date, int, int, float, str]:
     return (order_day, rank, 0 if moment else 1, moment.timestamp() if moment else 0.0, line.posting)
 
 
+def _items_by_order(session: Session, *, since: date) -> dict[tuple[str, str], ShipItem]:
+    """Этикетки по номеру заказа из отчёта.
+
+    Ozon при сборке может разбить заказ на отправления с новыми номерами: тогда заказ ждёт,
+    пока ждёт хоть одно из них, и считается погруженным, когда погружено хоть одно и ничего не ждёт.
+    """
+    rank = {SHIP_WAIT: 0, SHIP_LOADED: 1, SHIP_REMOVED: 2}
+    found: dict[tuple[str, str], ShipItem] = {}
+    query = select(ShipItem).join(ShipBatch, ShipBatch.id == ShipItem.batch_id).where(ShipBatch.day >= since)
+    for item in session.scalars(query).all():
+        keys = {(item.market, item.posting)}
+        if item.origin:
+            keys.add((item.market, item.origin))
+        for key in keys:
+            other = found.get(key)
+            if other is None or rank.get(item.state, 3) < rank.get(other.state, 3):
+                found[key] = item
+    return found
+
+
+def _loaded_without_labels(session: Session, day: date) -> dict[tuple[str, int, int], int]:
+    """Сколько зеркал за день погружено в канал без этикеток партии (СДЭК, канал без партии).
+
+    (канал, площадка, артикул) → штук. Такие заказы уже уехали и зеркала больше не держат.
+    """
+    start, end = msk_day_bounds(day)
+    linked = select(ShipItem.unit_id).where(ShipItem.unit_id.is_not(None))
+    rows = session.execute(
+        select(Pallet.channel, Unit.site_id, Unit.article_id, func.count())
+        .join(Pallet, Pallet.id == Unit.pallet_id)
+        .where(Unit.status == SHIPPED, Pallet.opened_at >= start, Pallet.opened_at < end)
+        .where(Unit.id.not_in(linked))
+        .group_by(Pallet.channel, Unit.site_id, Unit.article_id)
+    ).all()
+    return {(str(channel), int(site_id), int(article_id)): int(n) for channel, site_id, article_id, n in rows}
+
+
+def _close_loaded_without_labels(
+    postings: dict[tuple[str, str], list[ShipDemand]],
+    items: dict[tuple[str, str], ShipItem],
+    plain: dict[tuple[str, int, int], int],
+) -> None:
+    """Заказы канала без партии, на которые уже погрузили зеркала, — «погружено», из очереди вон."""
+    for key in sorted(postings, key=lambda k: _priority(min(postings[k], key=_priority))):
+        group = postings[key]
+        if key in items or any(line.article_id is None or line.site_id is None for line in group):
+            continue
+        need: dict[tuple[str, int, int], int] = defaultdict(int)
+        for line in group:
+            need[(line.channel, int(line.site_id or 0), int(line.article_id or 0))] += line.qty
+        if all(plain.get(k, 0) >= q for k, q in need.items()):
+            for k, q in need.items():
+                plain[k] -= q
+            _decide(group, GO, "погружено")
+            del postings[key]
+
+
+def _lock(session: Session) -> None:
+    """Пересчёт «что едет» — по одному: иначе два начальника и BLAGO OTGRUZKI ловят взаимную блокировку."""
+    session.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": ALLOCATE_LOCK})
+
+
 def allocate(session: Session, *, day: date | None = None) -> None:
     """Пересчитать, что едет: решения заказов и вопросы начальникам."""
     day = day or today_msk()
-    items = {
-        (item.market, item.posting): item for item in session.scalars(select(ShipItem)).all()
-    }
+    _lock(session)
+    items = _items_by_order(session, since=day - HISTORY)
     lines = [
         line
-        for line in session.scalars(select(ShipDemand)).all()
+        for line in session.scalars(select(ShipDemand).where(ShipDemand.day >= day - HISTORY)).all()
         if items.get((line.market, line.posting)) is None
         or items[(line.market, line.posting)].state == SHIP_WAIT
     ]
-    for line in session.scalars(select(ShipDemand)).all():
+    for line in session.scalars(select(ShipDemand).where(ShipDemand.day >= day - HISTORY)).all():
         item = items.get((line.market, line.posting))
         if item is not None and item.state == SHIP_LOADED:
             line.decision, line.reason = GO, "погружено"
@@ -316,18 +396,37 @@ def allocate(session: Session, *, day: date | None = None) -> None:
     for line in lines:
         postings[(line.market, line.posting)].append(line)
 
+    # Погружено без этикеток партии: закрываем самые первые по очереди заказы этого канала
+    _close_loaded_without_labels(postings, items, _loaded_without_labels(session, day))
+
     # Этикетки уже скачаны (заказ в партии и ждёт) — эти зеркала не отбираем
     def order(key: tuple[str, str]) -> tuple:
         committed = key in items and items[key].state == SHIP_WAIT
         return (0 if committed else 1, *_priority(min(postings[key], key=_priority)))
 
     free = dict(stock_by_article_site(session))
+    # Этикетки, скачанные без утреннего заказа (заказ не присылали), тоже держат свои зеркала
+    ordered = {
+        (line.market, line.posting)
+        for line in session.scalars(select(ShipDemand).where(ShipDemand.day >= day - HISTORY)).all()
+    }
+    for item in session.scalars(select(ShipItem).where(ShipItem.state == SHIP_WAIT)).all():
+        if item.article_id is None or item.site_id is None:
+            continue
+        if (item.market, item.posting) in ordered or (item.market, item.origin) in ordered:
+            continue
+        free[(item.article_id, item.site_id)] = free.get((item.article_id, item.site_id), 0) - 1
     work = in_work_by_article_site(session, day=day)
     questions = {
         (q.site_id, q.article_id): q
         for q in session.scalars(select(ShipQuestion).where(ShipQuestion.day == day)).all()
     }
-    promised = {key: q.promised for key, q in questions.items() if q.answer == "yes"}
+    # Обещанное, которое уже сдали, лежит на складе: обещание — только то, что ещё в работе
+    promised = {
+        key: min(q.promised, work.get((key[1], key[0]), 0))
+        for key, q in questions.items()
+        if q.answer == "yes"
+    }
     refused = {key for key, q in questions.items() if q.answer == "no"}
     asked: dict[tuple[int, int], int] = defaultdict(int)  # нужно взять из «в работе», ответа нет
     covered: dict[tuple[int, int], int] = defaultdict(int)  # взято из обещанного начальником
@@ -378,24 +477,22 @@ def allocate(session: Session, *, day: date | None = None) -> None:
                 break
             if promised.get(stock_key, 0) >= short:
                 continue
+            # Из «в работе» уже взято: обещанное начальником (covered) и то, о чём спросили (asked)
             in_work = work.get((stock_key[1], stock_key[0]), 0)
-            left_in_work = in_work - asked[stock_key] - promised.get(stock_key, 0)
-            if left_in_work >= short:
+            if in_work - covered[stock_key] - asked[stock_key] >= short:
                 verdict, reason = ASK, "на складе мало, артикул в работе — вопрос начальнику"
             else:
                 verdict, reason = NO, "не хватает на складе и в работе"
                 break
-        if verdict == GO:
-            for stock_key, short in shorts.items():
-                promised[stock_key] = promised.get(stock_key, 0) - short
-                covered[stock_key] += short
         if verdict in (GO, ASK):
+            for stock_key, short in shorts.items():
+                use = min(short, max(0, promised.get(stock_key, 0)))  # сначала из обещанного
+                promised[stock_key] = promised.get(stock_key, 0) - use
+                covered[stock_key] += use
+                asked[stock_key] += short - use
             for stock_key, qty in wanted.items():
                 ak = (stock_key[1], stock_key[0])
-                take = min(qty, max(0, free.get(ak, 0)))
-                free[ak] = free.get(ak, 0) - take
-                if verdict == ASK:
-                    asked[stock_key] += qty - take
+                free[ak] = free.get(ak, 0) - min(qty, max(0, free.get(ak, 0)))
         _decide(group, verdict, reason)
 
     _sync_questions(session, day=day, questions=questions, asked=asked, covered=covered,
@@ -473,6 +570,7 @@ def answer_question(
     due_at: datetime | None = None,
 ) -> ShipQuestion:
     """Ответ начальника. «Сделаем»: срочная задача сборщику, заказы едут. «Нет» — не едут."""
+    _lock(session)
     from app.services.tasks import check_task_site, set_urgent
 
     question = session.get(ShipQuestion, question_id)
@@ -502,6 +600,49 @@ def answer_question(
     session.flush()
     allocate(session, day=question.day)
     return question
+
+
+def answer_all(
+    session: Session, *, actor: User, due_at: datetime, site_ids: list[int] | None = None
+) -> tuple[int, int]:
+    """«Сделаем» на все вопросы сразу: срочное получают те, кто уже делает этот артикул.
+
+    Нехватка делится между ними по тому, сколько каждому осталось сделать по задаче.
+    Вопрос, где артикул никто не делает, остаётся — на него начальник отвечает сам.
+    Возвращает (отвечено, осталось).
+    """
+    from app.services.tasks import check_task_site, set_urgent, tasks_for_article
+
+    _lock(session)
+    answered = skipped = 0
+    for question in open_questions(session, site_ids=site_ids):
+        need = question.short - question.promised
+        check_task_site(session, actor, question.site_id)
+        views = tasks_for_article(
+            session, day=question.day, site_id=question.site_id, article_id=question.article_id
+        )
+        room = {v.task.user_id: max(0, (v.task.qty_plan or 0) - v.done) for v in views}
+        if need < 1 or not room or sum(room.values()) < 1:
+            skipped += 1
+            continue
+        share: dict[int, int] = defaultdict(int)
+        for _ in range(need):  # по одной штуке тому, у кого больше всего осталось
+            user_id = max(room, key=lambda u: (room[u], -u))
+            share[user_id] += 1
+            room[user_id] -= 1
+        note = f"на {question.channels}" if question.channels else "на отгрузку"
+        for user_id, qty in share.items():
+            set_urgent(session, actor=actor, day=question.day, site_id=question.site_id, user_id=user_id,
+                       article_id=question.article_id, qty=qty, due_at=due_at, note=note)
+        question.promised += need
+        question.due_at = due_at
+        question.answer = "yes"
+        question.answered_by = actor.id
+        question.answered_at = now_utc()
+        answered += 1
+    session.flush()
+    allocate(session, day=today_msk())
+    return answered, skipped
 
 
 # ---------- партии на экране начальника ----------
@@ -549,6 +690,7 @@ def remove_items(
     session: Session, *, actor: User, item_ids: list[int], reason: str, site_ids: list[int] | None = None
 ) -> int:
     """Снять этикетки с отгрузки: брак, нет на складе, потеряно. Погруженные не трогаем."""
+    _lock(session)
     reason = reason.strip()[:200]
     if not reason:
         raise BatchError("Укажите причину")
@@ -572,6 +714,7 @@ def remove_items(
 
 def return_items(session: Session, *, item_ids: list[int], site_ids: list[int] | None = None) -> int:
     """Вернуть снятое обратно в отгрузку (сняли по ошибке)."""
+    _lock(session)
     back = 0
     for item_id in item_ids:
         item = session.get(ShipItem, item_id)

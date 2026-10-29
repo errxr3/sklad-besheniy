@@ -160,6 +160,7 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("POST", "/shipments/batches/return"): LEADS,
     ("GET", "/ship/questions"): LEADS,
     ("POST", "/ship/questions/{question_id}/answer"): LEADS,
+    ("POST", "/ship/questions/answer-all"): LEADS,
     ("GET", "/journal"): LEADS,
     ("GET", "/journal.csv"): LEADS,
     # Остатки и выгрузки

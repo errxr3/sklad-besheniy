@@ -932,8 +932,8 @@ def process(excel, sheet, cabinets, days, out, log, progress, download=True,
     # Партия → склад: ровно те этикетки, что скачались (по ним грузчики сверяют зеркала)
     not_got = {n for _, n, _, _ in failed}
     sklad_send_batch(today_msk(), "ozon", sk_channel, sk_truck, f"Ozon · {footer.strip() or 'Озон утро'}", [
-        {"posting": n, "article": a, "production": production_of(a), "codes": barcodes.get(n, []),
-         "ordered_at": iso(times.get(n))}
+        {"posting": n, "origin": origin.get(n, n), "article": a, "production": production_of(a),
+         "codes": barcodes.get(n, []), "ordered_at": iso(times.get(n))}
         for n, a, _ in entries if n not in not_got], log)
 
     mixed_note = {n: "; вместе с ним не поехал: " + ", ".join(o) for n, _, _, o in mixed}

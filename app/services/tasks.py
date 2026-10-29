@@ -295,6 +295,11 @@ def set_urgent(
         )
     else:
         check_task_site(session, actor, task.site_id)
+        # Срочное уже есть и не сдано — новое добавляется к остатку, срок — более ранний
+        left = max(0, (task.urgent_qty or 0) - urgent_done(session, task))
+        if left and task.urgent_due is not None:
+            qty += left
+            due_at = min(due_at, task.urgent_due)
         done = done_count(session, user_id=user_id, article_id=article_id, day=day)
         if (task.qty_plan or 0) - done < qty:
             task.qty_plan = done + qty

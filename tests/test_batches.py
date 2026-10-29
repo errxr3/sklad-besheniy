@@ -9,7 +9,7 @@ from app.models import ShipDemand, ShipItem, ShipQuestion, Site, Task, User
 from app.services.batches import answer_question, receive_batch, receive_demand
 from app.services.tasks import create_task, urgent_tasks
 from app.services.units import accept_unit, create_printed_units
-from app.statuses import ROLE_ASSEMBLER, ROLE_SHIFT_LEAD
+from app.statuses import ROLE_ASSEMBLER, ROLE_LOADER, ROLE_SHIFT_LEAD
 from app.timeutil import now_utc, today_msk
 from tests.helpers import make_article, make_user, site_by_name
 
@@ -171,3 +171,145 @@ def test_urgent_task_shows_to_assembler_and_board(client, db: Session) -> None: 
     board = client.get(f"/board?site_id={site.id}").text
     assert "Срочные задачи" in board and "просрочено" in board
     assert "срочно 1 шт." in client.get(f"/tasks?site_id={site.id}&day={today_msk().isoformat()}").text
+
+
+def _item(posting: str, origin: str = "") -> dict:
+    return {"posting": posting, "origin": origin, "article": "Zerkalo_50x130", "production": KOM,
+            "codes": [f"%{posting}"]}
+
+
+def test_ozon_new_numbers_after_packing(db: Session) -> None:
+    """Ozon при сборке выдал новые номера: погруженный заказ больше не держит зеркала."""
+    from app.services.shipping import join_channel, scan_loading
+
+    site, worker, _, article_id = _setup(db)
+    loader = make_user(db, name="Грузчик Ком", role=ROLE_LOADER, home_site_id=site.id)
+    units = create_printed_units(
+        db, article_id=article_id, qty=4, site_id=site.id, assembler_id=worker.id, actor_id=worker.id
+    )
+    db.commit()
+    for unit in units:
+        accept_unit(db, code=unit.number, actor=worker)
+    day = today_msk()
+    receive_demand(db, day=day, lines=[_line("100-1", "Ozon", 60, qty=2), _line("200-1", "Ozon", 10)])
+    # Заказ 100-1 из двух штук разбит на два отправления, у каждого своя этикетка
+    receive_batch(db, day=day, market="ozon", channel="Ozon", truck="Озон1",
+                  items=[_item("100-1-1", "100-1"), _item("100-1-2", "100-1")])
+    db.commit()
+    pallet = join_channel(db, user=loader, site=site, channel="Ozon", truck="Озон1")
+    db.commit()
+    for unit, code in zip(units[:2], ("%100-1-1", "%100-1-2"), strict=True):
+        assert scan_loading(db, code=unit.number, pallet=pallet, actor=loader, ship_code=code).ok
+        db.commit()
+    # На складе 2: одно держит 200-1, второе достаётся новому заказу
+    receive_demand(db, day=day, lines=[_line("300-1", "Ozon", 5)])
+    db.commit()
+    got = _decisions(db)
+    assert got == {"100-1": "go", "200-1": "go", "300-1": "go"}
+
+
+def test_batch_without_morning_order_keeps_mirrors(db: Session) -> None:
+    """Этикетку скачали без утреннего заказа: зеркало всё равно занято."""
+    site, worker, _, article_id = _setup(db)
+    _stock(db, article_id, site, worker, 1)
+    day = today_msk()
+    receive_batch(db, day=day, market="ozon", channel="Ozon", truck="Озон1", items=[_item("900-1")])
+    receive_demand(db, day=day, lines=[_line("901-1", "Ozon", 5)])
+    db.commit()
+    assert _decisions(db)["901-1"] == "no"
+
+
+def test_cdek_loaded_without_labels_frees_reserve(db: Session) -> None:
+    """СДЭК грузят без партии: после погрузки его заказ не держит зеркала второй раз."""
+    from app.services.shipping import join_channel, scan_loading
+
+    site, worker, _, article_id = _setup(db)
+    loader = make_user(db, name="Грузчик Сдэк", role=ROLE_LOADER, home_site_id=site.id)
+    units = create_printed_units(
+        db, article_id=article_id, qty=2, site_id=site.id, assembler_id=worker.id, actor_id=worker.id
+    )
+    db.commit()
+    for unit in units:
+        accept_unit(db, code=unit.number, actor=worker)
+    day = today_msk()
+    receive_demand(db, day=day, lines=[_line("CD-1", "СДЭК", 60), _line("OZ-1", "Ozon", 10)])
+    db.commit()
+    pallet = join_channel(db, user=loader, site=site, channel="СДЭК")
+    db.commit()
+    assert scan_loading(db, code=units[0].number, pallet=pallet, actor=loader).ok
+    db.commit()
+    # Осталось одно зеркало: оно у OZ-1, СДЭК уже уехал — новый заказ не едет, OZ-1 едет
+    receive_demand(db, day=day, lines=[_line("OZ-2", "Ozon", 5)])
+    db.commit()
+    assert _decisions(db) == {"CD-1": "go", "OZ-1": "go", "OZ-2": "no"}
+
+
+def test_answer_all_splits_between_workers(client, db: Session) -> None:  # type: ignore[no-untyped-def]
+    """«Сделаем» на все: срочное делится между теми, кто делает артикул, и складывается."""
+    from app.services.batches import answer_all
+    from app.timeutil import MOSCOW
+
+    site, worker, lead, article_id = _setup(db)
+    second = make_user(db, name="Пётр Сборщик", role=ROLE_ASSEMBLER, home_site_id=site.id)
+    _stock(db, article_id, site, worker, 2)
+    day = today_msk()
+    create_task(db, actor=lead, day=day, site_id=site.id, user_id=worker.id, kind="article",
+                article_id=article_id, qty_plan=10)
+    create_task(db, actor=lead, day=day, site_id=site.id, user_id=second.id, kind="article",
+                article_id=article_id, qty_plan=4)
+    receive_demand(db, day=day, lines=[_line(f"OZ-{i}", "Ozon", 60 - i) for i in range(8)])
+    db.commit()
+    due = now_utc().astimezone(MOSCOW).replace(hour=15, minute=0, second=0, microsecond=0)
+    assert answer_all(db, actor=lead, due_at=due, site_ids=[site.id]) == (1, 0)
+    db.commit()
+    tasks = {t.user_id: t.urgent_qty for t in db.scalars(select(Task)).all()}
+    # нехватка 6 = 8 − 2; Ивану осталось 8 (2 уже сдал), Петру 4 — больше достаётся Ивану
+    assert tasks == {worker.id: 5, second.id: 1}
+    assert set(_decisions(db).values()) == {"go"}
+    # Добавились заказы: новое срочное прибавляется к несданному, а не затирает его
+    receive_demand(db, day=day, lines=[_line("OZ-9", "Ozon", 1)])
+    db.commit()
+    answer_all(db, actor=lead, due_at=due, site_ids=[site.id])
+    db.commit()
+    assert sum(t.urgent_qty or 0 for t in db.scalars(select(Task)).all()) == 7
+
+
+def test_no_second_question_when_all_work_promised(db: Session) -> None:
+    """Всё, что в работе, уже обещано: на лишние заказы вопрос не открывается, они не едут."""
+    from app.services.batches import answer_all
+    from app.timeutil import MOSCOW
+
+    site, worker, lead, article_id = _setup(db)
+    day = today_msk()
+    create_task(db, actor=lead, day=day, site_id=site.id, user_id=worker.id, kind="article",
+                article_id=article_id, qty_plan=3)
+    receive_demand(db, day=day, lines=[_line(f"OZ-{i}", "Ozon", 60 - i) for i in range(5)])
+    db.commit()
+    due = now_utc().astimezone(MOSCOW).replace(hour=15, minute=0, second=0, microsecond=0)
+    answer_all(db, actor=lead, due_at=due, site_ids=[site.id])
+    db.commit()
+    question = db.scalars(select(ShipQuestion)).one()
+    assert question.answer == "yes" and question.promised == 3
+    assert sorted(_decisions(db).values()) == ["go", "go", "go", "no", "no"]
+
+
+def test_promised_mirrors_made_are_not_counted_twice(db: Session) -> None:
+    """Обещанное сдали на склад: оно теперь остаток, а не ещё одно обещание."""
+    from app.services.batches import answer_all
+    from app.services.task_labels import print_for_tasks
+    from app.timeutil import MOSCOW
+
+    site, worker, lead, article_id = _setup(db)
+    day = today_msk()
+    task = create_task(db, actor=lead, day=day, site_id=site.id, user_id=worker.id, kind="article",
+                       article_id=article_id, qty_plan=3)
+    receive_demand(db, day=day, lines=[_line(f"OZ-{i}", "Ozon", 60 - i) for i in range(5)])
+    due = now_utc().astimezone(MOSCOW).replace(hour=15, minute=0, second=0, microsecond=0)
+    answer_all(db, actor=lead, due_at=due, site_ids=[site.id])
+    db.commit()
+    for unit in print_for_tasks(db, tasks=[task], actor=lead, shift_id=None):
+        accept_unit(db, code=unit.number, actor=worker)
+    db.commit()
+    receive_demand(db, day=day, lines=[_line("OZ-9", "Ozon", 1)])
+    db.commit()
+    assert sorted(_decisions(db).values()) == ["go", "go", "go", "no", "no", "no"]
