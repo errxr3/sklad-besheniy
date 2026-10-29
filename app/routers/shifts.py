@@ -26,7 +26,7 @@ from app.services.shifts import (
     timesheet,
 )
 from app.services.shipping import open_channels
-from app.services.tasks import tasks_progress
+from app.services.tasks import tasks_progress, urgent_tasks
 from app.statuses import ROLE_ASSEMBLER, ROLE_LOADER
 from app.timeutil import MOSCOW, fmt_dt, msk_day_bounds, now_utc, to_moscow, today_msk
 from app.web import GuardedRoute, page
@@ -122,6 +122,7 @@ def board(request: Request, db: Session = Depends(get_db), site_id: int = 0, day
             "day": target_day,
             "rows": rows,
             "open_channels": open_channels(db),
+            "urgent": urgent_tasks(db, day=target_day, site_ids=[chosen.id]) if chosen else [],
         },
     )
 

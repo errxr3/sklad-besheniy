@@ -147,3 +147,27 @@ def test_batch_resend_and_conflicts(db: Session) -> None:
     assert unknown.unknown == ["X-1 Нет такого"]
     stored = db.scalar(select(ShipItem).where(ShipItem.posting == "0123-0001-1"))
     assert stored is not None and stored.batch.title == "Озон 1" and stored.article_id is not None
+
+
+def test_urgent_task_shows_to_assembler_and_board(client, db: Session) -> None:  # type: ignore[no-untyped-def]
+    from tests.helpers import login, open_shift
+
+    site, worker, lead, article_id = _setup(db)
+    create_task(db, actor=lead, day=today_msk(), site_id=site.id, user_id=worker.id, kind="article",
+                article_id=article_id, qty_plan=30)
+    db.commit()
+    receive_demand(db, day=today_msk(), lines=[_line("OZ-1", "Ozon", 5)])
+    question = db.scalar(select(ShipQuestion))
+    assert question is not None
+    answer_question(db, question_id=question.id, actor=lead, yes=True, assembler_id=worker.id, qty=1,
+                    due_at=now_utc() - timedelta(minutes=1))
+    db.commit()
+    open_shift(db, worker, site)
+    login(client, worker)
+    home = client.get("/").text
+    assert "Срочно к" in home and "время вышло" in home
+    client.cookies.clear()
+    login(client, lead)
+    board = client.get(f"/board?site_id={site.id}").text
+    assert "Срочные задачи" in board and "просрочено" in board
+    assert "срочно 1 шт." in client.get(f"/tasks?site_id={site.id}&day={today_msk().isoformat()}").text

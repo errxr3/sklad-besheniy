@@ -31,6 +31,7 @@
 		<div class="line">
 			<span class="name">
 				{% if item.task.kind == 'article' %}{{ item.task.article.name }}{% else %}{{ item.task.text }}{% endif %}
+				{% if item.task.urgent_qty %}<span class="badge err">срочно {{ item.task.urgent_qty }} шт. к {{ item.task.urgent_due|time }}</span>{% endif %}
 			</span>
 			<span>{% if item.task.kind == 'article' %}{{ item.done }} / {{ item.task.qty_plan }}{% endif %}</span>
 		</div>

@@ -586,3 +586,17 @@ def return_items(session: Session, *, item_ids: list[int], site_ids: list[int] |
     if back:
         allocate(session)
     return back
+
+
+def moved_items(session: Session, *, day: date) -> list[ShipItem]:
+    """Погружено не в свою машину за день — жёлтым на «Отгрузке»."""
+    from app.timeutil import msk_day_bounds
+
+    start, end = msk_day_bounds(day)
+    return list(
+        session.scalars(
+            select(ShipItem)
+            .where(ShipItem.moved_note.is_not(None), ShipItem.loaded_at >= start, ShipItem.loaded_at < end)
+            .order_by(ShipItem.loaded_at)
+        ).all()
+    )

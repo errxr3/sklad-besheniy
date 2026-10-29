@@ -40,6 +40,13 @@
 
 {% if user.role == ROLE_ASSEMBLER %}
 <div class="card" id="my-tasks">
+	{% for u in urgent if u.left %}
+	<div class="urgent-task{% if u.overdue %} overdue{% endif %}">
+		<b>Срочно к {{ u.task.urgent_due|time }}</b> · {{ u.task.article.name if u.task.article else '' }} — {{ u.task.urgent_qty }} шт.
+		{% if u.task.urgent_note %}· {{ u.task.urgent_note }}{% endif %}
+		<div class="sub">сдано {{ u.done }}, осталось {{ u.left }}{% if u.overdue %} · время вышло, сдайте как можно скорее{% endif %}</div>
+	</div>
+	{% endfor %}
 	<h2>Мои задачи</h2>
 	{% if not tasks %}
 	<p class="muted">Задач на сегодня нет — уточните у начальника смены.</p>

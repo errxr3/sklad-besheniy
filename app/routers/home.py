@@ -8,6 +8,7 @@ from app.db import get_db
 from app.models import Site
 from app.services.shifts import open_shift, shift_sites
 from app.services.task_labels import assembler_tasks, upcoming_tasks
+from app.services.tasks import urgent_tasks
 from app.statuses import ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_LOADER, ROLE_RETURNS, ROLE_STOREKEEPER
 from app.timeutil import today_msk
 from app.web import GuardedRoute, page
@@ -33,6 +34,9 @@ def home(request: Request, db: Session = Depends(get_db), err: str = "", ok: str
                 if user.role == ROLE_ASSEMBLER
                 else [],
                 "upcoming": upcoming_tasks(db, user_id=user.id, day=today_msk())
+                if user.role == ROLE_ASSEMBLER
+                else [],
+                "urgent": urgent_tasks(db, day=today_msk(), user_id=user.id)
                 if user.role == ROLE_ASSEMBLER
                 else [],
                 "err": err,

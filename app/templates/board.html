@@ -2,6 +2,22 @@
 {% block title %}Табло смены{% endblock %}
 {% block content %}
 <h1>Табло смены</h1>
+{% if urgent %}
+<div class="card urgent-card">
+	<h2>Срочные задачи</h2>
+	<table class="dense">
+		{% for u in urgent %}
+		<tr class="{% if u.overdue %}overdue{% elif u.left == 0 %}done{% endif %}">
+			<td>{{ u.task.user.name }}</td>
+			<td>{{ u.task.article.name if u.task.article else '' }}</td>
+			<td class="num">сдано {{ u.done }} из {{ u.task.urgent_qty }}</td>
+			<td>к {{ u.task.urgent_due|time }}{% if u.overdue %} · <b>просрочено</b>{% elif u.left == 0 %} · готово{% endif %}</td>
+			<td class="muted">{{ u.task.urgent_note or '' }}</td>
+		</tr>
+		{% endfor %}
+	</table>
+</div>
+{% endif %}
 {% for p in open_channels %}
 <p class="msg warn">Открыт канал {{ p.title }} у {{ p.opener.name }} ({{ p.site.name }}) с {{ p.opened_at|time }} —
 	пока не закрыт, его зеркала не попадут в «Отгрузку». Закроется сам в 23:59.</p>

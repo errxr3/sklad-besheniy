@@ -515,3 +515,13 @@ tr.ship-moved td { background: var(--warn-bg); }
 tr.ship-removed td { color: var(--muted); }
 tr.ship-loaded td { color: var(--muted); }
 tr.overdue td { color: var(--err); font-weight: 600; }
+.urgent-task { margin: 0 0 12px; padding: 12px 14px; border: 2px solid var(--err); border-radius: 10px; background: var(--err-bg); color: var(--err); font-size: 17px; }
+.urgent-task .sub { font-size: 14px; margin-top: 4px; }
+.urgent-task.overdue { animation: urgent-blink 1.2s ease-in-out infinite alternate; }
+@keyframes urgent-blink { from { box-shadow: 0 0 0 0 var(--err); } to { box-shadow: 0 0 0 4px transparent; } }
+@media (prefers-reduced-motion: reduce) { .urgent-task.overdue { animation: none; } }
+.batch-chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-block; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--line-strong); font-size: 14px; font-weight: 600; }
+.chip.ok { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
+.chip.warn { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
+.moved-list li { background: var(--warn-bg); color: var(--warn); padding: 6px 10px; border-left: 4px solid var(--warn); margin-bottom: 4px; }

@@ -22,6 +22,28 @@
 	</div>
 </div>
 
+{% if batches %}
+<div class="card">
+	<div class="line">
+		<h2 style="margin:0">Партии BLAGO OTGRUZKI</h2>
+		<a class="btn secondary small-btn" href="/shipments/batches?day={{ day.isoformat() }}">Подробно</a>
+	</div>
+	<div class="batch-chips mt">
+		{% for b in batches %}
+		<span class="chip {% if b.left == 0 %}ok{% elif b.loaded %}warn{% endif %}">{{ b.batch.title }} · {{ b.loaded }}/{{ b.total }}{% if b.removed %} · снято {{ b.removed }}{% endif %}</span>
+		{% endfor %}
+	</div>
+	{% if moved %}
+	<h3 class="mt">Погружено не в свою машину</h3>
+	<ul class="plain moved-list">
+		{% for item in moved %}
+		<li>{{ item.article.name if item.article else item.article_name }} · BLAGO {{ item.unit.number if item.unit else '—' }} · {{ item.batch.channel }} {{ item.posting }}: <b>{{ item.moved_note }}</b></li>
+		{% endfor %}
+	</ul>
+	{% endif %}
+</div>
+{% endif %}
+
 <div class="table-wrap">
 	<table class="dense shipments">
 		<thead>
