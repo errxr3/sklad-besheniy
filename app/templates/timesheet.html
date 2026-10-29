@@ -5,6 +5,7 @@
 <div class="card">
 	<form method="get" action="/reports/timesheet" class="row tight">
 		<select name="user_id">
+			<option value="-1" {% if everyone %}selected{% endif %}>все сотрудники</option>
 			{% for u in users %}<option value="{{ u.id }}" {% if chosen and u.id == chosen.id %}selected{% endif %}>{{ u.name }}</option>{% endfor %}
 		</select>
 		<input type="date" name="date_from" value="{{ date_from.isoformat() }}">
@@ -15,6 +16,20 @@
 		{% endif %}
 	</form>
 </div>
+{% if everyone %}
+<div class="card">
+	<table class="dense">
+		<tr><th>Сотрудник</th><th class="num">Смен</th><th class="num">Часы</th><th></th></tr>
+		{% for person, count, hours in summary %}
+		<tr><td>{{ person.name }}</td><td class="num">{{ count }}</td><td class="num">{{ hours|hours }}</td>
+			<td><a href="/reports/timesheet?user_id={{ person.id }}&date_from={{ date_from.isoformat() }}&date_to={{ date_to.isoformat() }}">по дням</a></td></tr>
+		{% else %}
+		<tr><td colspan="4" class="muted">За эти дни смен не было.</td></tr>
+		{% endfor %}
+		<tr><td colspan="2"><b>Итого</b></td><td class="num"><b>{{ summary_hours|hours }}</b></td><td></td></tr>
+	</table>
+</div>
+{% else %}
 <div class="card">
 	<table class="dense">
 		<tr><th>Дата</th><th>Начало</th><th>Окончание</th><th class="num">Часы</th><th>Как закрыта</th></tr>
@@ -30,4 +45,5 @@
 		<tr><td colspan="3"><b>Итого</b></td><td class="num"><b>{{ total_hours|hours }}</b></td><td></td></tr>
 	</table>
 </div>
+{% endif %}
 {% endblock %}

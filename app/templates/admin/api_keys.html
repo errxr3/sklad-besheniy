@@ -36,6 +36,8 @@
 					<button type="submit" class="secondary mini">Отключить</button>
 				</form>{% endif %}</td>
 		</tr>
+		{% else %}
+		<tr><td colspan="4" class="muted">Ключей пока нет. Создайте ключ «BLAGO OTGRUZKI» и вставьте его в программе: Настройки → Склад BLAGO.</td></tr>
 		{% endfor %}
 	</table>
 </div>

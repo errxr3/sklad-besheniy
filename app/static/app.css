@@ -1,36 +1,40 @@
 /* BLAGO — склад зеркал. Мобильная вёрстка, крупный шрифт, работа одной рукой.
  * Строгий стиль: без градиентов и теней, ровные углы. Светлая и тёмная темы на переменных:
  * тёмная включается по настройке телефона или кнопкой в шапке (html[data-theme]). */
+/* Палитра — та же, что в BLAGO OTGRUZKI: тёмно-синий «slate» и фирменный золотой.
+ * Светлая тема строгая: графитовые кнопки, золото только в логотипе.
+ * Контраст основного и серого текста к фону — не ниже 4.5:1. */
 :root {
 	color-scheme: light;
-	--bg: #f4f5f7;
+	--bg: #f1f5f9;
 	--card: #ffffff;
-	--card-alt: #f8f9fb;
-	--text: #14171f;
-	--muted: #5b6272;
-	--line: #d9dce3;
-	--line-strong: #b9bec9;
-	--accent: #1f3a8a;
-	--accent-dark: #172c69;
-	--accent-soft: #e8ecf6;
+	--card-alt: #f8fafc;
+	--text: #0f172a;
+	--muted: #475569;
+	--line: #e2e8f0;
+	--line-strong: #cbd5e1;
+	--accent: #1e293b;
+	--accent-dark: #0f172a;
+	--accent-soft: #e2e8f0;
 	--on-accent: #ffffff;
-	--focus: #9fb3e6;
-	--top-bg: #12151c;
-	--top-text: #ffffff;
-	--th-bg: #eef0f4;
-	--group-bg: #e3e6ec;
-	--ok: #146c3c;
-	--ok-bg: #e2f3e9;
-	--err: #b42318;
-	--err-bg: #fbe5e3;
-	--warn: #8a5300;
-	--warn-bg: #fdf0d8;
-	--zero: #f6cfd2;
-	--neg: #d92d20;
-	--ship-before: #fbe3c4;
+	--focus: #f2b53b;
+	--brand: #b7791f;
+	--top-bg: #0b1120;
+	--top-text: #f1f5f9;
+	--th-bg: #f1f5f9;
+	--group-bg: #e2e8f0;
+	--ok: #15803d;
+	--ok-bg: #dcfce7;
+	--err: #b91c1c;
+	--err-bg: #fee2e2;
+	--warn: #9a5b00;
+	--warn-bg: #fef3c7;
+	--zero: #fecdd3;
+	--neg: #dc2626;
+	--ship-before: #fde7c8;
 	--ship-ch: #fdf0e3;
 	--ship-ch-cell: #fff8e8;
-	--ship-after: #d3f0dc;
+	--ship-after: #d1fae5;
 	--radius: 6px;
 }
 
@@ -38,66 +42,68 @@
 @media (prefers-color-scheme: dark) {
 	:root:not([data-theme="light"]) {
 		color-scheme: dark;
-		--bg: #0f1115;
-		--card: #171a21;
-		--card-alt: #1c2029;
-		--text: #e7e9ee;
-		--muted: #9aa1b0;
-		--line: #2a2f3a;
-		--line-strong: #3b4250;
-		--accent: #4263eb;
-		--accent-dark: #5c7cfa;
-		--accent-soft: #1f2740;
-		--on-accent: #ffffff;
-		--focus: #3d5292;
-		--top-bg: #0a0c10;
-		--top-text: #e7e9ee;
-		--th-bg: #1e222b;
-		--group-bg: #252a35;
-		--ok: #4cc38a;
-		--ok-bg: #12301f;
-		--err: #f97066;
-		--err-bg: #3a1714;
-		--warn: #f5b041;
-		--warn-bg: #352610;
+		--bg: #0f172a;
+		--card: #151f33;
+		--card-alt: #1a2540;
+		--text: #f1f5f9;
+		--muted: #94a3b8;
+		--line: #24314a;
+		--line-strong: #334155;
+		--accent: #f2b53b;
+		--accent-dark: #ffc85c;
+		--accent-soft: #2a2416;
+		--on-accent: #1a1405;
+		--focus: #f2b53b;
+		--brand: #f2b53b;
+		--top-bg: #0b1120;
+		--top-text: #f1f5f9;
+		--th-bg: #1a2540;
+		--group-bg: #1e2a44;
+		--ok: #22c55e;
+		--ok-bg: #0f2a1a;
+		--err: #f87171;
+		--err-bg: #3a1518;
+		--warn: #fb923c;
+		--warn-bg: #3a2412;
 		--zero: #4a1f24;
-		--neg: #b42318;
+		--neg: #b91c1c;
 		--ship-before: #3a2c18;
 		--ship-ch: #2f2618;
 		--ship-ch-cell: #241f16;
-		--ship-after: #173322;
+		--ship-after: #12301f;
 	}
 }
 :root[data-theme="dark"] {
 	color-scheme: dark;
-	--bg: #0f1115;
-	--card: #171a21;
-	--card-alt: #1c2029;
-	--text: #e7e9ee;
-	--muted: #9aa1b0;
-	--line: #2a2f3a;
-	--line-strong: #3b4250;
-	--accent: #4263eb;
-	--accent-dark: #5c7cfa;
-	--accent-soft: #1f2740;
-	--on-accent: #ffffff;
-	--focus: #3d5292;
-	--top-bg: #0a0c10;
-	--top-text: #e7e9ee;
-	--th-bg: #1e222b;
-	--group-bg: #252a35;
-	--ok: #4cc38a;
-	--ok-bg: #12301f;
-	--err: #f97066;
-	--err-bg: #3a1714;
-	--warn: #f5b041;
-	--warn-bg: #352610;
+	--bg: #0f172a;
+	--card: #151f33;
+	--card-alt: #1a2540;
+	--text: #f1f5f9;
+	--muted: #94a3b8;
+	--line: #24314a;
+	--line-strong: #334155;
+	--accent: #f2b53b;
+	--accent-dark: #ffc85c;
+	--accent-soft: #2a2416;
+	--on-accent: #1a1405;
+	--focus: #f2b53b;
+	--brand: #f2b53b;
+	--top-bg: #0b1120;
+	--top-text: #f1f5f9;
+	--th-bg: #1a2540;
+	--group-bg: #1e2a44;
+	--ok: #22c55e;
+	--ok-bg: #0f2a1a;
+	--err: #f87171;
+	--err-bg: #3a1518;
+	--warn: #fb923c;
+	--warn-bg: #3a2412;
 	--zero: #4a1f24;
-	--neg: #b42318;
+	--neg: #b91c1c;
 	--ship-before: #3a2c18;
 	--ship-ch: #2f2618;
 	--ship-ch-cell: #241f16;
-	--ship-after: #173322;
+	--ship-after: #12301f;
 }
 
 * { box-sizing: border-box; }
@@ -130,7 +136,7 @@ header.top {
 }
 header.top a { color: var(--top-text); text-decoration: none; }
 header.top .brand { display: flex; align-items: baseline; gap: 8px; }
-header.top .brand b { font-size: 22px; font-weight: 800; letter-spacing: .18em; }
+header.top .brand b { font-size: 22px; font-weight: 800; letter-spacing: .18em; color: var(--brand); }
 header.top .brand span { font-size: 13px; opacity: .6; letter-spacing: .04em; }
 header.top .who {
 	margin-left: auto; min-width: 0; text-align: right; font-size: 15px; line-height: 1.2;
@@ -340,7 +346,7 @@ ul.plain li { padding: 8px 0; border-bottom: 1px solid var(--line); }
 	max-width: 460px; margin: 6px auto 12px; padding: 22px 20px; border-radius: var(--radius);
 	text-align: center; color: #fff; background: var(--top-bg);
 }
-.login-logo { font-size: 40px; font-weight: 800; letter-spacing: .22em; padding-left: .22em; }
+.login-logo { font-size: 40px; font-weight: 800; letter-spacing: .22em; padding-left: .22em; color: var(--brand); }
 .login-hero p { margin: 4px 0 0; opacity: .7; }
 .login-card { max-width: 460px; margin: 0 auto; }
 .login-theme { max-width: 460px; margin: 10px auto 0; text-align: center; }
@@ -525,3 +531,13 @@ tr.overdue td { color: var(--err); font-weight: 600; }
 .chip.ok { background: var(--ok-bg); color: var(--ok); border-color: var(--ok); }
 .chip.warn { background: var(--warn-bg); color: var(--warn); border-color: var(--warn); }
 .moved-list li { background: var(--warn-bg); color: var(--warn); padding: 6px 10px; border-left: 4px solid var(--warn); margin-bottom: 4px; }
+
+/* Фильтры и формы «в строку» на компьютере: дата, площадка и кнопка — рядом, а не столбиком */
+@media (min-width: 700px) {
+	.row.tight > input, .row.tight > select { width: auto; min-width: 190px; }
+	.row.tight > input[type=date] { min-width: 170px; }
+}
+.badge.muted-badge { background: var(--card-alt); color: var(--muted); border: 1px solid var(--line); }
+.worker-free { border-bottom: 1px solid var(--line); padding: 8px 0; }
+.worker-free summary { cursor: pointer; font-weight: 600; }
+.worker-free .task-add { margin-top: 8px; }

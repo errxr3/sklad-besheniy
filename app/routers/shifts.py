@@ -201,13 +201,24 @@ def timesheet_page(
             .order_by(User.name)
         ).all()
     )
-    chosen = db.get(User, user_id) if user_id else (users[0] if users else None)
+    # user_id=-1 — все сотрудники: по человеку итог смен и часов
+    everyone = user_id == ALL_PEOPLE
+    chosen = None if everyone else (db.get(User, user_id) if user_id else (users[0] if users else None))
     rows = timesheet(db, user_id=chosen.id, date_from=start, date_to=end) if chosen else []
+    summary = []
+    if everyone:
+        for person in users:
+            shifts = timesheet(db, user_id=person.id, date_from=start, date_to=end)
+            if shifts:
+                summary.append((person, len(shifts), round(sum(s.hours for s in shifts), 2)))
     return page(
         request,
         "timesheet.html",
         {
             "users": users,
+            "everyone": everyone,
+            "summary": summary,
+            "summary_hours": round(sum(h for _, _, h in summary), 2),
             "chosen": chosen,
             "date_from": start,
             "date_to": end,
@@ -215,6 +226,9 @@ def timesheet_page(
             "total_hours": round(sum(row.hours for row in rows), 2),
         },
     )
+
+
+ALL_PEOPLE = -1
 
 
 @router.get("/reports/timesheet.csv")

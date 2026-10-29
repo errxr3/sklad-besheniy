@@ -44,7 +44,7 @@
 			<td>
 				{% if row.state == 'на смене' %}<span class="badge ok">на смене</span>
 				{% elif row.state == 'смена закончена' %}<span class="badge">смена закончена</span>
-				{% else %}<span class="badge err">не вышел</span>{% endif %}
+				{% else %}<span class="badge muted-badge">не вышел</span>{% endif %}
 			</td>
 			<td>{{ row.shift.started_at|time if row.shift else '' }}</td>
 			<td>{{ row.shift.ended_at|time if row.shift and row.shift.ended_at else '' }}</td>

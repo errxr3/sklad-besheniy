@@ -78,7 +78,7 @@
 			button.classList.toggle('active', button.dataset.mode === mode);
 		});
 		var cameraButton = document.getElementById('camera-btn');
-		if (cameraButton) cameraButton.classList.toggle('secondary', mode !== 'camera');
+		if (cameraButton) cameraButton.hidden = mode !== 'camera';
 		if (mode === 'camera') {
 			if (document.activeElement === this.input) this.input.blur();
 		} else {

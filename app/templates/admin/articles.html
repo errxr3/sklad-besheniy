@@ -39,24 +39,23 @@
 <div class="card">
 	<h2>Справочник</h2>
 	<form method="get" action="/admin/articles" class="row tight">
-		<input type="search" name="q" value="{{ q }}" placeholder="поиск по названию" style="min-width:220px">
-		<button type="submit" class="secondary">Найти</button>
+		<input type="search" name="q" id="article-search" value="{{ q }}" placeholder="поиск по названию, например 60x160" style="min-width:260px" autocomplete="off">
 	</form>
-	<table class="dense mt">
-		<tr><th>№</th><th>Артикул</th><th>Группа</th><th>Подгруппа</th><th>Префикс</th><th>Цвет</th><th>Активен</th></tr>
+	<table class="dense mt" id="article-table">
+		<tr><th>№</th><th>Артикул</th><th>Группа</th><th>Подгруппа</th><th>Состояние</th></tr>
 		{% for a in articles %}
-		<tr {% if a.kind == 'header' %}class="header-row"{% endif %}>
+		<tr {% if a.kind == 'header' %}class="header-row"{% else %}class="article-row" data-name="{{ a.name|lower }}"{% endif %}>
 			<td class="num">{{ a.sort_order }}</td>
 			<td {% if a.color_hex %}style="background:{{ a.color_hex }}"{% endif %}>{{ a.name }}</td>
-			<td>{{ a.group }}</td><td>{{ a.subgroup or '' }}</td><td>{{ a.prefix or '' }}</td>
-			<td>{{ a.color_hex or '' }}</td>
+			<td>{{ a.group }}</td><td>{{ a.subgroup or '' }}</td>
 			<td>
 				{% if a.kind == 'article' %}
-				<form method="post" action="/admin/articles/toggle" class="row tight">
+				<form method="post" action="/admin/articles/toggle" class="line">
+					{% if a.active %}<span class="badge ok">в работе</span>{% else %}<span class="badge muted-badge">отключён</span>{% endif %}
 					<input type="hidden" name="csrf_token" value="{{ csrf }}">
 					<input type="hidden" name="article_id" value="{{ a.id }}">
 					<input type="hidden" name="active" value="{{ '0' if a.active else '1' }}">
-					<button type="submit" class="secondary">{{ 'отключить' if a.active else 'включить' }}</button>
+					<button type="submit" class="secondary small-btn">{{ 'Отключить' if a.active else 'Включить' }}</button>
 				</form>
 				{% endif %}
 			</td>
@@ -64,4 +63,23 @@
 		{% endfor %}
 	</table>
 </div>
+{% endblock %}
+{% block scripts %}
+<script>
+(function () {
+	// Поиск по справочнику сразу при вводе; «60х160» и «60x160» — одно и то же
+	var search = document.getElementById('article-search');
+	var rows = document.querySelectorAll('#article-table .article-row');
+	function norm(text) { return text.toLowerCase().replace(/х/g, 'x').replace(/\s+/g, ' ').trim(); }
+	search.addEventListener('input', function () {
+		var q = norm(search.value);
+		Array.prototype.forEach.call(rows, function (row) {
+			row.hidden = q !== '' && norm(row.dataset.name).indexOf(q) === -1;
+		});
+		Array.prototype.forEach.call(document.querySelectorAll('#article-table .header-row'), function (row) {
+			row.hidden = q !== '';
+		});
+	});
+})();
+</script>
 {% endblock %}

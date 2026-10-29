@@ -1,6 +1,25 @@
 {% extends "base.html" %}
 {% block title %}Задачи{% endblock %}
 {% block content %}
+{% macro add_form(worker) %}
+	{% if editable and site %}
+	<form method="post" action="/tasks/create" class="task-add">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<input type="hidden" name="day" value="{{ day.isoformat() }}">
+		<input type="hidden" name="site_id" value="{{ site.id }}">
+		<input type="hidden" name="user_id" value="{{ worker.id }}">
+		<input type="hidden" name="kind" value="article">
+		<div class="article-picker" data-article-picker data-site="{{ site.id }}">
+			<input type="search" class="ap-input" placeholder="Артикул, например 60x160"
+			       autocomplete="off" aria-label="Артикул">
+			<input type="hidden" name="article_id" class="ap-value">
+			<ul class="ap-list" hidden></ul>
+		</div>
+		<input type="number" name="qty_plan" class="qty" placeholder="кол-во" min="1" required aria-label="Количество">
+		<button type="submit">Добавить</button>
+	</form>
+	{% endif %}
+{% endmacro %}
 <h1>Задачи на {{ day|date }}</h1>
 {% include "admin/_msg.html" %}
 
@@ -11,6 +30,7 @@
 			{% for s in sites %}<option value="{{ s.id }}" {% if site and s.id == site.id %}selected{% endif %}>{{ s.name }}</option>{% endfor %}
 		</select>
 		<button type="submit" class="secondary">Показать</button>
+		<input type="search" id="worker-search" placeholder="Поиск сборщика" autocomplete="off">
 	</form>
 	{% if not editable %}
 	<p class="muted">Прошедший день — только просмотр.</p>
@@ -21,11 +41,10 @@
 	{% endif %}
 </div>
 
-{% for worker in workers %}
-<div class="card">
+{% for worker in workers if by_user.get(worker.id) %}
+<div class="card worker-card" data-name="{{ worker.name|lower }}">
 	<h2>{{ worker.name }}</h2>
 	{% set items = by_user.get(worker.id, []) %}
-	{% if not items %}<p class="muted">Задач нет</p>{% endif %}
 	{% for item in items %}
 	<div class="task">
 		<div class="line">
@@ -63,29 +82,42 @@
 	</div>
 	{% endfor %}
 
-	{% if editable and site %}
-	<form method="post" action="/tasks/create" class="task-add">
-		<input type="hidden" name="csrf_token" value="{{ csrf }}">
-		<input type="hidden" name="day" value="{{ day.isoformat() }}">
-		<input type="hidden" name="site_id" value="{{ site.id }}">
-		<input type="hidden" name="user_id" value="{{ worker.id }}">
-		<input type="hidden" name="kind" value="article">
-		<div class="article-picker" data-article-picker data-site="{{ site.id }}">
-			<input type="search" class="ap-input" placeholder="Артикул, например 60x160"
-			       autocomplete="off" aria-label="Артикул">
-			<input type="hidden" name="article_id" class="ap-value">
-			<ul class="ap-list" hidden></ul>
-		</div>
-		<input type="number" name="qty_plan" class="qty" placeholder="кол-во" min="1" required aria-label="Количество">
-		<button type="submit">Добавить</button>
-	</form>
-	{% endif %}
+	{{ add_form(worker) }}
 </div>
 {% endfor %}
+
+{% set free = workers|rejectattr('id', 'in', by_user.keys()|list)|list %}
+{% if free %}
+<div class="card">
+	<h2>Без задач <span class="muted">({{ free|length }})</span></h2>
+	{% for worker in free %}
+	<details class="worker-free" data-name="{{ worker.name|lower }}">
+		<summary>{{ worker.name }}{% if editable %} <span class="muted">— поставить задачу</span>{% endif %}</summary>
+		{{ add_form(worker) }}
+	</details>
+	{% endfor %}
+</div>
+{% endif %}
+<p class="muted" id="worker-empty" hidden>Никого не нашлось.</p>
 {% endblock %}
 {% block scripts %}
 <script src="/static/article_picker.js?v={{ STATIC_VERSION }}"></script>
 <script>
+	// Поиск сборщика: на 50 человек список длинный
+	(function () {
+		var search = document.getElementById('worker-search');
+		if (!search) return;
+		search.addEventListener('input', function () {
+			var q = search.value.toLowerCase().trim(), shown = 0;
+			Array.prototype.forEach.call(document.querySelectorAll('.worker-card, .worker-free'), function (el) {
+				var hit = !q || el.dataset.name.indexOf(q) !== -1;
+				el.hidden = !hit;
+				if (hit) shown++;
+				if (hit && q && el.tagName === 'DETAILS') el.open = true;
+			});
+			document.getElementById('worker-empty').hidden = shown > 0;
+		});
+	})();
 	Array.prototype.forEach.call(document.querySelectorAll('.task-delete'), function (form) {
 		form.addEventListener('submit', function (event) {
 			if (!window.confirm(form.dataset.confirm)) event.preventDefault();
