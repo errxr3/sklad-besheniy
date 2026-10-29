@@ -313,3 +313,28 @@ def test_promised_mirrors_made_are_not_counted_twice(db: Session) -> None:
     receive_demand(db, day=day, lines=[_line("OZ-9", "Ozon", 1)])
     db.commit()
     assert sorted(_decisions(db).values()) == ["go", "go", "go", "no", "no", "no"]
+
+
+def test_lead_removes_and_returns_on_batches_page(client, db: Session) -> None:  # type: ignore[no-untyped-def]
+    """«Партии»: снять отмеченные с отгрузки и вернуть их обратно с той же страницы."""
+    from tests.helpers import get_csrf, login
+
+    site, _, lead, _ = _setup(db)
+    receive_batch(db, day=today_msk(), market="ozon", channel="Ozon", truck="Озон1",
+                  items=[_item("500-1"), _item("501-1")])
+    db.commit()
+    item = db.scalar(select(ShipItem).where(ShipItem.posting == "500-1"))
+    assert item is not None
+    login(client, lead)
+    page = client.get("/shipments/batches").text
+    assert "Снять отмеченные с отгрузки" in page and "Вернуть отмеченные" not in page
+    token = get_csrf(client, "/shipments/batches")
+    client.post("/shipments/batches/remove", data={"csrf_token": token, "item_id": [str(item.id)],
+                                                   "reason": "брак"})
+    db.expire_all()
+    assert item.state == "removed"
+    page = client.get("/shipments/batches").text
+    assert "Вернуть отмеченные в отгрузку" in page and "брак" in page
+    client.post("/shipments/batches/return", data={"csrf_token": token, "item_id": [str(item.id)]})
+    db.expire_all()
+    assert item.state == "wait" and item.removed_reason is None

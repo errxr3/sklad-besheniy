@@ -521,6 +521,12 @@ tr.ship-moved td { background: var(--warn-bg); }
 tr.ship-removed td { color: var(--muted); }
 tr.ship-loaded td { color: var(--muted); }
 tr.overdue td { color: var(--err); font-weight: 600; }
+.urgent-list { list-style: none; margin: 0; padding: 0; }
+.urgent-list li { padding: 10px 0; border-bottom: 1px solid var(--line); }
+.urgent-list li:last-child { border-bottom: 0; }
+.urgent-list .line { display: flex; justify-content: space-between; gap: 12px; }
+.urgent-list li.overdue, .urgent-list li.overdue .muted { color: var(--err); }
+.urgent-list li.done { color: var(--muted); }
 .urgent-task { margin: 0 0 12px; padding: 12px 14px; border: 2px solid var(--err); border-radius: 10px; background: var(--err-bg); color: var(--err); font-size: 17px; }
 .urgent-task .sub { font-size: 14px; margin-top: 4px; }
 .urgent-task.overdue { animation: urgent-blink 1.2s ease-in-out infinite alternate; }

@@ -1,0 +1,24 @@
+{# Срочные задачи списком: на телефоне таблица из 5 столбцов не помещается #}
+{% set active = urgent|rejectattr('left', 'equalto', 0)|list %}
+{% set ready = urgent|selectattr('left', 'equalto', 0)|list %}
+<p class="muted">Всего {{ urgent|length }} · просрочено {{ active|selectattr('overdue')|list|length }} · готово {{ ready|length }}</p>
+<ul class="urgent-list">
+	{% for u in active %}
+	<li class="{% if u.overdue %}overdue{% endif %}">
+		<div class="line"><b>{{ u.task.user.name }}</b><span>к {{ u.task.urgent_due|time }}{% if u.overdue %} · просрочено{% endif %}</span></div>
+		<div>{{ u.task.article.name if u.task.article else '' }} — сдано {{ u.done }} из {{ u.task.urgent_qty }}</div>
+		{% if u.task.urgent_note %}<div class="muted">{{ u.task.urgent_note }}</div>{% endif %}
+	</li>
+	{% endfor %}
+</ul>
+{% if ready %}
+<details>
+	<summary>Готово: {{ ready|length }}</summary>
+	<ul class="urgent-list">
+		{% for u in ready %}
+		<li class="done"><div class="line"><b>{{ u.task.user.name }}</b><span>сдано {{ u.done }} из {{ u.task.urgent_qty }}</span></div>
+			<div>{{ u.task.article.name if u.task.article else '' }}</div></li>
+		{% endfor %}
+	</ul>
+</details>
+{% endif %}

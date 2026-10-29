@@ -15,35 +15,60 @@
 <div class="card"><p class="muted">За этот день партий нет. Они появляются, когда BLAGO OTGRUZKI скачивает этикетки.</p></div>
 {% endif %}
 {% for b in batches %}
+{% set open_items = b.items|rejectattr('state', 'equalto', 'loaded')|list %}
+{% set loaded_items = b.items|selectattr('state', 'equalto', 'loaded')|list %}
 <div class="card">
 	<div class="line">
 		<h2 style="margin:0">{{ b.batch.title }}</h2>
 		<span class="muted">погружено {{ b.loaded }} из {{ b.total }}{% if b.removed %} · снято {{ b.removed }}{% endif %}{% if b.left %} · осталось {{ b.left }}{% endif %}</span>
 	</div>
 	{% if b.batch.source %}<p class="hint">{{ b.batch.source }}</p>{% endif %}
+	{% if open_items %}
 	<form method="post" action="/shipments/batches/remove">
 		<input type="hidden" name="csrf_token" value="{{ csrf }}">
 		<input type="hidden" name="day" value="{{ day.isoformat() }}">
 		<table class="dense mt">
-			<tr><th></th><th>Артикул</th><th>Отправление</th><th>Состояние</th><th>Пометка</th></tr>
-			{% for item in b.items %}
-			<tr class="ship-{{ item.state }}{% if item.moved_note %} ship-moved{% endif %}">
-				<td>{% if item.state == 'wait' %}<input type="checkbox" name="item_id" value="{{ item.id }}">{% endif %}</td>
+			<tr><th></th><th>Артикул</th><th>Отправление</th><th>Состояние</th><th>Причина</th></tr>
+			{% for item in open_items %}
+			<tr class="ship-{{ item.state }}">
+				<td><input type="checkbox" name="item_id" value="{{ item.id }}" aria-label="Отметить {{ item.posting }}"></td>
 				<td>{{ item.article.name if item.article else item.article_name }}</td>
 				<td>{{ item.posting }}</td>
 				<td>{{ state_labels[item.state] }}</td>
-				<td>{% if item.moved_note %}{{ item.moved_note }}{% elif item.removed_reason %}{{ item.removed_reason }}{% endif %}</td>
+				<td>{{ item.removed_reason or '' }}</td>
 			</tr>
 			{% endfor %}
 		</table>
 		{% if b.left %}
 		<div class="row tight mt">
-			<select name="reason">{% for r in reasons %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select>
+			<select name="reason" aria-label="Причина">{% for r in reasons %}<option value="{{ r }}">{{ r }}</option>{% endfor %}</select>
 			<input type="text" name="reason_text" placeholder="если «другое» — почему" maxlength="200">
 			<button type="submit" class="danger">Снять отмеченные с отгрузки</button>
 		</div>
 		{% endif %}
+		{% if b.removed %}
+		<div class="row tight mt">
+			<button type="submit" class="secondary" formaction="/shipments/batches/return">Вернуть отмеченные в отгрузку</button>
+			<span class="hint">Сняли по ошибке — отметьте снятые и верните, грузчики снова их увидят.</span>
+		</div>
+		{% endif %}
 	</form>
+	{% endif %}
+	{% if loaded_items %}
+	<details class="mt">
+		<summary>Погружено: {{ loaded_items|length }}</summary>
+		<table class="dense mt">
+			<tr><th>Артикул</th><th>Отправление</th><th>Пометка</th></tr>
+			{% for item in loaded_items %}
+			<tr class="ship-loaded{% if item.moved_note %} ship-moved{% endif %}">
+				<td>{{ item.article.name if item.article else item.article_name }}</td>
+				<td>{{ item.posting }}</td>
+				<td>{{ item.moved_note or '' }}</td>
+			</tr>
+			{% endfor %}
+		</table>
+	</details>
+	{% endif %}
 </div>
 {% endfor %}
 {% endblock %}

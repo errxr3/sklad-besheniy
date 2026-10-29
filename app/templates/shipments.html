@@ -34,12 +34,17 @@
 		{% endfor %}
 	</div>
 	{% if moved %}
-	<h3 class="mt">Погружено не в свою машину</h3>
-	<ul class="plain moved-list">
-		{% for item in moved %}
-		<li>{{ item.article.name if item.article else item.article_name }} · BLAGO {{ item.unit.number if item.unit else '—' }} · {{ item.batch.channel }} {{ item.posting }}: <b>{{ item.moved_note }}</b></li>
-		{% endfor %}
-	</ul>
+	<h3 class="mt">Погружено не в свою машину: {{ moved|length }}</h3>
+	{% for note, group in moved|groupby('moved_note') %}
+	<details class="moved-group">
+		<summary><b>{{ note }}</b> — {{ group|length }} шт.</summary>
+		<ul class="plain moved-list">
+			{% for item in group %}
+			<li>{{ item.article.name if item.article else item.article_name }} · BLAGO {{ item.unit.number if item.unit else '—' }} · {{ item.batch.channel }} {{ item.posting }}</li>
+			{% endfor %}
+		</ul>
+	</details>
+	{% endfor %}
 	{% endif %}
 </div>
 {% endif %}

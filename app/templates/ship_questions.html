@@ -42,16 +42,6 @@
 {% endfor %}
 <h2>Срочные задачи сегодня</h2>
 <div class="card">
-	{% if not urgent %}<p class="muted">Срочных задач нет.</p>{% endif %}
-	<table class="dense">
-		{% for u in urgent %}
-		<tr class="{% if u.overdue %}overdue{% elif u.left == 0 %}done{% endif %}">
-			<td>{{ u.task.user.name }}</td><td>{{ u.task.article.name if u.task.article else '' }}</td>
-			<td class="num">сдано {{ u.done }} из {{ u.task.urgent_qty }}</td>
-			<td>к {{ u.task.urgent_due|time }}{% if u.overdue %} · просрочено{% endif %}</td>
-			<td class="muted">{{ u.task.urgent_note or '' }}</td>
-		</tr>
-		{% endfor %}
-	</table>
+	{% if urgent %}{% include "_urgent_list.html" %}{% else %}<p class="muted">Срочных задач нет.</p>{% endif %}
 </div>
 {% endblock %}
