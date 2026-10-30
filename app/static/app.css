@@ -566,3 +566,6 @@ tr.overdue td { color: var(--err); font-weight: 600; }
 label.check { display: flex; align-items: center; gap: 6px; align-self: end; min-height: 44px; }
 .check-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 16px; }
 .check-list label.check { min-height: 40px; align-self: auto; }
+
+/* Заголовки каналов не переносятся: «Озон 1» в одну строку, иначе «1» выглядит как цифра в таблице */
+.shipments thead th.ch { white-space: nowrap; }
