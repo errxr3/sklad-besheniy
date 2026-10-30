@@ -3,6 +3,20 @@
 {% block content %}
 <h1>Инвентаризация</h1>
 {% if err %}<p class="msg err">{{ err }}</p>{% endif %}
+{% if ok %}<p class="msg ok">{{ ok }}</p>{% endif %}
+
+{% if loader %}
+<div class="card">
+	{% if running %}
+	<p>Выберите площадку и сканируйте каждое зеркало на полках.</p>
+	{% for item in running %}
+	<a class="btn big mt" href="/inventory/{{ item.id }}">Сканировать: {{ site_names[item.site_id] }}</a>
+	{% endfor %}
+	{% else %}
+	<p class="muted">Администратор ещё не начал инвентаризацию. Обновите страницу, когда он скажет.</p>
+	{% endif %}
+</div>
+{% else %}
 <div class="card">
 	<form method="get" action="/inventory" class="line">
 		<label for="inv-site" style="margin:0">Площадка</label>
@@ -12,7 +26,7 @@
 	</form>
 	{% if current %}
 		<p class="msg warn">Инвентаризация идёт с {{ current.started_at|dt }}</p>
-		<a class="btn big" href="/inventory/{{ current.id }}">Продолжить пересчёт</a>
+		<a class="btn big" href="/inventory/{{ current.id }}">Открыть: расхождения и подтверждение</a>
 	{% else %}
 		<form method="post" action="/inventory/start">
 			<input type="hidden" name="csrf_token" value="{{ csrf }}">
@@ -21,6 +35,30 @@
 		</form>
 		<p class="hint">Пока идёт инвентаризация, отгрузки и перемещения разрешены: зеркала,
 			прошедшие через них после старта, в расхождения не попадут.</p>
+	{% endif %}
+</div>
+
+<div class="card">
+	<h2>Кто сканирует сегодня</h2>
+	<p class="hint">Отмеченные грузчики сегодня увидят в меню «Инвентаризация» и смогут сканировать.
+		Завтра доступ закроется сам. Начинаете и подтверждаете инвентаризацию вы.</p>
+	{% if loaders %}
+	<form method="post" action="/inventory/access">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<div class="check-list">
+			{% for u in loaders %}
+			<label class="check"><input type="checkbox" name="user_id" value="{{ u.id }}" {% if u.inventory_day == today %}checked{% endif %}>
+				{{ u.name }}{% if u.home_site %} <span class="muted">· {{ u.home_site.name }}</span>{% endif %}</label>
+			{% endfor %}
+		</div>
+		<div class="row tight mt">
+			<button type="submit">Дать доступ на сегодня</button>
+			<button type="button" class="secondary" id="inv-all">Отметить всех</button>
+		</div>
+		<p class="hint">Чтобы закрыть доступ раньше — снимите галочки и нажмите «Дать доступ на сегодня».</p>
+	</form>
+	{% else %}
+	<p class="muted">Грузчиков нет. Заведите их в «Сотрудниках».</p>
 	{% endif %}
 </div>
 
@@ -39,4 +77,16 @@
 	</table>
 </div>
 {% endif %}
+{% endif %}
+{% endblock %}
+{% block scripts %}
+<script>
+	(function () {
+		var all = document.getElementById('inv-all');
+		if (!all) return;
+		all.addEventListener('click', function () {
+			Array.prototype.forEach.call(document.querySelectorAll('input[name=user_id]'), function (box) { box.checked = true; });
+		});
+	})();
+</script>
 {% endblock %}

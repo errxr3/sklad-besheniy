@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import Inventory, Site, User
 from app.routers.make import labels_pdf_response
+from app.services.admin import log_admin
 from app.services.context import site_and_shift
 from app.services.shipping import cancel_ship
 from app.services.units import ScanResult, UnitError, write_off_unit
@@ -28,7 +29,8 @@ from app.services.warehouse import (
     transfer_out,
     units_in_transit,
 )
-from app.statuses import WRITE_OFF_REASONS
+from app.statuses import ROLE_LOADER, WRITE_OFF_REASONS
+from app.timeutil import today_msk
 from app.web import GuardedRoute, page, read_json
 
 logger = logging.getLogger(__name__)
@@ -282,10 +284,22 @@ async def ship_cancel_scan(request: Request, db: Session = Depends(get_db)) -> J
 
 @router.get("/inventory", response_class=HTMLResponse)
 def inventory_home(
-    request: Request, db: Session = Depends(get_db), err: str = "", site_id: int = 0
+    request: Request, db: Session = Depends(get_db), err: str = "", ok: str = "", site_id: int = 0
 ) -> Response:
-    """Начало инвентаризации или переход к идущей; площадку можно выбрать."""
+    """Начало инвентаризации или переход к идущей; площадку можно выбрать.
+
+    Грузчик (в день, открытый администратором) видит только идущие пересчёты и сканирует.
+    """
     user = request.state.user
+    if user.role == ROLE_LOADER:
+        running = list(
+            db.scalars(
+                select(Inventory).where(Inventory.finished_at.is_(None)).order_by(Inventory.started_at)
+            ).all()
+        )
+        names = {site.id: site.name for site in db.scalars(select(Site)).all()}
+        context = {"loader": True, "running": running, "site_names": names, "err": err}
+        return page(request, "inventory_home.html", context)
     site = _inventory_site(db, user, site_id)
     current = active_inventory(db, site.id)
     history = list(
@@ -296,17 +310,44 @@ def inventory_home(
             .limit(10)
         ).all()
     )
+    loaders = list(
+        db.scalars(
+            select(User)
+            .where(User.role == ROLE_LOADER, User.active.is_(True), User.deleted_at.is_(None))
+            .order_by(User.name)
+        ).all()
+    )
     return page(
         request,
         "inventory_home.html",
         {
+            "loader": False,
             "site": site,
             "sites": db.scalars(select(Site).where(Site.active.is_(True)).order_by(Site.sort_order)).all(),
             "current": current,
             "history": history,
+            "loaders": loaders,
             "err": err,
+            "ok": ok,
         },
     )
+
+
+@router.post("/inventory/access")
+async def inventory_access(request: Request, db: Session = Depends(get_db)) -> Response:
+    """Открыть инвентаризацию отмеченным грузчикам на сегодня, остальным — закрыть."""
+    form = await request.form()
+    chosen = {int(str(v)) for v in form.getlist("user_id") if str(v).isdigit()}
+    today = today_msk()
+    opened = 0
+    for loader in db.scalars(select(User).where(User.role == ROLE_LOADER)).all():
+        loader.inventory_day = today if loader.id in chosen else None
+        opened += loader.id in chosen
+    log_admin(db, request.state.user.id, "доступ к инвентаризации", "user", None, None,
+              {"day": today.isoformat(), "users": sorted(chosen)})
+    logger.info("Доступ к инвентаризации", extra={"user_id": request.state.user.id, "status": str(opened)})
+    message = f"Инвентаризация открыта на сегодня: {opened} чел." if opened else "Доступ у грузчиков закрыт"
+    return RedirectResponse(f"/inventory?{urlencode({'ok': message})}", status_code=303)
 
 
 def _inventory_site(db: Session, user: User, site_id: int) -> Site:
@@ -349,6 +390,8 @@ def inventory_page(request: Request, inventory_id: int, db: Session = Depends(ge
             "diff": diff,
             "url": f"/inventory/{inventory.id}/scan",
             "finished": inventory.finished_at is not None,
+            # Грузчик только сканирует: расхождения и подтверждение — у администратора
+            "loader": request.state.user.role == ROLE_LOADER,
         },
     )
 

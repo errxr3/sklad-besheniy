@@ -5,8 +5,9 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
 from app.main import app
-from app.roles import API_KEY, NEEDS_OPEN_SHIFT, PUBLIC, ROUTE_ROLES
+from app.roles import API_KEY, NEEDS_INVENTORY_DAY, NEEDS_OPEN_SHIFT, PUBLIC, ROUTE_ROLES
 from app.statuses import ALL_ROLES
+from app.timeutil import today_msk
 from tests.helpers import get_csrf, login, make_user, open_shift
 
 # Подстановка значений вместо параметров пути: маршрут должен отвечать проверкой доступа,
@@ -94,6 +95,10 @@ def test_forbidden_roles_get_403(method: str, path: str, client: TestClient, db:
         if (method, path) in NEEDS_OPEN_SHIFT:
             # Маршрут требует открытой смены — иначе сборщик и грузчик получат 403 по другой причине
             open_shift(db, user)
+        if (method, path) in NEEDS_INVENTORY_DAY:
+            # Инвентаризация грузчику — только в открытый день (проверяется в test_inventory_loaders.py)
+            user.inventory_day = today_msk()
+            db.commit()
         with TestClient(app) as role_client:
             login(role_client, user)
             token = get_csrf(role_client, "/")

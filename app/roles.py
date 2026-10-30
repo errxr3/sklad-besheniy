@@ -47,6 +47,14 @@ ACCEPTORS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_ASSEMBLER)
 LOADERS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_LOADER)
 # Возвраты от покупателей и печать ШК для зеркал без маркировки
 RETURNS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_RETURNS)
+# Инвентаризацию начинает и подтверждает администратор, сканируют грузчики — только в день,
+# на который администратор открыл им доступ (решение владельца 2026-10-30)
+INVENTORY_SCAN: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_LOADER)
+NEEDS_INVENTORY_DAY: Final[frozenset[tuple[str, str]]] = frozenset({
+    ("GET", "/inventory"),
+    ("GET", "/inventory/{inventory_id}"),
+    ("POST", "/inventory/{inventory_id}/scan"),
+})
 # Смену (кнопкой «Начать смену») начинают все, кто вошёл
 SHIFT_USERS: Final[tuple[str, ...]] = ALL_LOGGED_IN
 WORKERS: Final[tuple[str, ...]] = (ROLE_ASSEMBLER, ROLE_LOADER)
@@ -147,10 +155,11 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("POST", "/writeoff/scan"): ADMIN_ONLY,
     ("GET", "/ship-cancel"): ADMIN_ONLY,
     ("POST", "/ship-cancel/scan"): ADMIN_ONLY,
-    ("GET", "/inventory"): ADMIN_ONLY,
+    ("GET", "/inventory"): INVENTORY_SCAN,
     ("POST", "/inventory/start"): ADMIN_ONLY,
-    ("GET", "/inventory/{inventory_id}"): ADMIN_ONLY,
-    ("POST", "/inventory/{inventory_id}/scan"): ADMIN_ONLY,
+    ("POST", "/inventory/access"): ADMIN_ONLY,
+    ("GET", "/inventory/{inventory_id}"): INVENTORY_SCAN,
+    ("POST", "/inventory/{inventory_id}/scan"): INVENTORY_SCAN,
     ("POST", "/inventory/{inventory_id}/finish"): ADMIN_ONLY,
     # Журнал
     ("GET", "/shipments/plan"): LEADS,

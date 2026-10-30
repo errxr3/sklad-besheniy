@@ -14,7 +14,7 @@ from fastapi.templating import Jinja2Templates
 from app.db import get_session_factory
 from app.menu import menu_for
 from app.models import User
-from app.roles import API_KEY, NEEDS_OPEN_SHIFT, PUBLIC, can, roles_for
+from app.roles import API_KEY, NEEDS_INVENTORY_DAY, NEEDS_OPEN_SHIFT, PUBLIC, can, roles_for
 from app.security import check_csrf, csrf_token, open_shift_for, session_user_id
 from app.statuses import (
     MOVEMENT_LABELS,
@@ -111,6 +111,11 @@ def load_user(request: Request) -> User | None:
         return user
 
 
+def inventory_open_today(user: User) -> bool:
+    """Открыл ли администратор грузчику инвентаризацию на сегодня."""
+    return user.role == ROLE_LOADER and user.inventory_day == today_msk()
+
+
 def check_access(request: Request, method: str, path: str) -> None:
     """Проверить доступ к маршруту по таблице ролей. Вызывается для каждого запроса."""
     allowed = roles_for(method, path)
@@ -135,6 +140,8 @@ def check_access(request: Request, method: str, path: str) -> None:
         raise NeedLogin
     if user.role not in allowed:
         raise AccessDenied
+    if (method, path) in NEEDS_INVENTORY_DAY and user.role == ROLE_LOADER and not inventory_open_today(user):
+        raise AccessDenied("Инвентаризация сегодня вам не открыта — доступ даёт администратор")
 
     if (method, path) in NEEDS_OPEN_SHIFT and user.role in ROLES_NEED_SHIFT:
         with get_session_factory()() as session:
@@ -265,7 +272,7 @@ def _ship_question_count(user: User | None) -> int:
 def page(request: Request, template: str, context: dict[str, Any] | None = None) -> HTMLResponse:
     """Отрисовать страницу с общими переменными."""
     user = getattr(request.state, "user", None) or load_user(request)
-    menu = menu_for(user.role if user else None)
+    menu = menu_for(user.role if user else None, inventory=bool(user and inventory_open_today(user)))
     data: dict[str, Any] = {
         "user": user,
         "menu": menu,

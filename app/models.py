@@ -102,6 +102,8 @@ class User(Base):
     is_service: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     # Удалённый сотрудник: не входит и не виден в списках, но его записи в журнале остаются
     deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # Грузчик сканирует инвентаризацию только в день, который открыл администратор
+    inventory_day: Mapped[date | None] = mapped_column(Date)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     home_site: Mapped[Site | None] = relationship(lazy="joined")

@@ -103,8 +103,11 @@ def admin_section_url(key: str) -> str:
 __all__ = ["ADMIN_SECTIONS", "ALL_LOGGED_IN", "MENU", "MenuItem", "menu_for"]
 
 
-def menu_for(role: str | None) -> list[MenuItem]:
-    """Пункты меню, доступные роли."""
+INVENTORY_ITEM = MenuItem("Инвентаризация", "/inventory", (ROLE_LOADER,))
+
+
+def menu_for(role: str | None, *, inventory: bool = False) -> list[MenuItem]:
+    """Пункты меню, доступные роли. `inventory` — грузчику открыта инвентаризация на сегодня."""
     if not role:
         return []
     if role == ROLE_ADMIN:
@@ -113,4 +116,7 @@ def menu_for(role: str | None) -> list[MenuItem]:
             MenuItem(section.title, admin_section_url(section.key), ADMIN_ONLY)
             for section in ADMIN_SECTIONS
         ]
-    return [item for item in MENU if role in item.roles]
+    items = [item for item in MENU if role in item.roles]
+    if inventory and role in INVENTORY_ITEM.roles:
+        items.append(INVENTORY_ITEM)
+    return items

@@ -564,3 +564,5 @@ tr.overdue td { color: var(--err); font-weight: 600; }
 .plan-chip.work, .plan-chip.ask { background: var(--warn-bg); color: var(--warn); }
 .plan-chip.no { background: var(--err-bg); color: var(--err); }
 label.check { display: flex; align-items: center; gap: 6px; align-self: end; min-height: 44px; }
+.check-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 16px; }
+.check-list label.check { min-height: 40px; align-self: auto; }
