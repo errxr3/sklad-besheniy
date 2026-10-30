@@ -1,9 +1,5 @@
-"""Смены: код площадки, начало и окончание по скану, автозакрытие, табель (SPEC §5)."""
+"""Смены: начало и окончание кнопкой, автозакрытие, табель (SPEC §5; без QR — решение владельца)."""
 
-import hashlib
-import hmac
-import math
-import secrets
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
@@ -14,7 +10,6 @@ from app.models import Movement, Shift, Site, User
 from app.statuses import END_AUTO, END_MANUAL, END_USER, ROLE_ASSEMBLER, ROLE_LOADER
 from app.timeutil import MOSCOW, msk_day_bounds, now_utc, to_moscow
 
-CODE_PREFIX = "SHIFT"
 # Во сколько по Москве автоматически закрываются забытые смены (SPEC §5.4)
 AUTO_CLOSE_HOUR = 0
 AUTO_CLOSE_MINUTE = 5
@@ -22,74 +17,6 @@ AUTO_CLOSE_MINUTE = 5
 
 class ShiftError(Exception):
     """Ошибка работы со сменой, текст показывается пользователю."""
-
-
-def hash_secret(secret: str) -> str:
-    """Хеш секрета кода смены (в базе хранится только он)."""
-    return hashlib.sha256(secret.encode("utf-8")).hexdigest()
-
-
-def make_shift_code(session: Session, site: Site) -> str:
-    """Выдать площадке новый код смены и вернуть строку для QR."""
-    secret = secrets.token_urlsafe(32)
-    site.shift_code_hash = hash_secret(secret)
-    site.shift_code_rotated_at = now_utc()
-    session.flush()
-    return f"{CODE_PREFIX}:{site.id}:{secret}"
-
-
-def parse_shift_code(raw: str) -> tuple[int, str]:
-    """Разобрать строку из QR. Бросает ShiftError, если формат не тот."""
-    text = str(raw or "").strip()
-    parts = text.split(":")
-    if len(parts) != 3 or parts[0].upper() != CODE_PREFIX:
-        raise ShiftError("Код не распознан")
-    try:
-        site_id = int(parts[1])
-    except ValueError as exc:
-        raise ShiftError("Код не распознан") from exc
-    return site_id, parts[2]
-
-
-def check_code(session: Session, raw: str) -> Site:
-    """Проверить код смены и вернуть площадку."""
-    site_id, secret = parse_shift_code(raw)
-    site = session.get(Site, site_id)
-    if site is None:
-        raise ShiftError("Код не распознан")
-    if not site.active:
-        raise ShiftError(f"Площадка «{site.name}» отключена")
-    if not site.shift_code_hash:
-        raise ShiftError("Для площадки не выпущен код смены — обратитесь к администратору")
-    if not hmac.compare_digest(site.shift_code_hash, hash_secret(secret)):
-        raise ShiftError("Код устарел — обратитесь к администратору")
-    return site
-
-
-def distance_m(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
-    """Расстояние между точками на земле в метрах."""
-    radius = 6_371_000.0
-    phi1, phi2 = math.radians(lat1), math.radians(lat2)
-    dphi = math.radians(lat2 - lat1)
-    dlambda = math.radians(lon2 - lon1)
-    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
-    return 2 * radius * math.asin(math.sqrt(a))
-
-
-def check_geo(site: Site, lat: float | None, lon: float | None) -> None:
-    """Проверить, что сотрудник в радиусе площадки (если проверка включена)."""
-    if not site.geo_check_enabled:
-        return
-    if site.geo_lat is None or site.geo_lon is None:
-        raise ShiftError("У площадки не заданы координаты — обратитесь к администратору")
-    if lat is None or lon is None:
-        raise ShiftError("Нужно разрешить доступ к геопозиции")
-    distance = distance_m(lat, lon, site.geo_lat, site.geo_lon)
-    if distance > site.geo_radius_m:
-        raise ShiftError(
-            f"Вы в {int(distance)} м от площадки «{site.name}», "
-            f"начать смену можно в радиусе {site.geo_radius_m} м"
-        )
 
 
 def open_shift(session: Session, user_id: int) -> Shift | None:

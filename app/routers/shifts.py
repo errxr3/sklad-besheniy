@@ -13,15 +13,12 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Shift, Site, User
-from app.qr import build_shift_code_pdf
-from app.services.admin import log_admin
 from app.services.context import current_site
 from app.services.shifts import (
     ShiftError,
     board_rows,
     edit_shift,
     end_shift,
-    make_shift_code,
     start_shift,
     timesheet,
 )
@@ -268,34 +265,6 @@ def timesheet_csv(
         content=data.encode("utf-8"),
         media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f'attachment; filename="{filename}"'},
-    )
-
-
-@router.post("/admin/sites/{site_id}/rotate-code")
-def rotate_code(request: Request, site_id: int, db: Session = Depends(get_db)) -> Response:
-    """Перевыпустить код смены площадки: старый сразу перестаёт работать."""
-    site = db.get(Site, site_id)
-    if site is None:
-        return page(request, "error.html", {"message": "Площадка не найдена", "status_code": 404})
-    make_shift_code(db, site)
-    log_admin(db, request.state.user.id, "перевыпущен код смены", "site", site.id)
-    logger.info("Перевыпущен код смены", extra={"user_id": request.state.user.id})
-    return RedirectResponse(f"/admin/sites/{site.id}/code.pdf", status_code=303)
-
-
-@router.get("/admin/sites/{site_id}/code.pdf")
-def shift_code_pdf(request: Request, site_id: int, db: Session = Depends(get_db)) -> Response:
-    """Лист A4 с QR-кодом смены. Код выпускается, если его ещё не было."""
-    site = db.get(Site, site_id)
-    if site is None:
-        return page(request, "error.html", {"message": "Площадка не найдена", "status_code": 404})
-    code = make_shift_code(db, site)
-    log_admin(db, request.state.user.id, "напечатан код смены", "site", site.id)
-    pdf = build_shift_code_pdf(site.name, code, fmt_dt(site.shift_code_rotated_at))
-    return Response(
-        content=pdf,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f'inline; filename="shift_code_{site.id}.pdf"'},
     )
 
 

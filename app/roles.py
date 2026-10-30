@@ -47,7 +47,7 @@ ACCEPTORS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_ASSEMBLER)
 LOADERS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_LOADER)
 # Возвраты от покупателей и печать ШК для зеркал без маркировки
 RETURNS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_RETURNS)
-# Смена по QR нужна тем, кто работает в цеху
+# Смену (кнопкой «Начать смену») начинают все, кто вошёл
 SHIFT_USERS: Final[tuple[str, ...]] = ALL_LOGGED_IN
 WORKERS: Final[tuple[str, ...]] = (ROLE_ASSEMBLER, ROLE_LOADER)
 
@@ -76,8 +76,6 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("POST", "/admin/articles/color"): ADMIN_ONLY,
     ("GET", "/admin/settings"): ADMIN_ONLY,
     ("POST", "/admin/settings"): ADMIN_ONLY,
-    ("POST", "/admin/sites/{site_id}/rotate-code"): ADMIN_ONLY,
-    ("GET", "/admin/sites/{site_id}/code.pdf"): ADMIN_ONLY,
     # Приёмка сканом и перепечатка этикетки
     ("POST", "/scan/accept"): ACCEPTORS,
     ("GET", "/scanner"): ADMIN_ONLY,

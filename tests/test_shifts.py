@@ -11,7 +11,6 @@ from app.models import Shift, Site
 from app.services.shifts import (
     ShiftError,
     auto_close_shifts,
-    check_code,
     edit_shift,
     end_shift,
     shift_sites,
@@ -224,11 +223,8 @@ def test_shift_buttons_through_http(client: TestClient, db: Session) -> None:
     assert "Смена не начата" in ended.text
 
 
-def test_shift_code_pdf_contains_qr(client: TestClient, db: Session) -> None:
-    """Лист A4 с кодом смены печатается и QR читается."""
-    import pypdfium2
-    import zxingcpp
-
+def test_no_qr_shift_code_pages(client: TestClient, db: Session) -> None:
+    """QR смены убран совсем: листа с кодом и перевыпуска кода больше нет."""
     from app.services.admin import create_user
     from app.statuses import ROLE_ADMIN
 
@@ -238,20 +234,8 @@ def test_shift_code_pdf_contains_qr(client: TestClient, db: Session) -> None:
     db.commit()
     login(client, admin)
     site = site_by_name(db)
-
-    response = client.get(f"/admin/sites/{site.id}/code.pdf")
-    assert response.status_code == 200
-    assert response.headers["content-type"] == "application/pdf"
-
-    document = pypdfium2.PdfDocument(response.content)
-    image = document[0].render(scale=3).to_pil().convert("L")
-    codes = [result.text for result in zxingcpp.read_barcodes(image)]
-    assert len(codes) == 1
-    assert codes[0].startswith(f"SHIFT:{site.id}:")
-
-    db.expire_all()
-    site_fresh = site_by_name(db)
-    assert check_code(db, codes[0]).id == site_fresh.id
+    assert client.get(f"/admin/sites/{site.id}/code.pdf").status_code == 404
+    assert "QR" not in client.get("/admin/sites").text
 
 
 def test_board_counts_only_chosen_site(db: Session) -> None:
