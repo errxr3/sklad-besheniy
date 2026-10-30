@@ -24,8 +24,6 @@ DEFAULT_SITES: tuple[tuple[str, int], ...] = (("Учительская", 1), ("�
 DEFAULT_SETTINGS: tuple[tuple[str, str], ...] = (
     ("label_width_mm", "58"),
     ("label_height_mm", "40"),
-    ("require_mp_barcode", "0"),
-    ("verify_order", "0"),
     ("ship_cancel_minutes", "10"),
 )
 

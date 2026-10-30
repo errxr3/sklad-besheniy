@@ -15,7 +15,6 @@ from app.models import Shift, Unit
 from app.scheduler import scheduler_running
 from app.services.admin import log_admin
 from app.services.apikeys import create_key, deactivate_key, list_keys
-from app.services.sheets import is_configured, last_sync, minutes_since_sync
 from app.services.units import printed_older_than
 from app.services.warehouse import units_in_transit
 from app.statuses import IN_STOCK
@@ -93,23 +92,12 @@ def status_page(request: Request, db: Session = Depends(get_db)) -> Response:
     running = scheduler_running()
     checks.append(
         {
-            "name": "Планировщик (автозакрытие смен, выгрузка)",
+            "name": "Планировщик (автозакрытие смен и каналов)",
             "state": "ok" if running else "warn",
             "detail": "работает" if running else "выключен (SCHEDULER_ENABLED=0)",
         }
     )
 
-    sync_time, sync_status = last_sync(db)
-    minutes = minutes_since_sync(db)
-    if not is_configured():
-        sheets_state, sheets_detail = "warn", "не настроена (нет ID таблицы или ключа)"
-    elif minutes is None:
-        sheets_state, sheets_detail = "warn", f"ещё не выгружалась. {sync_status}"
-    elif minutes >= 25:
-        sheets_state, sheets_detail = "err", f"не обновлялась {minutes} минут. {sync_status}"
-    else:
-        sheets_state, sheets_detail = "ok", f"обновлена {minutes} мин назад. {sync_status}"
-    checks.append({"name": "Гугл-таблица", "state": sheets_state, "detail": sheets_detail})
 
     backup_name, backup_time, backup_age = latest_backup()
     if backup_age is None:
@@ -134,7 +122,7 @@ def status_page(request: Request, db: Session = Depends(get_db)) -> Response:
     return page(
         request,
         "status.html",
-        {"checks": checks, "figures": figures, "now": fmt_dt(now_utc()), "sync_time": sync_time},
+        {"checks": checks, "figures": figures, "now": fmt_dt(now_utc())},
     )
 
 

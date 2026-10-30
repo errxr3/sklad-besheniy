@@ -7,7 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import AdminLog, Article, Site, User
-from app.settings_store import get_flag, get_int
+from app.settings_store import get_int
 from app.statuses import ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_LOADER, ROLE_STOREKEEPER
 from tests.helpers import get_csrf, login, make_user
 
@@ -230,16 +230,12 @@ def test_settings_saved(client: TestClient, db: Session) -> None:
             "csrf_token": token,
             "label_width_mm": "70",
             "label_height_mm": "50",
-            "require_mp_barcode": "1",
-            "verify_order": "1",
             "ship_cancel_minutes": "15",
         },
     )
     db.expire_all()
     assert get_int(db, "label_width_mm") == 70
     assert get_int(db, "label_height_mm") == 50
-    assert get_flag(db, "require_mp_barcode") is True
-    assert get_flag(db, "verify_order") is True
     assert get_int(db, "ship_cancel_minutes") == 15
 
 
@@ -276,9 +272,9 @@ def test_menu_differs_by_role(client: TestClient, db: Session) -> None:
     _admin(client, db)
     admin_text = client.get("/").text
     # У админа в меню — разделы по ролям, по умолчанию открыт «Начальник смены»
-    for section in ("Начальник смены", "Кладовщица", "Сборщик", "Грузчик", "Возвраты", "Администратор"):
+    for section in ("Начальник смены", "Кладовщица", "Грузчик", "Возвраты", "Администратор"):
         assert section in admin_text
     assert 'href="/board"' in admin_text
     assert "Сотрудники" in client.get("/admin").text
-    assert "Сканер приёмки" in client.get("/admin/section/assembler").text
+    assert "Раздел не найден" in client.get("/admin/section/assembler").text  # тестовый сканер убран
     assert "Раздел не найден" in client.get("/admin/section/nope").text

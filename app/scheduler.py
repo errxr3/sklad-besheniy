@@ -4,7 +4,6 @@ import logging
 
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 from sqlalchemy import Connection, text
 
 from app.config import get_settings
@@ -45,21 +44,6 @@ def job_auto_close_channels() -> None:
         logger.exception("Автозакрытие каналов не выполнено")
 
 
-def job_sync_sheets() -> None:
-    """Выгрузить остатки в гугл-таблицу (если она настроена)."""
-    from app.services.sheets import sync_stock_to_sheets
-
-    try:
-        with session_scope() as session:
-            result = sync_stock_to_sheets(session)
-        if result.skipped:
-            logger.debug("Выгрузка в гугл-таблицу пропущена", extra={"status": result.message})
-        else:
-            logger.info("Выгрузка в гугл-таблицу", extra={"status": result.message})
-    except Exception:
-        logger.exception("Выгрузка в гугл-таблицу не выполнена")
-
-
 def start_scheduler() -> BackgroundScheduler | None:
     """Запустить планировщик, если он включён настройками."""
     global _scheduler
@@ -87,12 +71,6 @@ def start_scheduler() -> BackgroundScheduler | None:
         job_auto_close_channels,
         CronTrigger(hour=23, minute=59, timezone=MOSCOW),
         id="auto_close_channels",
-        replace_existing=True,
-    )
-    scheduler.add_job(
-        job_sync_sheets,
-        IntervalTrigger(minutes=max(1, settings.google_sync_minutes)),
-        id="sync_sheets",
         replace_existing=True,
     )
     scheduler.start()

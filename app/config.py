@@ -21,12 +21,6 @@ class Settings(BaseSettings):
     display_tz: str = "Europe/Moscow"
     log_level: str = "INFO"
 
-    google_sheets_id: str = ""
-    google_service_account_file: str = ""
-    google_service_account_json: str = ""
-    google_sheet_name: str = "Остатки из системы"
-    google_sync_minutes: int = 5
-
     scheduler_enabled: bool = True
 
     @property

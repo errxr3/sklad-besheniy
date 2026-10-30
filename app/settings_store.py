@@ -7,8 +7,6 @@ from app.models import Setting
 DEFAULTS: dict[str, str] = {
     "label_width_mm": "58",
     "label_height_mm": "40",
-    "require_mp_barcode": "0",
-    "verify_order": "0",
     "ship_cancel_minutes": "10",
 }
 
@@ -28,11 +26,6 @@ def get_int(session: Session, key: str) -> int:
         return int(float(raw))
     except (TypeError, ValueError):
         return int(float(DEFAULTS.get(key, "0") or 0))
-
-
-def get_flag(session: Session, key: str) -> bool:
-    """Настройка-переключатель."""
-    return get_value(session, key).strip() in ("1", "true", "да", "on")
 
 
 def set_value(session: Session, key: str, value: str) -> None:

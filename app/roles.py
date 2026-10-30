@@ -86,7 +86,6 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("POST", "/admin/settings"): ADMIN_ONLY,
     # Приёмка сканом и перепечатка этикетки
     ("POST", "/scan/accept"): ACCEPTORS,
-    ("GET", "/scanner"): ADMIN_ONLY,
     ("GET", "/make/reprint/{number}"): LEADS,
     ("GET", "/api/articles"): (*LEADS, ROLE_RETURNS, ROLE_STOREKEEPER),
     # Печать по задачам сборщиков и уборка висящих этикеток
@@ -178,10 +177,7 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("GET", "/shipments.xlsx"): LEADS,
     ("GET", "/stock.csv"): LEADS,
     ("GET", "/stock.xlsx"): LEADS,
-    ("POST", "/stock/sync"): LEADS,
     # API для BLAGO OTGRUZKI (ключ в заголовке X-API-Key)
-    ("GET", "/api/v1/stock"): API_KEY,
-    ("POST", "/api/v1/shipments"): API_KEY,
     ("GET", "/api/v1/ping"): API_KEY,
     ("POST", "/api/v1/demand"): API_KEY,
     ("POST", "/api/v1/batches"): API_KEY,

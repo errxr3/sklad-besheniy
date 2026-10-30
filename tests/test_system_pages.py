@@ -37,13 +37,14 @@ def test_admin_creates_key_and_it_works(client: TestClient, db: Session) -> None
 
 
 def test_status_page(client: TestClient, db: Session) -> None:
-    """Страница «Состояние» показывает базу, гугл-таблицу и бэкапы."""
+    """Страница «Состояние» показывает базу и бэкапы, гугл-таблицы больше нет."""
     admin = make_user(db, name="Админ состояния", role=ROLE_ADMIN)
     login(client, admin)
     response = client.get("/status")
     assert response.status_code == 200
-    for text in ("База данных", "Гугл-таблица", "Ночной бэкап", "На складе всего зеркал"):
+    for text in ("База данных", "Ночной бэкап", "На складе всего зеркал"):
         assert text in response.text
+    assert "Гугл-таблица" not in response.text
 
 
 def test_docs_only_for_admin(client: TestClient, db: Session) -> None:
@@ -58,4 +59,4 @@ def test_docs_only_for_admin(client: TestClient, db: Session) -> None:
         login(admin_client, admin)
         assert "swagger-ui-bundle.js" in admin_client.get("/docs").text
         schema = admin_client.get("/openapi.json").json()
-        assert "/api/v1/stock" in schema["paths"]
+        assert "/api/v1/demand" in schema["paths"]

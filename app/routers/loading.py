@@ -25,7 +25,6 @@ from app.services.shipping import (
     scan_loading,
     site_channels,
 )
-from app.settings_store import get_flag
 from app.statuses import OZON, OZON_TRUCKS, ROLE_ADMIN
 from app.web import GuardedRoute, page, read_json
 
@@ -61,7 +60,6 @@ def loading_page(
             "ozon": OZON,
             "ozon_trucks": OZON_TRUCKS,
             "count": pallet_count(db, pallet.id) if pallet else 0,
-            "require_mp": get_flag(db, "require_mp_barcode"),
             # Сегодня есть партия BLAGO OTGRUZKI для канала: двойной скан и список «что грузить»
             "batch_mode": batch_mode(db, pallet) if pallet else False,
             "batch_lines": channel_batch_lines(db, pallet) if pallet else [],

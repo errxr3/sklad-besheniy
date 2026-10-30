@@ -11,7 +11,6 @@
 	Пока цифры могут быть меньше, чем на полках. Когда закончите, отметьте это в
 	«Администратор → Площадки».</p>
 {% endif %}
-{% if sheets_warning %}<p class="msg warn">{{ sheets_warning }}</p>{% endif %}
 
 <div class="card stock-controls">
 	<form method="get" action="/stock" class="row tight">
@@ -34,14 +33,7 @@
 		<button type="button" class="secondary" data-copy="both">Копировать обе площадки</button>
 		<a class="btn secondary" href="/stock.csv?day={{ day.isoformat() }}">Скачать CSV</a>
 		<a class="btn secondary" href="/stock.xlsx?day={{ day.isoformat() }}">Скачать XLSX</a>
-		{% if user.role in (ROLE_ADMIN, ROLE_SHIFT_LEAD) %}
-		<form method="post" action="/stock/sync">
-			<input type="hidden" name="csrf_token" value="{{ csrf }}">
-			<button type="submit" class="secondary">Обновить гугл-таблицу</button>
-		</form>
-		{% endif %}
 	</div>
-	{% if sheets_status %}<p class="hint">Гугл-таблица: {{ sheets_status }}</p>{% endif %}
 </div>
 
 <div class="table-wrap">

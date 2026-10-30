@@ -239,22 +239,6 @@ def test_stock_exports(client: TestClient, db: Session) -> None:
     assert sheet.cell(2, 1).value == "ПОЛОТНА"
 
 
-def test_sync_without_key_is_skipped(client: TestClient, db: Session) -> None:
-    """Без ключа Google выгрузка тихо пропускается с понятным сообщением (SPEC §10)."""
-    from app.services.sheets import sync_stock_to_sheets
-
-    _with_catalog(db)
-    result = sync_stock_to_sheets(db)
-    db.commit()
-    assert result.skipped is True
-    assert "не настроена" in result.message
-
-    lead = make_user(db, name="Начальник выгрузки", role=ROLE_SHIFT_LEAD, pin="1234")
-    login(client, lead)
-    token_page = client.get("/stock")
-    assert token_page.status_code == 200
-
-
 def test_loader_cannot_open_stock(client: TestClient, db: Session) -> None:
     """Грузчику экран остатков недоступен (SPEC §4)."""
     from app.statuses import ROLE_LOADER

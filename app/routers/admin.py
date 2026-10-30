@@ -26,7 +26,7 @@ from app.services.admin import (
     update_site,
     update_user,
 )
-from app.settings_store import get_flag, get_int, set_value
+from app.settings_store import get_int, set_value
 from app.statuses import ALL_ROLES
 from app.web import GuardedRoute, page
 
@@ -322,15 +322,13 @@ def articles_color(
 
 @router.get("/settings", response_class=HTMLResponse)
 def settings_page(request: Request, db: Session = Depends(get_db), ok: str = "", err: str = "") -> Response:
-    """Настройки этикетки и этапов внедрения."""
+    """Настройки этикетки и отгрузки."""
     return page(
         request,
         "admin/settings.html",
         {
             "label_width_mm": get_int(db, "label_width_mm"),
             "label_height_mm": get_int(db, "label_height_mm"),
-            "require_mp_barcode": get_flag(db, "require_mp_barcode"),
-            "verify_order": get_flag(db, "verify_order"),
             "ship_cancel_minutes": get_int(db, "ship_cancel_minutes"),
             "ok": ok,
             "err": err,
@@ -343,8 +341,6 @@ def settings_save(
     request: Request,
     label_width_mm: int = Form(58),
     label_height_mm: int = Form(40),
-    require_mp_barcode: str = Form(""),
-    verify_order: str = Form(""),
     ship_cancel_minutes: int = Form(10),
     db: Session = Depends(get_db),
 ) -> Response:
@@ -353,7 +349,5 @@ def settings_save(
         return _redirect("/admin/settings", err="Размер этикетки вне разумных пределов")
     set_value(db, "label_width_mm", str(label_width_mm))
     set_value(db, "label_height_mm", str(label_height_mm))
-    set_value(db, "require_mp_barcode", "1" if require_mp_barcode == "1" else "0")
-    set_value(db, "verify_order", "1" if verify_order == "1" else "0")
     set_value(db, "ship_cancel_minutes", str(max(1, ship_cancel_minutes)))
     return _redirect("/admin/settings", message="Настройки сохранены")

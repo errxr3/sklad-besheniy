@@ -13,11 +13,11 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.articles import normalize_article
-from app.models import Article, Movement, MpShipment, Pallet, ShipBatch, ShipCode, ShipItem, Site, Unit, User
+from app.models import Article, Movement, Pallet, ShipBatch, ShipCode, ShipItem, Site, Unit, User
 from app.scan import clean_code, is_own_label
 from app.services.batches import clean_ship_code
 from app.services.units import ScanResult, stock_count
-from app.settings_store import get_flag, get_int
+from app.settings_store import get_int
 from app.statuses import (
     CHANNELS,
     IN_STOCK,
@@ -230,19 +230,6 @@ def pallet_count(session: Session, pallet_id: int) -> int:
     return int(value or 0)
 
 
-def check_order_match(session: Session, *, mp_barcode: str, unit: Unit) -> None:
-    """Сверка с отправлением из BLAGO OTGRUZKI (этап 3, SPEC §6.4)."""
-    shipment = session.scalar(select(MpShipment).where(MpShipment.mp_barcode == mp_barcode))
-    if shipment is None:
-        raise ShippingError(f"ШК {mp_barcode} не найден в списке отправлений")
-    expected = shipment.article_name_norm
-    actual = normalize_article(unit.article.name)
-    if expected != actual:
-        raise ShippingError(
-            f"Зеркало {unit.article.name}, а заказ на {shipment.article_name or expected}"
-        )
-
-
 def scan_loading(
     session: Session,
     *,
@@ -263,35 +250,13 @@ def scan_loading(
             unit_number=unit_number, ship_code=ship_code,
         )
 
-    require_mp = get_flag(session, "require_mp_barcode")
-    verify_order = get_flag(session, "verify_order")
-
     if is_own_label(value):
-        return _scan_unit_label(
-            session,
-            number=value,
-            pallet=pallet,
-            actor=actor,
-            shift_id=shift_id,
-            require_mp=require_mp,
-        )
-
-    # Это код маркетплейса
-    if not unit_number:
-        return LoadResult(
-            False,
-            "Это код маркетплейса",
-            "Сначала отсканируйте этикетку BLAGO",
-        )
-    return _scan_mp_barcode(
-        session,
-        mp_barcode=value,
-        unit_number=unit_number,
-        pallet=pallet,
-        actor=actor,
-        shift_id=shift_id,
-        require_mp=require_mp,
-        verify_order=verify_order,
+        return _scan_unit_label(session, number=value, pallet=pallet, actor=actor, shift_id=shift_id)
+    # Код маркетплейса нужен только каналу с партией из BLAGO OTGRUZKI
+    return LoadResult(
+        False,
+        "Это код маркетплейса",
+        "на этот канал сегодня нет партии из BLAGO OTGRUZKI — сканируйте только этикетку BLAGO",
     )
 
 
@@ -302,7 +267,6 @@ def _scan_unit_label(
     pallet: Pallet,
     actor: User,
     shift_id: int | None,
-    require_mp: bool,
 ) -> LoadResult:
     """Скан этикетки зеркала при погрузке."""
     unit = lock_unit(session, number)
@@ -343,90 +307,7 @@ def _scan_unit_label(
             article=article_name,
         )
 
-    if require_mp:
-        # Второй скан обязателен: отгружаем только после кода маркетплейса
-        return LoadResult(
-            True,
-            article_name,
-            "Отсканируйте ШК маркетплейса",
-            number=number,
-            article=article_name,
-            await_mp=True,
-            pallet_count=pallet_count(session, pallet.id),
-        )
-
     return _do_ship(session, unit=unit, pallet=pallet, actor=actor, shift_id=shift_id)
-
-
-def _scan_mp_barcode(
-    session: Session,
-    *,
-    mp_barcode: str,
-    unit_number: str,
-    pallet: Pallet,
-    actor: User,
-    shift_id: int | None,
-    require_mp: bool,
-    verify_order: bool,
-) -> LoadResult:
-    """Скан ШК маркетплейса, который наклеен на только что отсканированное зеркало."""
-    unit = lock_unit(session, clean_code(unit_number))
-    if unit is None:
-        return LoadResult(False, "Зеркало не найдено", "отсканируйте этикетку BLAGO заново")
-
-    existing = session.scalar(
-        select(Unit).where(Unit.mp_barcode == mp_barcode, Unit.id != unit.id)
-    )
-    if existing is not None:
-        return LoadResult(
-            False,
-            "Этот ШК маркетплейса уже привязан",
-            f"к зеркалу {existing.number}",
-            number=unit.number,
-            article=unit.article.name,
-        )
-
-    if verify_order:
-        try:
-            check_order_match(session, mp_barcode=mp_barcode, unit=unit)
-        except ShippingError as exc:
-            return LoadResult(
-                False,
-                str(exc),
-                "зеркало осталось на складе",
-                number=unit.number,
-                article=unit.article.name,
-            )
-
-    if unit.status == IN_STOCK:
-        return _do_ship(
-            session,
-            unit=unit,
-            pallet=pallet,
-            actor=actor,
-            shift_id=shift_id,
-            mp_barcode=mp_barcode,
-        )
-
-    if unit.status == SHIPPED and unit.pallet_id == pallet.id:
-        # Зеркало уже отгружено первым сканом — просто привязываем код
-        unit.mp_barcode = mp_barcode
-        session.flush()
-        return LoadResult(
-            True,
-            unit.article.name,
-            f"ШК привязан · в канале: {pallet_count(session, pallet.id)}",
-            number=unit.number,
-            article=unit.article.name,
-            pallet_count=pallet_count(session, pallet.id),
-        )
-
-    return LoadResult(
-        False,
-        f"Нельзя: статус «{STATUS_LABELS.get(unit.status, unit.status)}»",
-        number=unit.number,
-        article=unit.article.name,
-    )
 
 
 # ---------- погрузка по партиям BLAGO OTGRUZKI ----------

@@ -5,17 +5,16 @@ import io
 import json
 import logging
 from datetime import date
-from urllib.parse import quote, urlencode
+from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Site
 from app.services.batches import day_batches, moved_items
-from app.services.sheets import is_configured, last_sync, minutes_since_sync, sync_stock_to_sheets
 from app.services.shipment_report import build_shipment_table, shipment_xlsx
 from app.services.stock import build_stock_table, site_locative
 from app.timeutil import now_utc, today_msk
@@ -96,14 +95,6 @@ def stock_page(
             select(Site).where(Site.active.is_(True), Site.labeling_done.is_(False))
         ).all()
     )
-    stale_minutes = minutes_since_sync(db)
-    sheets_warning = ""
-    if is_configured():
-        if stale_minutes is None:
-            sheets_warning = "Гугл-таблица ещё ни разу не обновлялась"
-        elif stale_minutes >= SHEETS_STALE_MINUTES:
-            sheets_warning = f"Гугл-таблица не обновлялась {stale_minutes} минут"
-
     return page(
         request,
         "stock.html",
@@ -113,9 +104,6 @@ def stock_page(
             "day": target_day,
             "hide_inactive": bool(hide_inactive),
             "unmarked": unmarked,
-            "sheets_configured": is_configured(),
-            "sheets_warning": sheets_warning,
-            "sheets_status": last_sync(db)[1],
             "ok": ok,
             "err": err,
         },
@@ -204,12 +192,3 @@ def stock_xlsx(request: Request, db: Session = Depends(get_db), day: str = "") -
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers={"Content-Disposition": _attachment(name, "stock.xlsx")},
     )
-
-
-@router.post("/stock/sync")
-def stock_sync(request: Request, db: Session = Depends(get_db)) -> Response:
-    """Кнопка «Выгрузить сейчас» (SPEC §10)."""
-    result = sync_stock_to_sheets(db)
-    params = {"ok": result.message} if result.ok else {"err": result.message}
-    logger.info("Ручная выгрузка в гугл-таблицу", extra={"status": result.message})
-    return RedirectResponse(f"/stock?{urlencode(params)}", status_code=303)

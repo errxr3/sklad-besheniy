@@ -20,7 +20,6 @@ from app.services.shipping import (
     scan_loading,
 )
 from app.services.units import accept_unit, create_printed_units, stock_count
-from app.settings_store import set_value
 from app.statuses import IN_STOCK, MV_SHIP, ROLE_ASSEMBLER, ROLE_LOADER, ROLE_SHIFT_LEAD, SHIPPED
 from app.timeutil import now_utc, today_msk
 from tests.helpers import get_csrf, login, make_article, make_user, open_shift, site_by_name
@@ -133,47 +132,7 @@ def test_marketplace_code_without_unit_refused(db: Session) -> None:
     result = scan_loading(db, code="4603746901234", pallet=pallet, actor=loader)
     assert not result.ok
     assert "код маркетплейса" in result.message
-    assert "этикетку BLAGO" in result.detail
-
-
-def test_mp_barcode_attached_after_ship(db: Session) -> None:
-    """ШК маркетплейса привязывается к отгруженному зеркалу."""
-    units = _stocked_units(db, 1)
-    loader, pallet = _loader_with_pallet(db)
-    scan_loading(db, code=units[0].number, pallet=pallet, actor=loader)
-    db.commit()
-
-    result = scan_loading(
-        db, code="4603746901234", pallet=pallet, actor=loader, unit_number=units[0].number
-    )
-    db.commit()
-    db.refresh(units[0])
-    assert result.ok
-    assert units[0].mp_barcode == "4603746901234"
-
-
-def test_one_mp_barcode_cannot_belong_to_two_units(db: Session) -> None:
-    """Один ШК маркетплейса нельзя привязать к двум зеркалам (SPEC §12 п. 6)."""
-    units = _stocked_units(db, 2)
-    loader, pallet = _loader_with_pallet(db)
-    for unit in units:
-        scan_loading(db, code=unit.number, pallet=pallet, actor=loader)
-    db.commit()
-
-    first = scan_loading(
-        db, code="4603746900001", pallet=pallet, actor=loader, unit_number=units[0].number
-    )
-    db.commit()
-    assert first.ok
-
-    second = scan_loading(
-        db, code="4603746900001", pallet=pallet, actor=loader, unit_number=units[1].number
-    )
-    db.commit()
-    assert not second.ok
-    assert "уже привязан" in second.message
-    db.refresh(units[1])
-    assert units[1].mp_barcode is None
+    assert "этикетку BLAGO" in result.detail  # на канал без партии сканируют только BLAGO
 
 
 def test_mp_barcode_unique_in_database(db: Session) -> None:
@@ -187,28 +146,17 @@ def test_mp_barcode_unique_in_database(db: Session) -> None:
     db.rollback()
 
 
-def test_required_mp_barcode_holds_unit_until_second_scan(db: Session) -> None:
-    """При обязательном втором скане зеркало отгружается только после ШК маркетплейса."""
+def test_marketplace_code_without_batch_is_refused(db: Session) -> None:
+    """На канал без партии из BLAGO OTGRUZKI код маркетплейса не нужен — экран так и говорит."""
     units = _stocked_units(db, 1)
-    set_value(db, "require_mp_barcode", "1")
-    db.commit()
     loader, pallet = _loader_with_pallet(db)
-
-    first = scan_loading(db, code=units[0].number, pallet=pallet, actor=loader)
-    db.commit()
-    db.refresh(units[0])
-    assert first.ok
-    assert first.await_mp is True
-    assert units[0].status == IN_STOCK
-
-    second = scan_loading(
+    result = scan_loading(
         db, code="4603746900555", pallet=pallet, actor=loader, unit_number=units[0].number
     )
     db.commit()
     db.refresh(units[0])
-    assert second.ok
-    assert units[0].status == SHIPPED
-    assert units[0].mp_barcode == "4603746900555"
+    assert not result.ok and result.message == "Это код маркетплейса"
+    assert units[0].status == IN_STOCK
 
 
 def test_close_pallet_and_summary(db: Session) -> None:

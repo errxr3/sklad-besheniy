@@ -69,7 +69,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
 APP_NAME = "BLAGO OTGRUZKI"
-APP_VERSION = "30.10 · склад"
+APP_VERSION = "30.10.2 · склад"
 API = "https://api-seller.ozon.ru"
 BATCH = 20                   # максимум отправлений в одном запросе этикеток
 READY = "awaiting_deliver"   # статус, в котором Ozon отдаёт этикетку
@@ -1950,6 +1950,12 @@ def add_cdek(template, cdek, out, log, today=None):
 SKLAD_CONFIG = BASE_DIR / "sklad.json"
 SKLAD_PENDING = BASE_DIR / "sklad_pending.json"   # не ушло на склад — отправится при следующей связи
 SKLAD = {"url": "", "key": ""}                     # заполняется из «Настроек»
+# Что последним ушло на склад — строка состояния над журналом: (ok|err, текст)
+SKLAD_LAST = {"kind": "", "text": ""}
+
+
+def sklad_note(kind, text):
+    SKLAD_LAST["kind"], SKLAD_LAST["text"] = kind, f"{text} · {datetime.now(MSK):%H:%M}"
 
 
 def sklad_on():
@@ -2013,10 +2019,12 @@ def sklad_send_batch(day, market, channel, truck, source, items, log):
         data = sklad_post("/api/v1/batches", payload, timeout=60)
     except RuntimeError as e:
         _pending_save(_pending_load() + [{"path": "/api/v1/batches", "payload": payload}])
+        sklad_note("err", f"партия {title} НЕ ушла на склад")
         log(f"⚠ Партия {title} НЕ ушла на склад — {e}")
         log("│ Она сохранена и отправится сама при следующем запуске (или «Настройки → Отправить на склад»).")
         return
     log(f"✔ Партия → склад: {title} — новых {data.get('added', 0)}, обновлено {data.get('updated', 0)}")
+    sklad_note("ok", f"партия {title} ушла на склад: {plural(len(items), 'этикетка', 'этикетки', 'этикеток')}")
     for line in (data.get("kept") or [])[:10]:
         log(f"│   уже в другой партии или погружено: {line}")
     unknown = data.get("unknown") or []
@@ -2041,6 +2049,8 @@ def sklad_flush(log):
     sent = len(pending) - len(left)
     if sent:
         log(f"✔ На склад дошло отложенное: {sent}")
+        if not left:
+            sklad_note("ok", f"отложенное дошло на склад: {sent}")
     if left:
         log(f"⚠ Ещё не ушло на склад: {len(left)}")
 
@@ -2053,7 +2063,10 @@ def sklad_demand(day, lines, log, replace=None):
         data = sklad_post("/api/v1/demand", {"day": day.isoformat(), "lines": lines, "replace": replace or []})
     except RuntimeError as e:
         log(f"⚠ Склад не ответил, что едет ({e}) — решаю как раньше, по цветам отчёта")
+        sklad_note("err", "заказы НЕ ушли на склад")
         return None
+    count = len({ln["posting"] for ln in lines})
+    sklad_note("ok", f"заказы ушли на склад: {plural(count, 'отправление', 'отправления', 'отправлений')}")
     for q in data.get("questions") or []:
         if q.get("status") == "open":
             log(f"● Вопрос начальнику {q['site']}: {q['article']} — нужно {q['need']}, на складе {q['stock']}, "
@@ -2220,6 +2233,13 @@ class App(tk.Tk):
         self.root_label = ttk.Button(top, text="", style="BgPath.TButton", cursor="hand2",
                                      command=lambda: self.open_out(self.root_dir.get() or self.default_root()))
         self.root_label.pack(side="right", padx=(0, 10))
+        # Склад: что последним ушло и не застряло ли что-то без интернета
+        srow = tk.Frame(main, bg=C["bg"])
+        srow.pack(fill="x", pady=(0, 10))
+        self.sklad_line = tk.Label(srow, text="", bg=C["bg"], fg=C["muted"], font=(FONT, 10, "bold"), anchor="w")
+        self.sklad_line.pack(side="left")
+        self.sklad_resend = ttk.Button(srow, text="Отправить неотправленное", command=self.flush_sklad,
+                                       cursor="hand2")
         self.page_box = ttk.Frame(main, style="Bg.TFrame")
         self.page_box.pack(fill="x")
         self.pages = {name: ttk.Frame(self.page_box, style="Bg.TFrame") for name in PAGES}
@@ -2270,6 +2290,30 @@ class App(tk.Tk):
         self.protocol("WM_DELETE_WINDOW", self.on_close)
         self.after(50, self.dark_titlebar)
         self.after(100, self.poll)
+        self.after(500, self.refresh_sklad_line)
+
+    def refresh_sklad_line(self):
+        """Строка «Склад: …»: подключён ли, что ушло последним, что ждёт отправки."""
+        try:
+            pending = len(_pending_load())
+        except Exception:  # noqa: BLE001
+            pending = 0
+        if not sklad_on():
+            text, color = "Склад: не подключён — «Настройки → Склад BLAGO»", C["dim"]
+        elif pending:
+            text = f"Склад: ✖ не ушло {plural(pending, 'партия', 'партии', 'партий')} — нет связи"
+            color = C["err"]
+        elif SKLAD_LAST["text"]:
+            ok = SKLAD_LAST["kind"] == "ok"
+            text, color = f"Склад: {'✔' if ok else '✖'} {SKLAD_LAST['text']}", C["ok"] if ok else C["err"]
+        else:
+            text, color = "Склад: подключён, сегодня ещё ничего не отправлялось", C["muted"]
+        self.sklad_line.configure(text=text, fg=color)
+        if pending and not self.sklad_resend.winfo_ismapped():
+            self.sklad_resend.pack(side="left", padx=(12, 0))
+        elif not pending and self.sklad_resend.winfo_ismapped():
+            self.sklad_resend.pack_forget()
+        self.after(2000, self.refresh_sklad_line)
 
     # ------------------------------------------------------------ навигация
     def nav_item(self, parent, name):
