@@ -26,7 +26,24 @@
 		}
 	}
 
+	// Пока открыт экран скана, телефон не гаснет сам: сканер «печатает» только в открытую страницу.
+	// Браузер снимает запрет, когда вкладку свернули, — при возвращении просим снова.
+	function keepScreenOn() {
+		if (!('wakeLock' in global.navigator)) return;
+		var lock = null;
+		function request() {
+			if (document.visibilityState !== 'visible' || lock) return;
+			global.navigator.wakeLock.request('screen').then(function (l) {
+				lock = l;
+				lock.addEventListener('release', function () { lock = null; });
+			}).catch(function () { /* нет разрешения или низкий заряд — экран гаснет как обычно */ });
+		}
+		document.addEventListener('visibilitychange', request);
+		request();
+	}
+
 	function ScanScreen(options) {
+		keepScreenOn();
 		this.url = options.url;
 		this.form = document.getElementById(options.formId || 'scan-form');
 		this.input = document.getElementById(options.inputId || 'scan-input');
