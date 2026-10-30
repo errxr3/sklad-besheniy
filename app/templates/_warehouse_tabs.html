@@ -1,6 +1,6 @@
 {# Вкладки раздела «Склад» #}
 <nav class="subtabs">
-	{% for url, title in [("/stock", "Остатки"), ("/shipments", "Отгрузка"), ("/shipments/batches", "Партии"), ("/ship/questions", "Вопросы и срочное"), ("/warehouse/in-transit", "Застряли в пути"), ("/warehouse/printed-old", "Этикетки без зеркал")] %}
+	{% for url, title in [("/stock", "Остатки"), ("/shipments/plan", "План отгрузки"), ("/shipments", "Отгрузка"), ("/shipments/batches", "Партии"), ("/ship/questions", "Вопросы и срочное"), ("/warehouse/in-transit", "Застряли в пути"), ("/warehouse/printed-old", "Этикетки без зеркал")] %}
 	{% if can(url) %}<a href="{{ url }}" {% if current_path == url %}class="active"{% endif %}>{{ title }}</a>{% endif %}
 	{% endfor %}
 </nav>

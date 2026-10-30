@@ -69,7 +69,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
 APP_NAME = "BLAGO OTGRUZKI"
-APP_VERSION = "29.10 · склад"
+APP_VERSION = "30.10 · склад"
 API = "https://api-seller.ozon.ru"
 BATCH = 20                   # максимум отправлений в одном запросе этикеток
 READY = "awaiting_deliver"   # статус, в котором Ozon отдаёт этикетку
@@ -1797,6 +1797,7 @@ def sklad_summary(answer, log):
     for decision, _ in answer.values():
         count[decision] += 1
     log(f"✔ Склад: едет {count['go']}"
+        + (f" · вечером в Озон 3 {count['later']}" if count["later"] else "")
         + (f" · не едет {count['no']}" if count["no"] else "")
         + (f" · вопрос начальнику {count['ask']}" if count["ask"] else ""))
 
@@ -2092,7 +2093,7 @@ def sklad_decide(market, channel, truck, postings, times, colored, log, confirm,
     answer = sklad_demand(today_msk(), lines, log)
     if answer is None:
         return postings
-    keep, no, ask = {}, defaultdict(list), defaultdict(list)
+    keep, no, ask, later = {}, defaultdict(list), defaultdict(list), defaultdict(int)
     for num, arts in postings.items():
         if any(a in colored for a in arts):
             keep[num] = arts
@@ -2102,10 +2103,16 @@ def sklad_decide(market, channel, truck, postings, times, colored, log, confirm,
             no[why or "не едет"].append((num, next(iter(arts))))
         elif decision == "ask":
             ask[next(iter(arts))].append(num)
+        elif decision == "later":  # обещано к вечеру — поедет в Озон 3, сейчас не качаем
+            later[next(iter(arts))] += 1
         else:
             keep[num] = arts
     log(f"✔ Склад: едет {len(keep)}" + (f" · не едет {sum(map(len, no.values()))}" if no else "")
+        + (f" · вечером в Озон 3 {sum(later.values())}" if later else "")
         + (f" · ждёт ответа начальника {sum(map(len, ask.values()))}" if ask else ""))
+    if later:
+        log("● Доделают к вечеру, поедут в Озон 3: "
+            + ", ".join(f"{a} × {n}" for a, n in sorted(later.items())))
     for why, items in no.items():
         arts = defaultdict(int)
         for _, a in items:

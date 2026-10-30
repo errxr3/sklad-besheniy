@@ -97,7 +97,10 @@ def test_shortage_in_work_asks_lead_and_urgent_task(db: Session) -> None:
         db, question_id=question.id, actor=lead, yes=True, assembler_id=worker.id, qty=5, due_at=due
     )
     db.commit()
-    assert all(v == "go" for v in _decisions(db).values())
+    # 10 со склада едут в Озон 1, 5 обещанных доделают к вечеру — они поедут в Озон 3
+    got = _decisions(db)
+    assert sum(1 for v in got.values() if v == "go") == 10
+    assert sum(1 for v in got.values() if v == "later") == 5
     task = db.scalar(select(Task).where(Task.user_id == worker.id))
     assert task is not None and task.urgent_qty == 5 and task.qty_plan == 30
     urgent = urgent_tasks(db, day=today_msk(), user_id=worker.id)
@@ -265,7 +268,7 @@ def test_answer_all_splits_between_workers(client, db: Session) -> None:  # type
     tasks = {t.user_id: t.urgent_qty for t in db.scalars(select(Task)).all()}
     # нехватка 6 = 8 − 2; Ивану осталось 8 (2 уже сдал), Петру 4 — больше достаётся Ивану
     assert tasks == {worker.id: 5, second.id: 1}
-    assert set(_decisions(db).values()) == {"go"}
+    assert set(_decisions(db).values()) == {"go", "later"}
     # Добавились заказы: новое срочное прибавляется к несданному, а не затирает его
     receive_demand(db, day=day, lines=[_line("OZ-9", "Ozon", 1)])
     db.commit()
@@ -290,7 +293,7 @@ def test_no_second_question_when_all_work_promised(db: Session) -> None:
     db.commit()
     question = db.scalars(select(ShipQuestion)).one()
     assert question.answer == "yes" and question.promised == 3
-    assert sorted(_decisions(db).values()) == ["go", "go", "go", "no", "no"]
+    assert sorted(_decisions(db).values()) == ["later", "later", "later", "no", "no"]
 
 
 def test_promised_mirrors_made_are_not_counted_twice(db: Session) -> None:
@@ -338,3 +341,27 @@ def test_lead_removes_and_returns_on_batches_page(client, db: Session) -> None: 
     client.post("/shipments/batches/return", data={"csrf_token": token, "item_id": [str(item.id)]})
     db.expire_all()
     assert item.state == "wait" and item.removed_reason is None
+
+
+def test_promised_go_only_to_evening_truck(db: Session) -> None:
+    """Обещанное к вечеру не качается в Озон 1 и Озон 2, в волне Озон 3 — едет; WB едет сразу."""
+    from app.services.batches import answer_all
+    from app.timeutil import MOSCOW
+
+    site, worker, lead, article_id = _setup(db)
+    day = today_msk()
+    create_task(db, actor=lead, day=day, site_id=site.id, user_id=worker.id, kind="article",
+                article_id=article_id, qty_plan=5)
+    receive_demand(db, day=day, lines=[_line("OZ-1", "Ozon", 60), _line("WB-1", "WB", 50)])
+    due = now_utc().astimezone(MOSCOW).replace(hour=18, minute=0, second=0, microsecond=0)
+    answer_all(db, actor=lead, due_at=due, site_ids=[site.id])
+    db.commit()
+    assert _decisions(db) == {"OZ-1": "later", "WB-1": "go"}
+    # Волна Озон 2: всё ещё вечером
+    receive_demand(db, day=day, lines=[{**_line("OZ-1", "Ozon", 60), "truck": "Озон2"}])
+    db.commit()
+    assert _decisions(db)["OZ-1"] == "later"
+    # Волна Озон 3: едет, BLAGO OTGRUZKI качает этикетку
+    receive_demand(db, day=day, lines=[{**_line("OZ-1", "Ozon", 60), "truck": "Озон3"}])
+    db.commit()
+    assert _decisions(db)["OZ-1"] == "go"

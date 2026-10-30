@@ -547,3 +547,20 @@ tr.overdue td { color: var(--err); font-weight: 600; }
 .worker-free { border-bottom: 1px solid var(--line); padding: 8px 0; }
 .worker-free summary { cursor: pointer; font-weight: 600; }
 .worker-free .task-add { margin-top: 8px; }
+
+/* План отгрузки (2026-10-30): цвет строки — решение склада */
+.plan tr.plan-no td { background: var(--err-bg); }
+.plan tr.plan-ask td, .plan tr.plan-work td { background: var(--warn-bg); }
+.plan tr.plan-done td { background: var(--ok-bg); }
+.plan tr.plan-no td.state { color: var(--err); font-weight: 600; }
+.plan tr.plan-ask td.state, .plan tr.plan-work td.state { color: var(--warn); font-weight: 600; }
+.plan tr.plan-done td.state { color: var(--ok); }
+.plan td.ch.full { color: var(--ok); font-weight: 700; }
+.plan td.state { white-space: nowrap; }
+.plan td.state .muted { white-space: normal; font-weight: 400; font-size: 12px; max-width: 260px; }
+.plan-summary { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 12px 0 0; }
+.plan-chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 14px; font-weight: 600; }
+.plan-chip.go { background: var(--ok-bg); color: var(--ok); }
+.plan-chip.work, .plan-chip.ask { background: var(--warn-bg); color: var(--warn); }
+.plan-chip.no { background: var(--err-bg); color: var(--err); }
+label.check { display: flex; align-items: center; gap: 6px; align-self: end; min-height: 44px; }

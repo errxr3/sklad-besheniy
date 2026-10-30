@@ -19,9 +19,10 @@ from app.services.batches import (
     remove_items,
     return_items,
 )
+from app.services.ship_plan import STATE_LABELS, build_ship_plan, ship_plan_xlsx, visible_rows
 from app.services.tasks import TaskError, site_workers, task_sites, tasks_for_article, urgent_tasks
 from app.statuses import REMOVE_REASONS, ROLE_SHIFT_LEAD, SHIP_STATE_LABELS
-from app.timeutil import MOSCOW, today_msk
+from app.timeutil import MOSCOW, now_utc, today_msk
 from app.web import GuardedRoute, page
 
 logger = logging.getLogger(__name__)
@@ -38,6 +39,44 @@ def lead_site_ids(db: Session, user: User) -> list[int] | None:
 def _back(url: str, **params: str) -> RedirectResponse:
     query = urlencode({k: v for k, v in params.items() if v})
     return RedirectResponse(url + (f"?{query}" if query else ""), status_code=303)
+
+
+def _day(raw: str) -> date:
+    try:
+        return date.fromisoformat(raw) if raw else today_msk()
+    except ValueError:
+        return today_msk()
+
+
+@router.get("/shipments/plan", response_class=HTMLResponse)
+def plan_page(request: Request, db: Session = Depends(get_db), day: str = "", full: str = "") -> Response:
+    """План отгрузки: заказы дня из BLAGO OTGRUZKI против остатка, задач и погруженного."""
+    plan = build_ship_plan(db, day=_day(day))
+    return page(
+        request,
+        "ship_plan.html",
+        {
+            "day": plan.day,
+            "plan": plan,
+            "rows": visible_rows(plan, show_all=bool(full)),
+            "show_all": bool(full),
+            "state_labels": STATE_LABELS,
+        },
+    )
+
+
+@router.get("/shipments/plan.xlsx")
+def plan_xlsx(request: Request, db: Session = Depends(get_db), day: str = "") -> Response:
+    """План отгрузки в Excel."""
+    from app.routers.stock import _attachment
+
+    plan = build_ship_plan(db, day=_day(day))
+    name = f"План_отгрузки_{plan.day:%d.%m.%Y}_{now_utc().strftime('%H-%M')}.xlsx"
+    return Response(
+        content=ship_plan_xlsx(plan),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": _attachment(name, "plan.xlsx")},
+    )
 
 
 @router.get("/shipments/batches", response_class=HTMLResponse)

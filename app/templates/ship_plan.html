@@ -1,0 +1,87 @@
+{% extends "base.html" %}
+{% block title %}План отгрузки{% endblock %}
+{% block content %}
+{% include "_warehouse_tabs.html" %}
+<h1>План отгрузки</h1>
+
+<div class="card stock-controls">
+	<form method="get" action="/shipments/plan" class="row tight">
+		<div>
+			<label for="day">День</label>
+			<input type="date" id="day" name="day" value="{{ day.isoformat() }}">
+		</div>
+		<label class="check"><input type="checkbox" name="full" value="1" {% if show_all %}checked{% endif %}> все артикулы</label>
+		<div><label>&nbsp;</label><button type="submit" class="secondary">Показать</button></div>
+	</form>
+	{% if plan.orders %}
+	<p class="plan-summary">Заказов <b>{{ plan.orders }}</b> на <b>{{ plan.need|sum }}</b> шт.:
+		<span class="plan-chip go">едет {{ plan.go }}</span>
+		{% if plan.later %}<span class="plan-chip work">вечером в Озон 3 {{ plan.later }}</span>{% endif %}
+		{% if plan.ask %}<span class="plan-chip ask">ждёт ответа {{ plan.ask }}</span>{% endif %}
+		{% if plan.no %}<span class="plan-chip no">не едет {{ plan.no }}</span>{% endif %}
+		· погружено <b>{{ plan.loaded|sum }}</b>
+	</p>
+	{% else %}
+	<p class="muted">За этот день BLAGO OTGRUZKI заказы ещё не присылал. Они появятся после утренних отчётов.</p>
+	{% endif %}
+	{% if plan.open_questions %}
+	<p class="msg err">Вопросов без ответа: {{ plan.open_questions }}. <a href="/ship/questions">Ответить</a></p>
+	{% endif %}
+	{% if plan.unknown %}
+	<p class="msg warn">Нет в справочнике склада (не едут): {{ plan.unknown|join(', ') }}</p>
+	{% endif %}
+	<p class="hint">{% if plan.is_today %}Данные на <b>{{ plan.built_at }}</b>. {% endif %}В клетке канала: погружено / нужно.
+		Зелёное — всё погружено, жёлтое — доделают к вечеру или ждёт ответа, красное — не хватит.</p>
+	<div class="row tight mt">
+		<a class="btn" href="/shipments/plan.xlsx?day={{ day.isoformat() }}">Скачать XLSX</a>
+	</div>
+</div>
+
+{% if rows %}
+<div class="table-wrap">
+	<table class="dense shipments plan">
+		<thead>
+			<tr>
+				<th class="sticky" rowspan="2">Артикул</th>
+				<th colspan="{{ plan.site_names|length + 1 }}" class="group before">Склад сейчас и в работе</th>
+				<th colspan="{{ plan.columns|length }}" class="group ch">Погружено / нужно</th>
+				<th colspan="2" class="group after">Решение склада</th>
+			</tr>
+			<tr>
+				{% for name in plan.site_names %}<th class="num">{{ name }}</th>{% endfor %}
+				<th class="num">В работе</th>
+				{% for title in plan.columns %}<th class="num">{{ title }}</th>{% endfor %}
+				<th>Итог</th>
+				<th class="num">Не хватает</th>
+			</tr>
+			<tr class="totals">
+				<th class="sticky">Всего</th>
+				<th colspan="{{ plan.site_names|length + 1 }}"></th>
+				{% for need in plan.need %}<th class="num">{% if need or plan.loaded[loop.index0] %}{{ plan.loaded[loop.index0] }} / {{ need }}{% endif %}</th>{% endfor %}
+				<th colspan="2"></th>
+			</tr>
+		</thead>
+		<tbody>
+		{% for row in rows %}
+			{% if row.is_header %}
+			<tr class="header-row"><td colspan="{{ 4 + plan.site_names|length + plan.columns|length }}"><span class="group-name">{{ row.name }}</span></td></tr>
+			{% else %}
+			{% set state = row.state %}
+			<tr class="plan-{{ state }}">
+				<td class="sticky" {% if row.color_hex %}style="background:{{ row.color_hex }}"{% endif %}>{{ row.name }}</td>
+				{% for value in row.stock %}<td class="num {% if value == 0 %}zero{% endif %}">{{ value }}</td>{% endfor %}
+				<td class="num">{{ row.in_work or '' }}</td>
+				{% for need in row.need %}
+				{% set got = row.loaded[loop.index0] %}
+				<td class="num ch {% if need and got >= need %}full{% endif %}">{% if need or got %}{{ got }} / {{ need }}{% endif %}</td>
+				{% endfor %}
+				<td class="state">{{ state_labels[state] }}{% if row.later %} · {{ row.later }} шт. в Озон 3{% endif %}{% if row.no_reason %}<div class="muted">{{ row.no_reason }}</div>{% endif %}</td>
+				<td class="num">{% if row.no %}<b>{{ row.no }}</b>{% elif row.ask %}{{ row.ask }}?{% endif %}</td>
+			</tr>
+			{% endif %}
+		{% endfor %}
+		</tbody>
+	</table>
+</div>
+{% endif %}
+{% endblock %}

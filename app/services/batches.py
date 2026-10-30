@@ -50,6 +50,11 @@ from app.statuses import (
 from app.timeutil import MOSCOW, msk_day_bounds, now_utc, to_moscow, today_msk
 
 GO, ASK, NO = "go", "ask", "no"
+# Едет, но вечером: обещанное начальником доделывают к вечеру, оно уезжает в Озон 3 (решение владельца
+# 2026-10-30). В Озон 1 и Озон 2 такие заказы не качаются, зеркала под них держатся.
+LATER = "later"
+EVENING_TRUCK = OZON_TRUCKS[2]
+EARLY_TRUCKS = OZON_TRUCKS[:2]
 HISTORY = timedelta(days=14)  # заказы и партии старше двух недель в расчёт не берём
 ALLOCATE_LOCK = 70014
 STATE_ORDER = {SHIP_WAIT: 0, SHIP_REMOVED: 1, SHIP_LOADED: 2}
@@ -493,6 +498,8 @@ def allocate(session: Session, *, day: date | None = None) -> None:
             for stock_key, qty in wanted.items():
                 ak = (stock_key[1], stock_key[0])
                 free[ak] = free.get(ak, 0) - min(qty, max(0, free.get(ak, 0)))
+        if verdict == GO and group[0].channel == OZON and group[0].truck in EARLY_TRUCKS:
+            verdict, reason = LATER, "поедет в Озон 3: начальник обещал доделать к вечеру"
         _decide(group, verdict, reason)
 
     _sync_questions(session, day=day, questions=questions, asked=asked, covered=covered,
