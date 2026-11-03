@@ -15,7 +15,7 @@
 <div class="card">
 	<h2>Озон и ВБ сегодня</h2>
 	<p class="hint">Пока BLAGO не прислал план, грузить в Озон и ВБ нельзя: склад не проверит этикетки.
-		Если BLAGO не работает, нажмите «Грузить без BLAGO»: грузчики будут сканировать только наши этикетки.
+		Если BLAGO не работает, нажмите «Грузить без плана»: грузчики будут сканировать только наши этикетки.
 		Разрешение действует до конца дня. Если план придёт позже, канал сам перейдёт на проверку по плану.</p>
 	<table class="dense plan">
 		{% for site, rows in channel_state %}
@@ -25,7 +25,7 @@
 			<td>{{ 'Озон' if channel == 'Ozon' else channel }}</td>
 			<td>
 				{% if state == 'plan' %}по плану BLAGO
-				{% elif state == 'manual' %}без BLAGO <span class="muted">· {{ who }}</span>
+				{% elif state == 'manual' %}без плана <span class="muted">· {{ who }}</span>
 				{% else %}плана нет, погрузка закрыта{% endif %}
 			</td>
 			<td>
@@ -37,7 +37,7 @@
 					<input type="hidden" name="channel" value="{{ channel }}">
 					{% if state == 'closed' %}
 					<input type="hidden" name="on" value="1">
-					<button type="submit" class="secondary">Грузить без BLAGO</button>
+					<button type="submit" class="secondary">Грузить без плана</button>
 					{% else %}
 					<button type="submit" class="secondary">Закрыть</button>
 					{% endif %}

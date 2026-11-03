@@ -449,7 +449,7 @@ def set_manual(session: Session, *, site_id: int, channel: str, actor: User, on:
 
 
 def waits_for_plan(session: Session, pallet: Pallet) -> bool:
-    """Озон и ВБ без плана BLAGO не грузят, пока начальник смены не разрешил «Грузить без BLAGO».
+    """Озон и ВБ без плана BLAGO не грузят, пока начальник смены не разрешил «Грузить без плана».
 
     Иначе грузчик, начавший раньше, чем пришёл план, грузит что угодно без проверки этикеток.
     """
@@ -465,7 +465,7 @@ def waits_for_plan(session: Session, pallet: Pallet) -> bool:
 
 
 NO_PLAN_MESSAGE = "Плана BLAGO на этот канал нет"
-NO_PLAN_HINT = "не грузите: позовите начальника смены (Склад → Партии → «Грузить без BLAGO»)"
+NO_PLAN_HINT = "не грузите: позовите начальника смены (Склад → Партии → «Грузить без плана»)"
 
 
 def find_ship_item(session: Session, code: str) -> ShipItem | None:

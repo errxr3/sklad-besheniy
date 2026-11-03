@@ -1,4 +1,4 @@
-"""Озон и ВБ без плана BLAGO не грузят, пока начальник не нажал «Грузить без BLAGO» (2026-11-03)."""
+"""Озон и ВБ без плана BLAGO не грузят, пока начальник не нажал «Грузить без плана» (2026-11-03)."""
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -91,7 +91,7 @@ def test_lead_page_button_and_loader_banner(client: TestClient, db: Session) -> 
     assert "плана нет, погрузка закрыта" in page
     form = {"csrf_token": token, "site_id": str(site.id), "channel": "WB", "on": "1"}
     done = client.post("/shipments/manual", data=form)
-    assert "сегодня грузят без BLAGO" in done.text
-    assert "без BLAGO" in client.get("/shipments/batches").text
+    assert "сегодня грузят без плана" in done.text
+    assert "без плана <span" in client.get("/shipments/batches").text
     db.expire_all()
     assert not waits_for_plan(db, pallet)

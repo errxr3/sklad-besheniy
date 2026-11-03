@@ -140,7 +140,7 @@ def shipments_manual(
     channel: str = Form(...),
     on: str = Form(""),
 ) -> Response:
-    """«Грузить без BLAGO»: открыть канал на сегодня без плана (или закрыть обратно)."""
+    """«Грузить без плана»: открыть канал на сегодня без плана (или закрыть обратно)."""
     user = request.state.user
     allowed = lead_site_ids(db, user)
     if allowed is not None and site_id not in allowed:
@@ -159,7 +159,7 @@ def shipments_manual(
     db.commit()
     title = "Озон" if channel == "Ozon" else channel
     if enable:
-        ok = f"{site.name}, {title}: сегодня грузят без BLAGO, только по нашим этикеткам"
+        ok = f"{site.name}, {title}: сегодня грузят без плана, только по нашим этикеткам"
     else:
         ok = f"{site.name}, {title}: погрузка без плана закрыта"
     logger.info("Канал без плана", extra={"user_id": user.id, "status": ok})
