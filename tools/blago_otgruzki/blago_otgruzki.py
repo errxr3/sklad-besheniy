@@ -69,7 +69,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
 APP_NAME = "BLAGO OTGRUZKI"
-APP_VERSION = "03.11.2 · склад по кнопке"
+APP_VERSION = "03.11.3 · склад по кнопке"
 API = "https://api-seller.ozon.ru"
 BATCH = 20                   # максимум отправлений в одном запросе этикеток
 READY = "awaiting_deliver"   # статус, в котором Ozon отдаёт этикетку
@@ -1895,9 +1895,12 @@ def ozon_wave(cabinets, template, out, days, wave, kgt, log, progress, today=Non
     key = "kgt" if kgt else "ozon"
     title = f"{wave}{' КГТ' if kgt and 'кгт' not in wave.lower() else ''} {stamp}"
     shk, lines = {}, []
+    cabs = {}
     data, files = ozon_reports(cabinets, days, out, log, (PACKING,), {key: title}, shk,
-                               lines=lines, truck=ozon_channel(wave)[1])
-    sklad_summary(sklad_demand(day, lines, log), log)
+                               lines=lines, truck=ozon_channel(wave)[1], cabs=cabs)
+    if sklad_on():
+        sources = [(f"Ozon {n}", *cabs.get(n, (None, "нет ответа"))) for n in cabinets]
+        morning_hold(day, lines, [], sources, log, title=title.rsplit(" ", 1)[0])
     progress(1, 2)
     if template and key in data:
         path = out / f"Сборка {title}.xlsx"
@@ -2005,7 +2008,7 @@ def morning(cabinets, token, template, cdek, out, days, log, progress, today=Non
 
     # --- Склад: заказы дня НЕ уходят сами — сначала проверка, потом кнопка «Отправить на склад»
     if sklad_on() and (lines or sources):
-        morning_hold(day, lines, markets, sources, log)
+        morning_hold(day, lines, markets, sources, log, title="Утро")
 
     # --- Сборка
     if template and data:
@@ -2082,78 +2085,90 @@ def sklad_check():
         raise RuntimeError(f"ошибка {r.status_code}")
 
 
-SKLAD_MORNING = BASE_DIR / "sklad_morning.json"   # заказы дня ждут проверки и кнопки «Отправить на склад»
+SKLAD_MORNING = BASE_DIR / "sklad_morning.json"   # заказы ждут проверки и кнопки «Отправить на склад»
 
 
 def morning_load():
-    """Заказы дня, которые ждут отправки (только сегодняшние)."""
+    """Сегодняшние заказы, которые ждут отправки: [{title, day, lines, markets, sources}]."""
     try:
-        data = json.loads(SKLAD_MORNING.read_text(encoding="utf-8")) if SKLAD_MORNING.exists() else None
+        data = json.loads(SKLAD_MORNING.read_text(encoding="utf-8")) if SKLAD_MORNING.exists() else []
     except ValueError:
-        data = None
-    if not data or data.get("day") != today_msk().isoformat():
-        return None
-    return data
+        data = []
+    if isinstance(data, dict):  # файл прошлой версии: одно утро
+        data = [{"title": "Утро", **data}]
+    return [x for x in data if x.get("day") == today_msk().isoformat()]
 
 
-def morning_clear():
+def _morning_save(items):
     try:
-        if SKLAD_MORNING.exists():
+        if items:
+            SKLAD_MORNING.write_text(json.dumps(items, ensure_ascii=False), encoding="utf-8")
+        elif SKLAD_MORNING.exists():
             SKLAD_MORNING.unlink()
     except OSError:
         pass
 
 
-def morning_text(data):
-    """«Ozon Z 120 · Ozon R ✖ · WB 160 · СГТ 40» — что пришло из каждого кабинета."""
-    parts = []
-    for name, count, err in data["sources"]:
-        parts.append(f"{name} ✖" if count is None else f"{name} {count}")
-    return " · ".join(parts)
+def morning_clear():
+    _morning_save([])
 
 
-def morning_problems(data):
-    """Что подозрительно: кабинет не загрузился или пришло 0 заказов."""
+def morning_text(items):
+    """«Утро: Ozon Z 120 · Ozon R ✖ · WB 160 | Озон 2: Ozon Z 15» — что пришло из каждого кабинета."""
+    out = []
+    for item in items:
+        parts = [f"{name} ✖" if count is None else f"{name} {count}" for name, count, _ in item["sources"]]
+        out.append(f"{item['title']}: " + (" · ".join(parts) or "заказов нет"))
+    return " | ".join(out)
+
+
+def morning_problems(items):
+    """Что подозрительно: кабинет не загрузился или пришло 0 заказов (0 в волне — обычное дело)."""
     bad = []
-    for name, count, err in data["sources"]:
-        if count is None:
-            bad.append(f"✖ {name}: не загрузился ({err[:120]})")
-        elif count == 0:
-            bad.append(f"⚠ {name}: 0 заказов — точно так?")
+    for item in items:
+        for name, count, err in item["sources"]:
+            if count is None:
+                bad.append(f"✖ {item['title']} · {name}: не загрузился ({err[:120]})")
+            elif count == 0 and item["title"] == "Утро":
+                bad.append(f"⚠ {item['title']} · {name}: 0 заказов — точно так?")
     return bad
 
 
-def morning_hold(day, lines, markets, sources, log):
-    """Сохранить заказы дня до проверки. На склад они уйдут кнопкой «Отправить на склад»."""
-    data = {"day": day.isoformat(), "lines": lines, "markets": markets, "sources": sources}
-    try:
-        SKLAD_MORNING.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    except OSError as e:
-        log(f"✖ Не удалось сохранить заказы для склада: {e}")
-        return
+def morning_hold(day, lines, markets, sources, log, title="Утро"):
+    """Отложить заказы до проверки. На склад они уйдут кнопкой «Отправить на склад».
+
+    Утро заменяет прежнее утро, волна — прежнюю такую же волну (скачал отчёт ещё раз)."""
+    item = {"title": title, "day": day.isoformat(), "lines": lines, "markets": markets,
+            "sources": [list(x) for x in sources]}
+    items = [x for x in morning_load() if x["title"] != title] + [item]
+    _morning_save(items)
     log("")
-    log(f"⏸ Заказы дня на склад ПОКА НЕ ОТПРАВЛЕНЫ: {morning_text(data)}")
-    for line in morning_problems(data):
+    log(f"⏸ На склад ПОКА НЕ ОТПРАВЛЕНО — {morning_text([item])}")
+    for line in morning_problems([item]):
         log(f"│ {line}")
-    log("│ Проверь отчёты. Если всё верно — нажми вверху «Отправить на склад».")
+    log("│ Проверь отчёт. Если всё верно — нажми вверху «Отправить на склад».")
 
 
 def morning_send(log):
-    """Отправить сохранённые заказы дня на склад (после проверки)."""
-    data = morning_load()
-    if data is None:
-        log("Нечего отправлять: заказы дня не собраны или они вчерашние — нажми «Утро» ещё раз")
+    """Отправить на склад всё, что ждёт проверки, по порядку. Не ушедшее остаётся ждать."""
+    items = morning_load()
+    if not items:
+        log("Нечего отправлять: сначала скачай отчёты")
         return False
-    day = datetime.fromisoformat(data["day"]).date()
-    lost = [name for name, count, _ in data["sources"] if count is None]
-    if lost:
-        log(f"⚠ Без {', '.join(lost)}: их заказы на складе не трогаю — остаются со вчера")
-    answer = sklad_demand(day, data["lines"], log, replace=data["markets"])
-    if answer is None:
-        return False
-    sklad_summary(answer, log)
-    morning_clear()
-    return True
+    left = []
+    for item in items:
+        lost = [name for name, count, _ in item["sources"] if count is None]
+        log(f"→ {item['title']}")
+        if lost:
+            log(f"⚠ Без {', '.join(lost)}: их заказы на складе не трогаю")
+        day = datetime.fromisoformat(item["day"]).date()
+        answer = sklad_demand(day, item["lines"], log, replace=item["markets"]) if item["lines"] else {}
+        if answer is None:
+            left.append(item)
+            continue
+        sklad_summary(answer, log)
+    _morning_save(left)
+    return not left
 
 
 def _pending_load():
@@ -2472,7 +2487,7 @@ class App(tk.Tk):
             text, color = "Склад: не подключён — «Настройки → Склад BLAGO»", C["dim"]
         elif morning and not pending:
             warn = morning_problems(morning)
-            text = f"Склад: заказы дня ждут проверки — {morning_text(morning)}"
+            text = f"Склад: ждёт проверки — {morning_text(morning)}"
             color = C["warn"] if warn else C["accent"]
         elif pending:
             text = f"Склад: ✖ не ушло {plural(pending, 'партия', 'партии', 'партий')} — нет связи"
@@ -3097,11 +3112,11 @@ class App(tk.Tk):
         if self.busy:
             return
         data = morning_load()
-        if data is None:
-            messagebox.showinfo(APP_NAME, "Нечего отправлять: сначала нажми «Утро».")
+        if not data:
+            messagebox.showinfo(APP_NAME, "Нечего отправлять: сначала скачай отчёты.")
             return
         problems = morning_problems(data)
-        text = "Отправить заказы дня на склад?\n\n" + morning_text(data).replace(" · ", "\n")
+        text = "Отправить на склад?\n\n" + morning_text(data).replace(" | ", "\n")
         if problems:
             text += ("\n\nВНИМАНИЕ:\n" + "\n".join(problems)
                      + "\n\nНе загрузившиеся кабинеты на складе не трогаются — там останутся их заказы со вчера."
