@@ -69,7 +69,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
 APP_NAME = "BLAGO OTGRUZKI"
-APP_VERSION = "30.10.2 · склад"
+APP_VERSION = "03.11 · этикетки Ozon v3"
 API = "https://api-seller.ozon.ru"
 BATCH = 20                   # максимум отправлений в одном запросе этикеток
 READY = "awaiting_deliver"   # статус, в котором Ozon отдаёт этикетку
@@ -422,16 +422,88 @@ def ship_posting(headers, num, products):
     return numbers, arts, ""
 
 
+LABEL_TASK_WAIT = 90     # сколько секунд ждём, пока Ozon сформирует файл этикеток
+LABEL_TASK_POLL = 2      # как часто спрашиваем
+
+
 def fetch_labels(headers, numbers):
-    """PDF с этикетками. Возвращает (bytes | None, текст ошибки)."""
+    """PDF с этикетками. Возвращает (bytes | None, [(номер, ошибка)] — что Ozon не напечатал).
+
+    Со 2 ноября 2026 Ozon отключил /v2/posting/fbs/package-label. Теперь в два шага:
+    /v3/posting/fbs/package-label/create создаёт задание (бывает два — на обычные и маленькие
+    этикетки), /v2/posting/fbs/package-label/get отдаёт ссылку на готовый файл.
+    """
     try:
-        r = ozon_post(f"{API}/v2/posting/fbs/package-label", headers=headers,
-                          json={"posting_number": numbers}, timeout=60)
+        r = ozon_post(f"{API}/v3/posting/fbs/package-label/create", headers=headers,
+                      json={"posting_numbers": numbers}, timeout=60)
     except requests.RequestException as e:
-        return None, f"нет связи: {e}"
-    if r.status_code == 200 and r.content[:4] == b"%PDF":
-        return r.content, ""
-    return None, api_error(r)
+        return None, [(n, f"нет связи: {e}") for n in numbers]
+    if r.status_code != 200:
+        return None, [(n, api_error(r)) for n in numbers]
+    tasks = [t.get("task_id") for t in (r.json().get("tasks") or []) if t.get("task_id")]
+    if not tasks:
+        return None, [(n, "Ozon не создал задание на этикетки") for n in numbers]
+    files, unprinted = [], {}
+    for task in tasks:
+        pdf, bad, err = _label_task_file(headers, task)
+        unprinted.update(bad)
+        if pdf is None:
+            return None, [(n, unprinted.get(n) or err) for n in numbers]
+        files.append(pdf)
+    if len(files) == 1:
+        pdf = files[0]
+    else:
+        writer = PdfWriter()
+        for part in files:
+            for page in PdfReader(io.BytesIO(part)).pages:
+                writer.add_page(page)
+        buf = io.BytesIO()
+        writer.write(buf)
+        pdf = buf.getvalue()
+    return pdf, list(unprinted.items())
+
+
+def _label_task_file(headers, task_id):
+    """Дождаться файла задания. (pdf | None, {номер: почему не напечатан}, ошибка)."""
+    deadline = time.monotonic() + LABEL_TASK_WAIT
+    while True:
+        try:
+            r = ozon_post(f"{API}/v2/posting/fbs/package-label/get", headers=headers,
+                          json={"task_id": task_id}, timeout=60)
+        except requests.RequestException as e:
+            return None, {}, f"нет связи: {e}"
+        if r.status_code != 200:
+            return None, {}, api_error(r)
+        data = r.json()
+        status = data.get("status") or {}
+        bad = {str(x.get("posting_number")): str(x.get("message") or "этикетка не готова")
+               for x in status.get("unprinted_postings") or [] if x.get("posting_number")}
+        error = data.get("error") or {}
+        url = data.get("file_url") or ""
+        if url:
+            pdf, err = _download_label_file(url, headers)
+            return pdf, bad, err
+        code = str(status.get("code") or "").lower()
+        if error.get("code") or error.get("message") or code in ("error", "failed", "fail"):
+            msg = error.get("message") or error.get("code") or code
+            return None, bad, f"Ozon не сформировал этикетки ({msg})"
+        if time.monotonic() > deadline:
+            return None, bad, f"Ozon не отдал файл этикеток за {LABEL_TASK_WAIT} с"
+        time.sleep(LABEL_TASK_POLL)
+
+
+def _download_label_file(url, headers):
+    """Скачать PDF по ссылке из задания (сначала без ключей, если не пустили — с ключами)."""
+    for extra in ({}, headers):
+        try:
+            r = requests.get(url, headers={k: v for k, v in extra.items() if k != "Content-Type"}, timeout=60)
+        except requests.RequestException as e:
+            return None, f"нет связи: {e}"
+        if r.status_code == 200 and r.content[:4] == b"%PDF":
+            return r.content, ""
+        if r.status_code not in (401, 403):
+            break
+    return None, f"файл этикеток не скачался (ошибка {r.status_code})"
 
 
 def grab_labels(headers, numbers):
@@ -439,16 +511,22 @@ def grab_labels(headers, numbers):
     good, bad = [], []
     for i in range(0, len(numbers), BATCH):
         chunk = numbers[i:i + BATCH]
-        pdf, err = fetch_labels(headers, chunk)
-        parts = [(chunk, pdf, err)]
+        pdf, failed = fetch_labels(headers, chunk)
         if pdf is None and len(chunk) > 1:
-            # одно «плохое» отправление валит всю пачку — пробуем по одному
-            parts = [([n], *fetch_labels(headers, [n])) for n in chunk]
-        for nums, pdf, err in parts:
-            if pdf is None:
-                bad += [(n, err) for n in nums]
-            else:
-                good.append((nums, pdf))
+            # одно «плохое» отправление может валить всю пачку — пробуем по одному
+            for n in chunk:
+                one, why = fetch_labels(headers, [n])
+                if one is None:
+                    bad += why or [(n, "этикетка не скачалась")]
+                else:
+                    good.append(([n], one))
+            continue
+        if pdf is None:
+            bad += failed
+            continue
+        skipped = {n for n, _ in failed}  # Ozon напечатал не всё: остальное повторим позже
+        good.append(([n for n in chunk if n not in skipped], pdf))
+        bad += failed
     return good, bad
 
 
