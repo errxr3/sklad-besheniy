@@ -15,37 +15,35 @@
 <div class="card">
 	<h2>Озон и ВБ сегодня</h2>
 	<p class="hint">Пока BLAGO не прислал план, грузить в Озон и ВБ нельзя: склад не проверит этикетки.
-		Если BLAGO не работает, нажмите «Грузить без плана»: грузчики будут сканировать только наши этикетки.
-		Разрешение действует до конца дня. Если план придёт позже, канал сам перейдёт на проверку по плану.</p>
+		Если BLAGO не работает, нажмите «Грузить без плана»: на обеих площадках грузчики будут сканировать
+		только наши этикетки. До конца дня. Если план придёт позже, канал сам перейдёт на проверку по плану.</p>
 	<table class="dense plan">
-		{% for site, rows in channel_state %}
-		{% for channel, state, who in rows %}
-		<tr class="{% if state == 'plan' %}plan-go{% elif state == 'manual' %}plan-ask{% else %}plan-no{% endif %}">
-			{% if loop.first %}<td rowspan="{{ rows|length }}"><b>{{ site.name }}</b></td>{% endif %}
-			<td>{{ 'Озон' if channel == 'Ozon' else channel }}</td>
+		{% for channel, state, note in channel_state %}
+		{% set title = 'Озон' if channel == 'Ozon' else channel %}
+		<tr class="{% if state == 'plan' %}plan-go{% elif state == 'closed' %}plan-no{% else %}plan-ask{% endif %}">
+			<td><b>{{ title }}</b></td>
 			<td>
 				{% if state == 'plan' %}по плану BLAGO
-				{% elif state == 'manual' %}без плана <span class="muted">· {{ who }}</span>
+				{% elif state == 'partial' %}по плану только: {{ note }}
+				{% elif state == 'manual' %}без плана <span class="muted">· {{ note }}</span>
 				{% else %}плана нет, погрузка закрыта{% endif %}
 			</td>
 			<td>
 				{% if state != 'plan' %}
 				<form method="post" action="/shipments/manual" class="inline-form"
-				      {% if state == 'closed' %}onsubmit="return confirm('{{ site.name }}: грузить {{ 'Озон' if channel == 'Ozon' else channel }} без плана BLAGO? Этикетки маркетплейса склад проверять не будет.')"{% endif %}>
+				      {% if state != 'manual' %}onsubmit="return confirm('Грузить {{ title }} без плана? Этикетки маркетплейса склад проверять не будет.')"{% endif %}>
 					<input type="hidden" name="csrf_token" value="{{ csrf }}">
-					<input type="hidden" name="site_id" value="{{ site.id }}">
 					<input type="hidden" name="channel" value="{{ channel }}">
-					{% if state == 'closed' %}
+					{% if state == 'manual' %}
+					<button type="submit" class="secondary">Закрыть</button>
+					{% else %}
 					<input type="hidden" name="on" value="1">
 					<button type="submit" class="secondary">Грузить без плана</button>
-					{% else %}
-					<button type="submit" class="secondary">Закрыть</button>
 					{% endif %}
 				</form>
 				{% endif %}
 			</td>
 		</tr>
-		{% endfor %}
 		{% endfor %}
 	</table>
 </div>

@@ -42,20 +42,20 @@ def test_ozon_without_plan_is_closed_until_lead_allows(db: Session) -> None:
     legacy = scan_loading(db, code="СТАРОЕ", pallet=pallet, actor=loader, legacy_article_id=article_id)
     assert not legacy.ok and legacy.message == NO_PLAN_MESSAGE
 
-    assert set_manual(db, site_id=site.id, channel="Ozon", actor=lead, on=True)
-    assert not set_manual(db, site_id=site.id, channel="Ozon", actor=lead, on=True)  # уже открыт
+    assert set_manual(db, channel="Ozon", actor=lead, on=True)
+    assert not set_manual(db, channel="Ozon", actor=lead, on=True)  # уже открыт
     db.commit()
     assert scan_loading(db, code=units[0].number, pallet=pallet, actor=loader).ok
     db.commit()
 
-    set_manual(db, site_id=site.id, channel="Ozon", actor=lead, on=False)
+    set_manual(db, channel="Ozon", actor=lead, on=False)
     db.commit()
     assert not scan_loading(db, code=units[1].number, pallet=pallet, actor=loader).ok
 
 
 def test_cdek_needs_no_plan_and_other_channel_stays_closed(db: Session) -> None:
     site, lead, loader, units = _world(db)
-    set_manual(db, site_id=site.id, channel="Ozon", actor=lead, on=True)
+    set_manual(db, channel="Ozon", actor=lead, on=True)
     cdek = join_channel(db, user=loader, site=site, channel="СДЭК")
     wb = join_channel(db, user=loader, site=site, channel="WB")
     db.commit()
@@ -89,9 +89,15 @@ def test_lead_page_button_and_loader_banner(client: TestClient, db: Session) -> 
     token = get_csrf(client, "/shipments/batches")
     page = client.get("/shipments/batches").text
     assert "плана нет, погрузка закрыта" in page
-    form = {"csrf_token": token, "site_id": str(site.id), "channel": "WB", "on": "1"}
+    form = {"csrf_token": token, "channel": "WB", "on": "1"}
     done = client.post("/shipments/manual", data=form)
     assert "сегодня грузят без плана" in done.text
     assert "без плана <span" in client.get("/shipments/batches").text
     db.expire_all()
     assert not waits_for_plan(db, pallet)
+    # Одна кнопка — обе площадки
+    other = site_by_name(db, "Учительская")
+    other_loader = make_user(db, name="Грузчик Учительской", role=ROLE_LOADER, home_site_id=other.id)
+    other_pallet = join_channel(db, user=other_loader, site=other, channel="WB")
+    db.commit()
+    assert not waits_for_plan(db, other_pallet)

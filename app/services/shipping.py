@@ -421,46 +421,52 @@ def plan_sites_channels(session: Session) -> set[tuple[int, str]]:
     return {(int(site_id), str(channel)) for site_id, channel in rows}
 
 
-def manual_channels(session: Session) -> dict[tuple[int, str], ManualChannel]:
-    """Каналы, которые сегодня грузят без плана BLAGO: (площадка, канал) → кто разрешил."""
-    rows = session.scalars(select(ManualChannel).where(ManualChannel.day == today_msk())).all()
-    return {(row.site_id, row.channel): row for row in rows}
+def manual_channels(session: Session) -> dict[str, ManualChannel]:
+    """Каналы, которые сегодня грузят без плана BLAGO: канал → кто разрешил."""
+    rows = session.scalars(
+        select(ManualChannel).where(ManualChannel.day == today_msk()).order_by(ManualChannel.id)
+    ).all()
+    out: dict[str, ManualChannel] = {}
+    for row in rows:
+        out.setdefault(row.channel, row)
+    return out
 
 
-def set_manual(session: Session, *, site_id: int, channel: str, actor: User, on: bool) -> bool:
-    """Начальник смены открывает (или закрывает) погрузку канала без плана BLAGO на сегодня."""
+def set_manual(session: Session, *, channel: str, actor: User, on: bool) -> bool:
+    """«Грузить без плана»: канал сегодня грузят без плана BLAGO сразу на всех площадках.
+
+    Решение владельца 2026-11-03: план не пришёл — без плана грузят обе площадки, раздельно не нужно.
+    """
     if channel not in PLAN_CHANNELS:
         raise ShippingError(f"Канал {channel} и так грузится без плана")
-    found = session.scalar(
-        select(ManualChannel).where(
-            ManualChannel.day == today_msk(),
-            ManualChannel.site_id == site_id,
-            ManualChannel.channel == channel,
-        )
-    )
-    if on and found is None:
+    found = session.scalars(
+        select(ManualChannel).where(ManualChannel.day == today_msk(), ManualChannel.channel == channel)
+    ).all()
+    if not on:
+        for row in found:
+            session.delete(row)
+        session.flush()
+        return bool(found)
+    have = {row.site_id for row in found}
+    sites = session.scalars(select(Site.id).where(Site.active.is_(True))).all()
+    missing = [site_id for site_id in sites if site_id not in have]
+    for site_id in missing:
         session.add(ManualChannel(day=today_msk(), site_id=site_id, channel=channel, user_id=actor.id))
-    elif not on and found is not None:
-        session.delete(found)
-    else:
-        return False
     session.flush()
-    return True
+    return bool(missing)
 
 
 def waits_for_plan(session: Session, pallet: Pallet) -> bool:
-    """Озон и ВБ без плана BLAGO не грузят, пока начальник смены не разрешил «Грузить без плана».
+    """Озон и ВБ без плана BLAGO не грузят, пока начальник смены не нажал «Грузить без плана».
 
     Иначе грузчик, начавший раньше, чем пришёл план, грузит что угодно без проверки этикеток.
     """
     if pallet.channel not in PLAN_CHANNELS or batch_mode(session, pallet):
         return False
     return session.scalar(
-        select(ManualChannel.id).where(
-            ManualChannel.day == today_msk(),
-            ManualChannel.site_id == pallet.site_id,
-            ManualChannel.channel == pallet.channel,
-        )
+        select(ManualChannel.id)
+        .where(ManualChannel.day == today_msk(), ManualChannel.channel == pallet.channel)
+        .limit(1)
     ) is None
 
 

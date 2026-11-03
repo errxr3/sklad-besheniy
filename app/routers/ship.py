@@ -98,7 +98,7 @@ def batches_page(
         {
             "day": target,
             "today": today_msk(),
-            "channel_state": _channel_state(db, user),
+            "channel_state": _channel_state(db),
             "batches": day_batches(db, day=target, site_ids=lead_site_ids(db, user)),
             "reasons": REMOVE_REASONS,
             "state_labels": SHIP_STATE_LABELS,
@@ -108,27 +108,24 @@ def batches_page(
     )
 
 
-def _channel_state(db: Session, user: User) -> list[tuple[Site, list[tuple[str, str, str]]]]:
-    """Озон и ВБ по площадкам: (канал, plan | manual | closed, кто разрешил без плана)."""
-    allowed = lead_site_ids(db, user)
+def _channel_state(db: Session) -> list[tuple[str, str, str]]:
+    """Озон и ВБ сегодня: (канал, plan | partial | manual | closed, пояснение). Сразу для обеих площадок."""
     sites = db.scalars(select(Site).where(Site.active.is_(True)).order_by(Site.id)).all()
     planned = plan_sites_channels(db)
     manual = manual_channels(db)
-    out: list[tuple[Site, list[tuple[str, str, str]]]] = []
-    for site in sites:
-        if allowed is not None and site.id not in allowed:
-            continue
-        rows: list[tuple[str, str, str]] = []
-        for channel in PLAN_CHANNELS:
-            if (site.id, channel) in planned:
-                rows.append((channel, "plan", ""))
-            elif (site.id, channel) in manual:
-                row = manual[(site.id, channel)]
-                who = row.user.name if row.user else ""
-                rows.append((channel, "manual", f"{who}, {fmt_time(row.created_at)}"))
-            else:
-                rows.append((channel, "closed", ""))
-        out.append((site, rows))
+    out: list[tuple[str, str, str]] = []
+    for channel in PLAN_CHANNELS:
+        with_plan = [site.name for site in sites if (site.id, channel) in planned]
+        if channel in manual:
+            row = manual[channel]
+            who = row.user.name if row.user else ""
+            out.append((channel, "manual", f"{who}, {fmt_time(row.created_at)}"))
+        elif with_plan and len(with_plan) == len(sites):
+            out.append((channel, "plan", ""))
+        elif with_plan:
+            out.append((channel, "partial", ", ".join(with_plan)))
+        else:
+            out.append((channel, "closed", ""))
     return out
 
 
@@ -136,32 +133,25 @@ def _channel_state(db: Session, user: User) -> list[tuple[Site, list[tuple[str, 
 def shipments_manual(
     request: Request,
     db: Session = Depends(get_db),
-    site_id: int = Form(...),
     channel: str = Form(...),
     on: str = Form(""),
 ) -> Response:
-    """«Грузить без плана»: открыть канал на сегодня без плана (или закрыть обратно)."""
+    """«Грузить без плана»: канал сегодня грузят без плана на обеих площадках (или закрыть обратно)."""
     user = request.state.user
-    allowed = lead_site_ids(db, user)
-    if allowed is not None and site_id not in allowed:
-        return _back("/shipments/batches", err="Это не ваша площадка")
-    site = db.get(Site, site_id)
-    if site is None:
-        return _back("/shipments/batches", err="Нет такой площадки")
     enable = on == "1"
     try:
-        changed = set_manual(db, site_id=site_id, channel=channel, actor=user, on=enable)
+        changed = set_manual(db, channel=channel, actor=user, on=enable)
     except ShippingError as exc:
         return _back("/shipments/batches", err=str(exc))
     if changed:
-        log_admin(db, user.id, "manual_channel_on" if enable else "manual_channel_off", "site", site_id,
+        log_admin(db, user.id, "manual_channel_on" if enable else "manual_channel_off",
                   after={"channel": channel, "day": today_msk().isoformat()})
     db.commit()
     title = "Озон" if channel == "Ozon" else channel
     if enable:
-        ok = f"{site.name}, {title}: сегодня грузят без плана, только по нашим этикеткам"
+        ok = f"{title}: сегодня грузят без плана, только по нашим этикеткам"
     else:
-        ok = f"{site.name}, {title}: погрузка без плана закрыта"
+        ok = f"{title}: погрузка без плана закрыта"
     logger.info("Канал без плана", extra={"user_id": user.id, "status": ok})
     return _back("/shipments/batches", ok=ok)
 
