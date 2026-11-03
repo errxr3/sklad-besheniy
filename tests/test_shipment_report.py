@@ -1,5 +1,6 @@
 """Экран «Отгрузка»: как гугл-таблица владельца (2026-10-21)."""
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import text
 from sqlalchemy.orm import Session
@@ -13,6 +14,8 @@ from app.statuses import ROLE_ASSEMBLER, ROLE_LOADER, ROLE_SHIFT_LEAD
 from app.timeutil import today_msk
 from tests.helpers import login, make_article, make_user, site_by_name
 
+# Озон и ВБ без плана BLAGO здесь грузят по разрешению начальника (решение 2026-11-03)
+pytestmark = pytest.mark.usefixtures("manual_loading")
 
 def _stock(db: Session, article_id: int, site_name: str, qty: int, backdate: bool = True) -> list[Unit]:
     assembler = make_user(db, name=f"Сборщик {site_name} {article_id} {qty}", role=ROLE_ASSEMBLER)

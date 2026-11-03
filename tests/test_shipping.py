@@ -24,6 +24,9 @@ from app.statuses import IN_STOCK, MV_SHIP, ROLE_ASSEMBLER, ROLE_LOADER, ROLE_SH
 from app.timeutil import now_utc, today_msk
 from tests.helpers import get_csrf, login, make_article, make_user, open_shift, site_by_name
 
+# Озон и ВБ без плана BLAGO здесь грузят по разрешению начальника (решение 2026-11-03)
+pytestmark = pytest.mark.usefixtures("manual_loading")
+
 
 def _stocked_units(db: Session, qty: int = 2, site_name: str = "Коминтерна") -> list[Unit]:
     """Зеркала на складе выбранной площадки."""

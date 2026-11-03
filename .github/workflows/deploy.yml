@@ -1,5 +1,6 @@
-# Проверка и выкладка: при каждом обновлении рабочей ветки GitHub прогоняет тесты
-# и, если они зелёные, обновляет сервер. Секреты задаются один раз в
+# Проверка и выкладка: при каждом обновлении рабочей ветки GitHub только прогоняет тесты.
+# Сервер обновляется лишь по команде: Actions → «Проверка и выкладка» → Run workflow
+# (решение владельца 2026-11-03: правка днём не должна перезапускать сайт посреди погрузки). Секреты задаются один раз в
 # Settings → Secrets and variables → Actions: SERVER_HOST, SERVER_PASSWORD (и SERVER_USER, если не root).
 name: Проверка и выкладка
 
@@ -49,6 +50,8 @@ jobs:
   deploy:
     name: Выкладка на сервер
     needs: test
+    # Только по кнопке Run workflow, не при каждом обновлении кода
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     env:
       HOST: ${{ secrets.SERVER_HOST }}

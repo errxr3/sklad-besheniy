@@ -165,6 +165,7 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("POST", "/inventory/{inventory_id}/finish"): ADMIN_ONLY,
     # Журнал
     ("GET", "/shipments/plan"): LEADS,
+    ("POST", "/shipments/manual"): LEADS,
     ("GET", "/shipments/plan.xlsx"): LEADS,
     ("GET", "/shipments/batches"): LEADS,
     ("POST", "/shipments/batches/remove"): LEADS,

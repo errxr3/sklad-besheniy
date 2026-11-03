@@ -13,7 +13,18 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.articles import normalize_article
-from app.models import Article, Movement, Pallet, ShipBatch, ShipCode, ShipItem, Site, Unit, User
+from app.models import (
+    Article,
+    ManualChannel,
+    Movement,
+    Pallet,
+    ShipBatch,
+    ShipCode,
+    ShipItem,
+    Site,
+    Unit,
+    User,
+)
 from app.scan import clean_code, is_own_label
 from app.services.batches import clean_ship_code
 from app.services.units import ScanResult, stock_count
@@ -25,6 +36,7 @@ from app.statuses import (
     MV_SHIP_CANCEL,
     OZON,
     OZON_TRUCKS,
+    PLAN_CHANNELS,
     ROLE_ADMIN,
     SHIP_LOADED,
     SHIP_REMOVED,
@@ -247,6 +259,8 @@ def scan_loading(
     `legacy` — грузят старое зеркало без нашей этикетки: по наклейке маркетплейса (`ship_code`),
     а в канале без партии — по выбранному артикулу (`legacy_article_id`).
     """
+    if waits_for_plan(session, pallet):
+        return LoadResult(False, NO_PLAN_MESSAGE, NO_PLAN_HINT)
     if legacy or legacy_article_id:
         return scan_legacy(
             session, pallet=pallet, actor=actor, shift_id=shift_id,
@@ -394,6 +408,64 @@ def batch_mode(session: Session, pallet: Pallet) -> bool:
         .limit(1)
     )
     return found is not None
+
+
+def plan_sites_channels(session: Session) -> set[tuple[int, str]]:
+    """(площадка, канал), для которых сегодня есть план BLAGO с этикетками."""
+    rows = session.execute(
+        select(ShipItem.site_id, ShipBatch.channel)
+        .join(ShipBatch, ShipBatch.id == ShipItem.batch_id)
+        .where(ShipBatch.day == today_msk(), ShipItem.site_id.is_not(None))
+        .distinct()
+    ).all()
+    return {(int(site_id), str(channel)) for site_id, channel in rows}
+
+
+def manual_channels(session: Session) -> dict[tuple[int, str], ManualChannel]:
+    """Каналы, которые сегодня грузят без плана BLAGO: (площадка, канал) → кто разрешил."""
+    rows = session.scalars(select(ManualChannel).where(ManualChannel.day == today_msk())).all()
+    return {(row.site_id, row.channel): row for row in rows}
+
+
+def set_manual(session: Session, *, site_id: int, channel: str, actor: User, on: bool) -> bool:
+    """Начальник смены открывает (или закрывает) погрузку канала без плана BLAGO на сегодня."""
+    if channel not in PLAN_CHANNELS:
+        raise ShippingError(f"Канал {channel} и так грузится без плана")
+    found = session.scalar(
+        select(ManualChannel).where(
+            ManualChannel.day == today_msk(),
+            ManualChannel.site_id == site_id,
+            ManualChannel.channel == channel,
+        )
+    )
+    if on and found is None:
+        session.add(ManualChannel(day=today_msk(), site_id=site_id, channel=channel, user_id=actor.id))
+    elif not on and found is not None:
+        session.delete(found)
+    else:
+        return False
+    session.flush()
+    return True
+
+
+def waits_for_plan(session: Session, pallet: Pallet) -> bool:
+    """Озон и ВБ без плана BLAGO не грузят, пока начальник смены не разрешил «Грузить без BLAGO».
+
+    Иначе грузчик, начавший раньше, чем пришёл план, грузит что угодно без проверки этикеток.
+    """
+    if pallet.channel not in PLAN_CHANNELS or batch_mode(session, pallet):
+        return False
+    return session.scalar(
+        select(ManualChannel.id).where(
+            ManualChannel.day == today_msk(),
+            ManualChannel.site_id == pallet.site_id,
+            ManualChannel.channel == pallet.channel,
+        )
+    ) is None
+
+
+NO_PLAN_MESSAGE = "Плана BLAGO на этот канал нет"
+NO_PLAN_HINT = "не грузите: позовите начальника смены (Склад → Партии → «Грузить без BLAGO»)"
 
 
 def find_ship_item(session: Session, code: str) -> ShipItem | None:

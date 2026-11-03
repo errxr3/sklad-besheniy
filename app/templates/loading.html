@@ -41,6 +41,13 @@
 	{% if loaders %}
 	<p class="muted">Грузят: {% for name, n in loaders %}{{ name }} — {{ n }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
 	{% endif %}
+	{% if no_plan %}
+	<div class="msg err no-plan">
+		<b>Плана BLAGO на этот канал сегодня нет. Не грузите.</b><br>
+		Позовите начальника смены. Он отправит план из BLAGO или нажмёт «Грузить без BLAGO»
+		(Склад → Партии). После этого обновите страницу.
+	</div>
+	{% endif %}
 	<div id="scan-result" class="scan-result"></div>
 	<form id="scan-form">
 		<input type="text" id="scan-input" class="scan-input" placeholder="Отсканируйте этикетку зеркала"
@@ -58,7 +65,7 @@
 	<p class="hint">Отгрузка по партии BLAGO OTGRUZKI: на каждом зеркале две этикетки — BLAGO и маркетплейса.
 		Сканируйте обе, в любом порядке.{% if legacy %} Старое зеркало без нашей этикетки: отсканируйте наклейку
 		маркетплейса и нажмите «Старое зеркало, без этикетки».{% endif %}</p>
-	{% elif legacy %}
+	{% elif legacy and not no_plan %}
 	<div class="legacy-box mt">
 		<label for="legacy-article">Старое зеркало без нашей этикетки</label>
 		<div class="row tight">

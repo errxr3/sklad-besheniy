@@ -549,6 +549,7 @@ tr.overdue td { color: var(--err); font-weight: 600; }
 .worker-free .task-add { margin-top: 8px; }
 
 /* План отгрузки (2026-10-30): цвет строки — решение склада */
+.plan tr.plan-go td { background: var(--ok-bg); }
 .plan tr.plan-no td { background: var(--err-bg); }
 .plan tr.plan-ask td, .plan tr.plan-work td { background: var(--warn-bg); }
 .plan tr.plan-done td { background: var(--ok-bg); }

@@ -497,6 +497,22 @@ class ShipCode(Base):
     item_id: Mapped[int] = mapped_column(ForeignKey("ship_items.id", ondelete="CASCADE"))
 
 
+class ManualChannel(Base):
+    """Канал площадки на день грузят без плана BLAGO: так решил начальник смены."""
+
+    __tablename__ = "manual_channels"
+    __table_args__ = (UniqueConstraint("day", "site_id", "channel", name="uq_manual_channels_day"),)
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    day: Mapped[date] = mapped_column(Date)
+    site_id: Mapped[int] = mapped_column(ForeignKey("sites.id"))
+    channel: Mapped[str] = mapped_column(String(20))
+    user_id: Mapped[int | None] = mapped_column(ForeignKey("users.id", ondelete="SET NULL"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    user: Mapped[User | None] = relationship(lazy="joined")
+
+
 class ShipDemand(Base):
     """Заказ дня из BLAGO OTGRUZKI: по ним склад решает, что едет, а что нет."""
 

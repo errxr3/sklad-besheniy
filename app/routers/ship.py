@@ -4,12 +4,14 @@ import logging
 from datetime import date, datetime, time
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Form, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import User
+from app.models import Site, User
+from app.services.admin import log_admin
 from app.services.batches import (
     BatchError,
     answer_all,
@@ -20,9 +22,10 @@ from app.services.batches import (
     return_items,
 )
 from app.services.ship_plan import STATE_LABELS, build_ship_plan, ship_plan_xlsx, visible_rows
+from app.services.shipping import ShippingError, manual_channels, plan_sites_channels, set_manual
 from app.services.tasks import TaskError, site_workers, task_sites, tasks_for_article, urgent_tasks
-from app.statuses import REMOVE_REASONS, ROLE_SHIFT_LEAD, SHIP_STATE_LABELS
-from app.timeutil import MOSCOW, now_utc, today_msk
+from app.statuses import PLAN_CHANNELS, REMOVE_REASONS, ROLE_SHIFT_LEAD, SHIP_STATE_LABELS
+from app.timeutil import MOSCOW, fmt_time, now_utc, today_msk
 from app.web import GuardedRoute, page
 
 logger = logging.getLogger(__name__)
@@ -94,6 +97,8 @@ def batches_page(
         "ship_batches.html",
         {
             "day": target,
+            "today": today_msk(),
+            "channel_state": _channel_state(db, user),
             "batches": day_batches(db, day=target, site_ids=lead_site_ids(db, user)),
             "reasons": REMOVE_REASONS,
             "state_labels": SHIP_STATE_LABELS,
@@ -101,6 +106,64 @@ def batches_page(
             "err": err,
         },
     )
+
+
+def _channel_state(db: Session, user: User) -> list[tuple[Site, list[tuple[str, str, str]]]]:
+    """Озон и ВБ по площадкам: (канал, plan | manual | closed, кто разрешил без плана)."""
+    allowed = lead_site_ids(db, user)
+    sites = db.scalars(select(Site).where(Site.active.is_(True)).order_by(Site.id)).all()
+    planned = plan_sites_channels(db)
+    manual = manual_channels(db)
+    out: list[tuple[Site, list[tuple[str, str, str]]]] = []
+    for site in sites:
+        if allowed is not None and site.id not in allowed:
+            continue
+        rows: list[tuple[str, str, str]] = []
+        for channel in PLAN_CHANNELS:
+            if (site.id, channel) in planned:
+                rows.append((channel, "plan", ""))
+            elif (site.id, channel) in manual:
+                row = manual[(site.id, channel)]
+                who = row.user.name if row.user else ""
+                rows.append((channel, "manual", f"{who}, {fmt_time(row.created_at)}"))
+            else:
+                rows.append((channel, "closed", ""))
+        out.append((site, rows))
+    return out
+
+
+@router.post("/shipments/manual")
+def shipments_manual(
+    request: Request,
+    db: Session = Depends(get_db),
+    site_id: int = Form(...),
+    channel: str = Form(...),
+    on: str = Form(""),
+) -> Response:
+    """«Грузить без BLAGO»: открыть канал на сегодня без плана (или закрыть обратно)."""
+    user = request.state.user
+    allowed = lead_site_ids(db, user)
+    if allowed is not None and site_id not in allowed:
+        return _back("/shipments/batches", err="Это не ваша площадка")
+    site = db.get(Site, site_id)
+    if site is None:
+        return _back("/shipments/batches", err="Нет такой площадки")
+    enable = on == "1"
+    try:
+        changed = set_manual(db, site_id=site_id, channel=channel, actor=user, on=enable)
+    except ShippingError as exc:
+        return _back("/shipments/batches", err=str(exc))
+    if changed:
+        log_admin(db, user.id, "manual_channel_on" if enable else "manual_channel_off", "site", site_id,
+                  after={"channel": channel, "day": today_msk().isoformat()})
+    db.commit()
+    title = "Озон" if channel == "Ozon" else channel
+    if enable:
+        ok = f"{site.name}, {title}: сегодня грузят без BLAGO, только по нашим этикеткам"
+    else:
+        ok = f"{site.name}, {title}: погрузка без плана закрыта"
+    logger.info("Канал без плана", extra={"user_id": user.id, "status": ok})
+    return _back("/shipments/batches", ok=ok)
 
 
 async def _ids(request: Request) -> tuple[list[int], str, str]:

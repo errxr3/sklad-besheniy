@@ -32,6 +32,9 @@ from app.statuses import (
 )
 from tests.helpers import make_article, make_user, site_by_name
 
+# Озон и ВБ без плана BLAGO здесь грузят по разрешению начальника (решение 2026-11-03)
+pytestmark = pytest.mark.usefixtures("manual_loading")
+
 
 def _stocked(db: Session, qty: int = 2, site_name: str = "Коминтерна", tag: str = "") -> list[Unit]:
     """Зеркала на складе площадки."""

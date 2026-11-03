@@ -1,5 +1,6 @@
 """Роль «Возвраты» и перемещение грузчиком (решение владельца 2026-10-20)."""
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -18,6 +19,8 @@ from app.statuses import (
 )
 from tests.helpers import get_csrf, login, make_article, make_user, open_shift, site_by_name
 
+# Озон и ВБ без плана BLAGO здесь грузят по разрешению начальника (решение 2026-11-03)
+pytestmark = pytest.mark.usefixtures("manual_loading")
 
 def _post_scan(client: TestClient, url: str, token: str, **payload: object) -> dict:
     return client.post(

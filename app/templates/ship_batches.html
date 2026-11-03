@@ -11,6 +11,45 @@
 		<div><label>&nbsp;</label><button type="submit" class="secondary">Показать</button></div>
 	</form>
 </div>
+{% if day == today %}
+<div class="card">
+	<h2>Озон и ВБ сегодня</h2>
+	<p class="hint">Пока BLAGO не прислал план, грузить в Озон и ВБ нельзя: склад не проверит этикетки.
+		Если BLAGO не работает, нажмите «Грузить без BLAGO»: грузчики будут сканировать только наши этикетки.
+		Разрешение действует до конца дня. Если план придёт позже, канал сам перейдёт на проверку по плану.</p>
+	<table class="dense plan">
+		{% for site, rows in channel_state %}
+		{% for channel, state, who in rows %}
+		<tr class="{% if state == 'plan' %}plan-go{% elif state == 'manual' %}plan-ask{% else %}plan-no{% endif %}">
+			{% if loop.first %}<td rowspan="{{ rows|length }}"><b>{{ site.name }}</b></td>{% endif %}
+			<td>{{ 'Озон' if channel == 'Ozon' else channel }}</td>
+			<td>
+				{% if state == 'plan' %}по плану BLAGO
+				{% elif state == 'manual' %}без BLAGO <span class="muted">· {{ who }}</span>
+				{% else %}плана нет, погрузка закрыта{% endif %}
+			</td>
+			<td>
+				{% if state != 'plan' %}
+				<form method="post" action="/shipments/manual" class="inline-form"
+				      {% if state == 'closed' %}onsubmit="return confirm('{{ site.name }}: грузить {{ 'Озон' if channel == 'Ozon' else channel }} без плана BLAGO? Этикетки маркетплейса склад проверять не будет.')"{% endif %}>
+					<input type="hidden" name="csrf_token" value="{{ csrf }}">
+					<input type="hidden" name="site_id" value="{{ site.id }}">
+					<input type="hidden" name="channel" value="{{ channel }}">
+					{% if state == 'closed' %}
+					<input type="hidden" name="on" value="1">
+					<button type="submit" class="secondary">Грузить без BLAGO</button>
+					{% else %}
+					<button type="submit" class="secondary">Закрыть</button>
+					{% endif %}
+				</form>
+				{% endif %}
+			</td>
+		</tr>
+		{% endfor %}
+		{% endfor %}
+	</table>
+</div>
+{% endif %}
 {% if not batches %}
 <div class="card"><p class="muted">За этот день партий нет. Они появляются, когда BLAGO OTGRUZKI скачивает этикетки.</p></div>
 {% endif %}

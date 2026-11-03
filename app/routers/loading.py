@@ -25,6 +25,7 @@ from app.services.shipping import (
     pallet_summary,
     scan_loading,
     site_channels,
+    waits_for_plan,
 )
 from app.statuses import OZON, OZON_TRUCKS, ROLE_ADMIN
 from app.web import GuardedRoute, page, read_json
@@ -64,6 +65,8 @@ def loading_page(
             # Сегодня есть партия BLAGO OTGRUZKI для канала: двойной скан и список «что грузить»
             "batch_mode": batch_mode(db, pallet) if pallet else False,
             "batch_lines": channel_batch_lines(db, pallet) if pallet else [],
+            # Озон и ВБ без плана BLAGO: грузить нельзя, пока начальник не разрешит
+            "no_plan": waits_for_plan(db, pallet) if pallet else False,
             # Старый остаток без этикеток этой площадки — для кнопки «Старое зеркало, без этикетки»
             "legacy": legacy_articles(db, pallet.site_id) if pallet else [],
             # Без смены грузить нельзя — вместо каналов кнопка «начать смену»

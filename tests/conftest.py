@@ -22,6 +22,7 @@ os.environ.setdefault("SECRET_KEY", "test-secret-key")
 
 # Таблицы, которые чистятся между тестами (все, кроме alembic_version)
 TABLES = (
+    "manual_channels",
     "ship_codes",
     "ship_items",
     "ship_batches",
@@ -133,6 +134,22 @@ def clean_db(_prepare_database: str) -> Iterator[None]:
     with session_scope() as session:
         apply_seed(session)
     yield
+
+
+@pytest.fixture
+def manual_loading() -> None:
+    """Озон и ВБ сегодня грузят без плана BLAGO: тесты простого режима (по нашим этикеткам)."""
+    from sqlalchemy import select
+
+    from app.db import session_scope
+    from app.models import ManualChannel, Site
+    from app.statuses import PLAN_CHANNELS
+    from app.timeutil import today_msk
+
+    with session_scope() as session:
+        for site_id in session.scalars(select(Site.id)).all():
+            for channel in PLAN_CHANNELS:
+                session.add(ManualChannel(day=today_msk(), site_id=site_id, channel=channel))
 
 
 @pytest.fixture
