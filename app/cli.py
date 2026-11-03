@@ -188,8 +188,12 @@ def cmd_wipe_data(args: argparse.Namespace) -> int:
             {"role": ROLE_ADMIN},
         )
         removed = conn.execute(text(f"DELETE FROM users WHERE NOT ({keep})"), {"role": ROLE_ADMIN}).rowcount
+        # Склад пустой — площадки снова в режиме обклейки (ввод остатков не закончен)
+        conn.execute(text("UPDATE sites SET labeling_done = false"))
+        conn.execute(text("UPDATE users SET inventory_day = NULL"))
     print(f"Готово: удалено сотрудников {removed}, зеркала, журнал, смены, задачи и каналы очищены.")
     print("Остались: администраторы, служебный сборщик, справочник артикулов, площадки, настройки.")
+    print("Площадки снова в режиме обклейки: «Ввод остатков закончен: нет».")
     return 0
 
 

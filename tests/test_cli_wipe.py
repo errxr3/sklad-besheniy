@@ -16,6 +16,7 @@ def test_wipe_keeps_admin_catalog_and_sites(db: Session) -> None:
     make_user(db, name="Грузчик", role=ROLE_LOADER)
     article = make_article(db, name="Zerkalo_60x160")
     site = site_by_name(db)
+    site.labeling_done = True
     create_printed_units(
         db, article_id=article.id, qty=3, site_id=site.id, assembler_id=worker.id, actor_id=admin.id
     )
@@ -36,6 +37,7 @@ def test_wipe_keeps_admin_catalog_and_sites(db: Session) -> None:
     assert db.scalar(select(func.count()).select_from(Movement)) == 0
     assert db.get(Article, article.id) is not None
     assert db.scalar(select(func.count()).select_from(Site)) == sites_before
+    assert db.get(Site, site.id).labeling_done is False  # type: ignore[union-attr]  # снова обклейка
 
     # Журнал после очистки снова защищён от удаления
     from sqlalchemy import text
