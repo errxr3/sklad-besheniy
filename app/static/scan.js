@@ -27,17 +27,25 @@
 	}
 
 	// Пока открыт экран скана, телефон не гаснет сам: сканер «печатает» только в открытую страницу.
-	// Браузер снимает запрет, когда вкладку свернули, — при возвращении просим снова.
+	// iPhone даёт запрет только после касания или нажатия на странице, поэтому просим ещё раз
+	// на каждое касание и скан, пока не получится. Браузер снимает запрет, когда вкладку свернули, —
+	// при возвращении просим снова.
 	function keepScreenOn() {
 		if (!('wakeLock' in global.navigator)) return;
 		var lock = null;
+		var asking = false;
 		function request() {
-			if (document.visibilityState !== 'visible' || lock) return;
+			if (document.visibilityState !== 'visible' || lock || asking) return;
+			asking = true;
 			global.navigator.wakeLock.request('screen').then(function (l) {
 				lock = l;
 				lock.addEventListener('release', function () { lock = null; });
-			}).catch(function () { /* нет разрешения или низкий заряд — экран гаснет как обычно */ });
+			}).catch(function () { /* нет разрешения или энергосбережение — попробуем на следующем касании */ })
+				.then(function () { asking = false; });
 		}
+		['pointerdown', 'touchstart', 'keydown'].forEach(function (name) {
+			document.addEventListener(name, request, { passive: true });
+		});
 		document.addEventListener('visibilitychange', request);
 		request();
 	}
