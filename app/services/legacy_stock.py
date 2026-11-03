@@ -6,8 +6,9 @@
 маркетплейса: грузчик пикает наклейку Ozon/WB и жмёт «Старое зеркало, без этикетки» — склад
 отгружает одно старое зеркало этого артикула. Без партии (СДЭК) артикул выбирают из списка.
 
-В Excel — всё, что стоит на полке. Что уже есть на складе с этикетками (сборщики сдали после
-запуска), склад вычитает сам, чтобы не задвоить.
+В Excel — сколько старых зеркал (без нашей этикетки) стоит на полке. Склад ставит у себя ровно
+столько: не хватает — добавит, лишние — спишет как недостачу. Так же делается пересчёт после
+инвентаризации сканом: новые проверяет скан, старые — этот файл (решение владельца 2026-11-03).
 """
 
 from collections import defaultdict
@@ -21,7 +22,7 @@ from app.models import Article, Site, Unit, User
 from app.seed import SERVICE_ASSEMBLER_NAME
 from app.services.batches import Catalog
 from app.services.units import MAX_PRINT_QTY, UnitError, create_printed_units
-from app.statuses import IN_STOCK, MV_ACCEPT
+from app.statuses import IN_STOCK, MV_ACCEPT, MV_INVENTORY_FIX, WRITTEN_OFF
 from app.transitions import apply_transition
 
 LEGACY_NOTE = "старый остаток без этикетки"
@@ -33,27 +34,23 @@ class LegacyRow:
     """Строка проверки перед загрузкой."""
 
     name: str  # как в файле
-    shelf: int  # на полке всего
+    shelf: int  # старых на полке по пересчёту
     article: Article | None = None
     site: Site | None = None
-    labeled: int = 0  # уже на складе с этикетками
-    unlabeled: int = 0  # уже заведено старым остатком
+    unlabeled: int = 0  # старых по складу сейчас
     problem: str = ""
 
     @property
-    def to_create(self) -> int:
-        if self.problem or self.article is None or self.site is None:
-            return 0
-        return max(0, self.shelf - self.labeled - self.unlabeled)
+    def ok(self) -> bool:
+        return not self.problem and self.article is not None and self.site is not None
 
     @property
-    def warning(self) -> str:
-        if self.problem:
-            return self.problem
-        have = self.labeled + self.unlabeled
-        if self.shelf < have:
-            return f"на полке меньше, чем по складу ({have}) — проверьте"
-        return ""
+    def to_create(self) -> int:
+        return max(0, self.shelf - self.unlabeled) if self.ok else 0
+
+    @property
+    def to_remove(self) -> int:
+        return max(0, self.unlabeled - self.shelf) if self.ok else 0
 
 
 def _header_index(header: list[str], *words: str) -> int | None:
@@ -94,7 +91,7 @@ def read_legacy_xlsx(content: bytes) -> list[tuple[str, str, int]]:
         except ValueError:
             continue
         site = str(cells[col_site] or "").strip() if col_site is not None and col_site < len(cells) else ""
-        if qty > 0:
+        if qty >= 0:  # 0 — старых этого артикула больше нет, лишние спишутся
             out.append((name, site, qty))
     if not out:
         raise UnitError("В файле нет строк с артикулом и количеством")
@@ -120,7 +117,6 @@ def preview_legacy(
 ) -> list[LegacyRow]:
     """Что будет заведено: по каждому артикулу на полке, уже на складе, сколько добавить."""
     catalog = Catalog(session)
-    labeled = _counts(session, unlabeled=False)
     old = _counts(session, unlabeled=True)
     merged: dict[tuple[str, int | None, int | None], LegacyRow] = {}
     for name, site_name, qty in lines:
@@ -143,7 +139,6 @@ def preview_legacy(
         elif row.shelf > MAX_LEGACY_QTY:
             row.problem = f"больше {MAX_LEGACY_QTY} — проверьте, нет ли лишнего нуля"
         if row.article is not None and row.site is not None:
-            row.labeled = labeled.get((row.article.id, row.site.id), 0)
             row.unlabeled = old.get((row.article.id, row.site.id), 0)
     return sorted(merged.values(), key=lambda r: (r.site.name if r.site else "", r.name))
 
@@ -173,16 +168,31 @@ def _create_legacy(
     return qty
 
 
-def apply_legacy(session: Session, rows: list[LegacyRow], *, actor: User) -> int:
-    """Завести старые зеркала без этикеток. Возвращает, сколько заведено."""
-    created = 0
+REMOVE_NOTE = "пересчёт старых: не найдено на полке"
+
+
+def apply_legacy(session: Session, rows: list[LegacyRow], *, actor: User) -> tuple[int, int]:
+    """Поставить старых без этикеток ровно как в файле. Возвращает (добавлено, списано)."""
+    created = removed = 0
     for row in rows:
-        if row.to_create and row.article is not None and row.site is not None:
+        if row.article is None or row.site is None:
+            continue
+        if row.to_create:
             created += _create_legacy(
                 session, article_id=row.article.id, site_id=row.site.id, qty=row.to_create,
                 actor=actor, note=LEGACY_NOTE,
             )
-    return created
+        for _ in range(row.to_remove):
+            unit = pick_legacy_unit(session, article_id=row.article.id, site_id=row.site.id)
+            if unit is None:
+                break
+            apply_transition(
+                session, unit, WRITTEN_OFF, movement_type=MV_INVENTORY_FIX, user_id=actor.id,
+                note=REMOVE_NOTE,
+            )
+            removed += 1
+    session.flush()
+    return created, removed
 
 
 FOUND_NOTE = "нашлось старое без этикетки"

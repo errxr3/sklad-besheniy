@@ -55,20 +55,26 @@ def _world(db: Session):  # type: ignore[no-untyped-def]
     return site, admin, loader, a, b
 
 
-def test_excel_subtracts_labeled_and_creates_unlabeled(db: Session) -> None:
-    site, admin, _, a, b = _world(db)
+def test_excel_sets_exact_old_count(db: Session) -> None:
+    site, admin, _, a, b = _world(db)  # 2 новых с этикетками — в файл их не пишут
     lines = read_legacy_xlsx(_xlsx([("Zerkalo_60x160", KOM, 5), ("Zerkalo_70х200", KOM, 3),
                                     ("Нет_такого", KOM, 4)]))
     rows = {r.name: r for r in preview_legacy(db, lines)}
-    assert rows["Zerkalo_60x160"].labeled == 2 and rows["Zerkalo_60x160"].to_create == 3  # 5 − 2 с этикетками
+    assert rows["Zerkalo_60x160"].to_create == 5
     assert rows["Zerkalo_70x200"].to_create == 3  # кириллическая «х» в файле — тот же артикул
     assert rows["Нет_такого"].problem and rows["Нет_такого"].to_create == 0
-    assert apply_legacy(db, list(rows.values()), actor=admin) == 6
+    assert apply_legacy(db, list(rows.values()), actor=admin) == (8, 0)
     db.commit()
-    assert legacy_counts(db) == {(a.id, site.id): 3, (b.id, site.id): 3}
-    # Загрузили тот же файл ещё раз — ничего не задвоилось
-    again = preview_legacy(db, lines)
-    assert sum(r.to_create for r in again) == 0
+    assert legacy_counts(db) == {(a.id, site.id): 5, (b.id, site.id): 3}
+    # Тот же файл ещё раз — ничего не задвоилось
+    assert sum(r.to_create + r.to_remove for r in preview_legacy(db, lines)) == 0
+    # Пересчёт через месяц: 60x160 на полке 2, 70x200 не осталось (0), новые с этикетками не трогаются
+    recount = preview_legacy(db, read_legacy_xlsx(_xlsx([("Zerkalo_60x160", KOM, 2),
+                                                          ("Zerkalo_70x200", KOM, 0)])))
+    assert apply_legacy(db, recount, actor=admin) == (0, 6)
+    db.commit()
+    assert legacy_counts(db) == {(a.id, site.id): 2}
+    assert len(_labeled(db, site, a)) == 2
 
 
 def _ozon_plan(db: Session, n: int) -> None:
@@ -86,7 +92,7 @@ def _labeled(db: Session, site, article) -> list[Unit]:  # type: ignore[no-untyp
 
 def test_ozon_label_alone_ships_old_then_asks_for_ours(db: Session) -> None:
     site, admin, loader, a, _ = _world(db)  # 2 новых с этикетками уже на складе
-    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 3)]), actor=admin)  # 1 старое
+    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 1)]), actor=admin)  # 1 старое
     _ozon_plan(db, 3)
     pallet = join_channel(db, user=loader, site=site, channel="Ozon", truck="Озон1")
     db.commit()
@@ -109,7 +115,7 @@ def test_ozon_label_alone_ships_old_then_asks_for_ours(db: Session) -> None:
 
 def test_own_label_after_ozon_swaps_old_for_new(db: Session) -> None:
     site, admin, loader, a, _ = _world(db)
-    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 4)]), actor=admin)  # 2 старых
+    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 2)]), actor=admin)  # 2 старых
     _ozon_plan(db, 1)
     pallet = join_channel(db, user=loader, site=site, channel="Ozon", truck="Озон1")
     db.commit()
@@ -166,7 +172,7 @@ def test_lead_adds_found_old(client: TestClient, db: Session) -> None:
 
 def test_channel_without_batch_ships_old_by_article(db: Session) -> None:
     site, admin, loader, a, _ = _world(db)
-    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 4)]), actor=admin)  # 2 старых
+    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 2)]), actor=admin)  # 2 старых
     db.commit()
     pallet = join_channel(db, user=loader, site=site, channel="СДЭК")
     db.commit()
@@ -192,13 +198,13 @@ def test_admin_page_preview_and_apply(client: TestClient, db: Session) -> None:
     token = get_csrf(client, "/stock-entry/legacy")
     page = client.post("/stock-entry/legacy/preview", data={"csrf_token": token, "site_id": "0"},
                        files={"file": ("ost.xlsx", _xlsx([("Zerkalo_60x160", KOM, 7)]))}).text
-    assert "будет заведено 5" in page
+    assert "добавить 7, списать 0" in page
     assert legacy_counts(db) == {}  # проверка ничего не записывает
     raw = page.split('name="payload" value="')[1].split('"')[0]
     payload = raw.replace("&#34;", '"').replace("&quot;", '"')
     form = {"csrf_token": token, "site_id": "0", "payload": payload}
     done = client.post("/stock-entry/legacy/apply", data=form)
-    assert "Заведено старых зеркал без этикеток: 5" in done.text
+    assert "добавлено 7, списано 0" in done.text
     db.expire_all()
-    assert legacy_counts(db) == {(a.id, site.id): 5}
-    assert "5 старых зеркал без этикеток" in client.get("/stock").text
+    assert legacy_counts(db) == {(a.id, site.id): 7}
+    assert "7 старых зеркал без этикеток" in client.get("/stock").text

@@ -132,6 +132,9 @@ def apply_transition(
         unit.accepted_at = moment or _now()
         unit.pallet_id = None
         unit.channel = None
+        # Вернулось на склад (отмена отгрузки, замена старого на новое) — наклейка маркетплейса
+        # теперь у другого зеркала; в журнале движений она остаётся
+        unit.mp_barcode = None
     if channel is not None:
         unit.channel = channel
     if pallet_id is not None:

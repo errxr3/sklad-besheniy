@@ -6,11 +6,13 @@
 {% if err %}<p class="msg err">{{ err }}</p>{% endif %}
 
 <div class="card">
-	<p>Зеркала, которые уже стоят на складе, вносятся <b>числом</b> — клеить на них ничего не нужно.
-		Грузчик отгружает такое зеркало по наклейке маркетплейса кнопкой «Старое зеркало, без этикетки».</p>
+	<p>Старые зеркала (без нашей этикетки) вносятся <b>числом</b>, клеить на них ничего не нужно.
+		По плану BLAGO грузчик отгружает их по одной наклейке маркетплейса.</p>
 	<p class="hint">В Excel в первой строке: <b>Артикул</b>, <b>Количество</b> и, если площадок в файле две, <b>Площадка</b>.
-		Количество — сколько <b>всего стоит на полке</b>. Что уже есть на складе с этикетками (сдали сборщики),
-		склад вычтет сам. Задачи и «в работе» в файл не включайте.</p>
+		Количество — сколько <b>старых без нашей этикетки</b> стоит на полке. Зеркала с нашей этикеткой не считайте.
+		Склад поставит у себя ровно столько: не хватает — добавит, лишние — спишет. Артикулы, которых нет в файле,
+		не трогаются; 0 — старых этого артикула не осталось.
+		После инвентаризации сканом (она проверяет зеркала с нашей этикеткой) загрузите сюда пересчёт старых.</p>
 	<form method="post" action="/stock-entry/legacy/preview" enctype="multipart/form-data" class="row tight mt">
 		<input type="hidden" name="csrf_token" value="{{ csrf }}">
 		<div>
@@ -27,36 +29,37 @@
 
 {% if rows %}
 {% set add = rows|sum(attribute='to_create') %}
+{% set remove = rows|sum(attribute='to_remove') %}
 <div class="card">
-	<h2>Проверка: будет заведено {{ add }}</h2>
+	<h2>Проверка: добавить {{ add }}, списать {{ remove }}</h2>
 	<table class="dense">
-		<tr><th>Площадка</th><th>Артикул</th><th class="num">На полке</th><th class="num">Уже с этикетками</th>
-			<th class="num">Уже старых</th><th class="num">Добавить</th><th></th></tr>
+		<tr><th>Площадка</th><th>Артикул</th><th class="num">На полке</th><th class="num">По складу</th>
+			<th class="num">Добавить</th><th class="num">Списать</th><th></th></tr>
 		{% for r in rows %}
-		<tr class="{% if r.problem %}plan-no{% elif r.warning %}plan-ask{% endif %}">
+		<tr class="{% if r.problem %}plan-no{% elif r.to_remove %}plan-ask{% endif %}">
 			<td>{{ r.site.name if r.site else '—' }}</td>
 			<td>{{ r.name }}</td>
 			<td class="num">{{ r.shelf }}</td>
-			<td class="num">{{ r.labeled or '' }}</td>
-			<td class="num">{{ r.unlabeled or '' }}</td>
+			<td class="num">{{ r.unlabeled }}</td>
 			<td class="num"><b>{{ r.to_create or '' }}</b></td>
-			<td>{{ r.warning }}</td>
+			<td class="num"><b>{{ r.to_remove or '' }}</b></td>
+			<td>{{ r.problem }}</td>
 		</tr>
 		{% endfor %}
 	</table>
-	{% if add %}
+	{% if add or remove %}
 	<form method="post" action="/stock-entry/legacy/apply" class="mt"
-	      onsubmit="return confirm('Завести {{ add }} старых зеркал без этикеток?')">
+	      onsubmit="return confirm('Старых без этикеток: добавить {{ add }}, списать {{ remove }}?')">
 		<input type="hidden" name="csrf_token" value="{{ csrf }}">
 		<input type="hidden" name="site_id" value="{{ site_id }}">
 		<input type="hidden" name="payload" value="{{ payload }}">
-		<button type="submit" class="big">Завести {{ add }} без этикеток</button>
+		<button type="submit" class="big">Применить: +{{ add }} / −{{ remove }}</button>
 	</form>
 	{% else %}
-	<p class="muted">Добавлять нечего.</p>
+	<p class="muted">Всё совпадает, менять нечего.</p>
 	{% endif %}
-	<p class="hint">Красным — строка не будет заведена (нет в справочнике, не понятна площадка). Жёлтым — на полке меньше,
-		чем уже числится на складе: проверьте, лишнее спишите через «Списание».</p>
+	<p class="hint">Красным — строка не будет применена (нет в справочнике, не понятна площадка). Жёлтым — на полке
+		старых меньше, чем по складу: разница спишется как недостача и попадёт в журнал.</p>
 </div>
 {% endif %}
 

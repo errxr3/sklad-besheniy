@@ -162,9 +162,9 @@ async def legacy_apply(request: Request, db: Session = Depends(get_db)) -> Respo
         return RedirectResponse("/stock-entry/legacy?" + urlencode({"err": "Загрузите файл ещё раз"}), 303)
     user = request.state.user
     rows = preview_legacy(db, lines, default_site=db.get(Site, site_id) if site_id else None)
-    created = apply_legacy(db, rows, actor=user)
-    log_admin(db, user.id, "старый остаток без этикеток", "units", None, None, {"created": created})
-    logger.info("Старый остаток без этикеток", extra={"user_id": user.id, "status": str(created)})
-    return RedirectResponse(
-        "/stock-entry/legacy?" + urlencode({"ok": f"Заведено старых зеркал без этикеток: {created}"}), 303
-    )
+    created, removed = apply_legacy(db, rows, actor=user)
+    log_admin(db, user.id, "старый остаток без этикеток", "units", None, None,
+              {"created": created, "written_off": removed})
+    logger.info("Старый остаток без этикеток", extra={"user_id": user.id, "status": f"+{created} -{removed}"})
+    text = f"Старых без этикеток: добавлено {created}, списано {removed}"
+    return RedirectResponse("/stock-entry/legacy?" + urlencode({"ok": text}), 303)
