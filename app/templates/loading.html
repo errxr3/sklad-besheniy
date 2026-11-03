@@ -59,12 +59,10 @@
 	</form>
 	<div id="camera-box" class="mt" hidden></div>
 	{% if batch_mode %}
-	{% if legacy %}
-	<button type="button" class="secondary big mt" id="legacy-btn" hidden>Старое зеркало, без этикетки</button>
-	{% endif %}
-	<p class="hint">Отгрузка по партии BLAGO OTGRUZKI: на каждом зеркале две этикетки — BLAGO и маркетплейса.
-		Сканируйте обе, в любом порядке.{% if legacy %} Старое зеркало без нашей этикетки: отсканируйте наклейку
-		маркетплейса и нажмите «Старое зеркало, без этикетки».{% endif %}</p>
+	<p class="hint">Отгрузка по плану BLAGO: этикетку маркетплейса сканируйте всегда.
+		Есть на зеркале наша этикетка — сканируйте и её, в любом порядке.{% if legacy %}
+		Старое зеркало без нашей этикетки: хватит наклейки маркетплейса, склад спишет старое сам.
+		Склад просит нашу этикетку, а её нет — позовите начальника смены («Нашлось старое»).{% endif %}</p>
 	{% elif legacy and not no_plan %}
 	<div class="legacy-box mt">
 		<label for="legacy-article">Старое зеркало без нашей этикетки</label>
@@ -141,7 +139,7 @@
 (function () {
 	var pendingUnit = null;
 	var pendingCode = null;
-	var legacyNext = null;  // следующий запрос — старое зеркало без этикетки
+	var legacyNext = null;  // следующий запрос — старое зеркало без этикетки (артикул, канал без плана)
 	var input = document.getElementById('scan-input');
 	var batchMode = {{ 'true' if batch_mode else 'false' }};
 	var basePlaceholder = batchMode ? 'Отсканируйте этикетку BLAGO или маркетплейса' : 'Отсканируйте этикетку зеркала';
@@ -154,10 +152,7 @@
 			var data = { pallet_id: {{ pallet.id }} };
 			if (pendingUnit) data.unit_number = pendingUnit;
 			if (pendingCode) data.ship_code = pendingCode;
-			if (legacyNext) {
-				if (legacyNext === true) data.legacy = true; else data.legacy_article_id = legacyNext;
-				legacyNext = null;
-			}
+			if (legacyNext) { data.legacy_article_id = legacyNext; legacyNext = null; }
 			return data;
 		},
 		onResult: function (data) {
@@ -165,7 +160,6 @@
 			if (data.closed) setTimeout(function () { window.location.href = '/loading'; }, 2500);
 			// Ошибка на втором скане: начинаем зеркало заново с любой этикетки
 			if (!data.ok) { pendingUnit = null; pendingCode = null; input.placeholder = basePlaceholder; }
-			showLegacy();
 		},
 		onSuccess: function (data) {
 			if (data.await_mp) {
@@ -182,28 +176,19 @@
 			if (typeof data.pallet_count === 'number') {
 				document.getElementById('pallet-count').textContent = data.pallet_count;
 			}
-			showLegacy();
 		}
 	});
 
-	// «Старое зеркало, без этикетки»: с партией — после наклейки маркетплейса, без партии — по артикулу
+	// Канал без плана: старое зеркало без этикетки отгружают по выбранному артикулу.
+	// С планом кнопки нет — склад списывает старое сам по наклейке маркетплейса
 	var legacyBtn = document.getElementById('legacy-btn');
-	function showLegacy() {
-		if (legacyBtn && batchMode) legacyBtn.hidden = !pendingCode;
-	}
 	if (legacyBtn) {
 		legacyBtn.addEventListener('click', function () {
-			if (batchMode) {
-				if (!pendingCode) return;
-				legacyNext = true;
-				screen.send(pendingCode);
-			} else {
-				var select = document.getElementById('legacy-article');
-				var name = select.options[select.selectedIndex].text.split(' · ')[0];
-				if (!window.confirm('Отгрузить старое зеркало ' + name + ' без этикетки?')) return;
-				legacyNext = select.value;
-				screen.send('СТАРОЕ ' + name);
-			}
+			var select = document.getElementById('legacy-article');
+			var name = select.options[select.selectedIndex].text.split(' · ')[0];
+			if (!window.confirm('Отгрузить старое зеркало ' + name + ' без этикетки?')) return;
+			legacyNext = select.value;
+			screen.send('СТАРОЕ ' + name);
 		});
 	}
 

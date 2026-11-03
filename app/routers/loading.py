@@ -113,12 +113,11 @@ async def loading_scan(request: Request, db: Session = Depends(get_db)) -> JSONR
         check_channel_site(pallet, site, user)
     except ShippingError as exc:
         return JSONResponse({"ok": False, "message": str(exc), "closed": pallet.closed_at is not None})
-    legacy = bool(payload.get("legacy"))
     try:
         legacy_article_id = int(payload.get("legacy_article_id") or 0) or None
     except (TypeError, ValueError):
         legacy_article_id = None
-    if not code and not (legacy or legacy_article_id):
+    if not code and not legacy_article_id:
         return JSONResponse({"ok": False, "message": "Пустой скан"})
 
     result = scan_loading(
@@ -129,7 +128,6 @@ async def loading_scan(request: Request, db: Session = Depends(get_db)) -> JSONR
         shift_id=shift_id,
         unit_number=str(unit_number) if unit_number else None,
         ship_code=str(ship_code) if ship_code else None,
-        legacy=legacy,
         legacy_article_id=legacy_article_id,
     )
     return JSONResponse(

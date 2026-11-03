@@ -47,6 +47,35 @@
 		{% endfor %}
 	</table>
 </div>
+<div class="card">
+	<h2>Нашлось старое зеркало</h2>
+	<p class="hint">Грузчик пикнул наклейку маркетплейса, склад просит нашу этикетку, а в руках старое зеркало без неё.
+		Значит, старых этого артикула по складу уже нет, а на полке одно стоит. Добавьте его, и пусть грузчик снова
+		пикнет наклейку маркетплейса. Каждое добавление записывается в журнал с вашим именем.</p>
+	<form method="post" action="/shipments/found-old" class="row tight"
+	      onsubmit="return confirm('Добавить старое зеркало ' + this.article.value + ' на склад?')">
+		<input type="hidden" name="csrf_token" value="{{ csrf }}">
+		<div>
+			<label for="found-article">Артикул</label>
+			<input type="text" id="found-article" name="article" list="found-articles" required autocomplete="off"
+			       placeholder="например 60x160">
+			<datalist id="found-articles">{% for name in article_names %}<option value="{{ name }}">{% endfor %}</datalist>
+		</div>
+		{% if found_sites|length > 1 %}
+		<div>
+			<label for="found-site">Площадка</label>
+			<select id="found-site" name="site_id">
+				{% for s in found_sites %}<option value="{{ s.id }}">{{ s.name }}</option>{% endfor %}
+			</select>
+		</div>
+		{% elif found_sites %}
+		<input type="hidden" name="site_id" value="{{ found_sites[0].id }}">
+		{% endif %}
+		<div style="max-width:90px"><label for="found-qty">Штук</label>
+			<input type="number" id="found-qty" name="qty" value="1" min="1" max="10"></div>
+		<div><label>&nbsp;</label><button type="submit" class="secondary">Добавить старое</button></div>
+	</form>
+</div>
 {% endif %}
 {% if not batches %}
 <div class="card"><p class="muted">За этот день партий нет. Они появляются, когда BLAGO OTGRUZKI скачивает этикетки.</p></div>

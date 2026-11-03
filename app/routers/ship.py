@@ -10,7 +10,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Site, User
+from app.models import Article, Site, User
 from app.services.admin import log_admin
 from app.services.batches import (
     BatchError,
@@ -21,9 +21,11 @@ from app.services.batches import (
     remove_items,
     return_items,
 )
+from app.services.legacy_stock import add_found_legacy
 from app.services.ship_plan import STATE_LABELS, build_ship_plan, ship_plan_xlsx, visible_rows
 from app.services.shipping import ShippingError, manual_channels, plan_sites_channels, set_manual
 from app.services.tasks import TaskError, site_workers, task_sites, tasks_for_article, urgent_tasks
+from app.services.units import UnitError
 from app.statuses import PLAN_CHANNELS, REMOVE_REASONS, ROLE_SHIFT_LEAD, SHIP_STATE_LABELS
 from app.timeutil import MOSCOW, fmt_time, now_utc, today_msk
 from app.web import GuardedRoute, page
@@ -99,6 +101,11 @@ def batches_page(
             "day": target,
             "today": today_msk(),
             "channel_state": _channel_state(db),
+            "found_sites": _found_sites(db, user),
+            "article_names": db.scalars(
+                select(Article.name).where(Article.kind == "article", Article.active.is_(True))
+                .order_by(Article.sort_order)
+            ).all(),
             "batches": day_batches(db, day=target, site_ids=lead_site_ids(db, user)),
             "reasons": REMOVE_REASONS,
             "state_labels": SHIP_STATE_LABELS,
@@ -106,6 +113,14 @@ def batches_page(
             "err": err,
         },
     )
+
+
+def _found_sites(db: Session, user: User) -> list[Site]:
+    """Площадки для «Нашлось старое»: начальник с площадкой — своя, иначе все (первой — своя)."""
+    allowed = lead_site_ids(db, user)
+    sites = db.scalars(select(Site).where(Site.active.is_(True)).order_by(Site.id)).all()
+    sites = [site for site in sites if allowed is None or site.id in allowed]
+    return sorted(sites, key=lambda site: site.id != user.home_site_id)
 
 
 def _channel_state(db: Session) -> list[tuple[str, str, str]]:
@@ -154,6 +169,30 @@ def shipments_manual(
         ok = f"{title}: погрузка без плана закрыта"
     logger.info("Канал без плана", extra={"user_id": user.id, "status": ok})
     return _back("/shipments/batches", ok=ok)
+
+
+@router.post("/shipments/found-old")
+def shipments_found_old(
+    request: Request,
+    db: Session = Depends(get_db),
+    article: str = Form(""),
+    site_id: int = Form(...),
+    qty: int = Form(1),
+) -> Response:
+    """«Нашлось старое»: склад просит нашу этикетку, а старых по складу нет — добавить старое в остаток."""
+    user = request.state.user
+    allowed = lead_site_ids(db, user)
+    if allowed is not None and site_id not in allowed:
+        return _back("/shipments/batches", err="Это не ваша площадка")
+    try:
+        found = add_found_legacy(db, article_name=article.strip(), site_id=site_id, qty=qty, actor=user)
+    except UnitError as exc:
+        return _back("/shipments/batches", err=str(exc))
+    log_admin(db, user.id, "found_old", "article", found.id, after={"site_id": site_id, "qty": qty})
+    db.commit()
+    logger.info("Нашлось старое", extra={"user_id": user.id, "status": f"{found.name} +{qty}"})
+    return _back("/shipments/batches", ok=f"Добавлено старых без этикетки: {found.name} +{qty}. "
+                                         "Пусть грузчик снова отсканирует наклейку маркетплейса")
 
 
 async def _ids(request: Request) -> tuple[list[int], str, str]:

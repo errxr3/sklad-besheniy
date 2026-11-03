@@ -148,32 +148,61 @@ def preview_legacy(
     return sorted(merged.values(), key=lambda r: (r.site.name if r.site else "", r.name))
 
 
-def apply_legacy(session: Session, rows: list[LegacyRow], *, actor: User) -> int:
-    """Завести старые зеркала без этикеток. Возвращает, сколько заведено."""
+def _create_legacy(
+    session: Session, *, article_id: int, site_id: int, qty: int, actor: User, note: str
+) -> int:
+    """Завести qty старых зеркал без этикеток на склад площадки."""
     service = session.scalar(select(User).where(User.name == SERVICE_ASSEMBLER_NAME))
     if service is None:
         raise UnitError(f"Нет служебного сотрудника «{SERVICE_ASSEMBLER_NAME}»")
+    left = qty
+    while left > 0:
+        chunk = min(left, MAX_PRINT_QTY)
+        units = create_printed_units(
+            session, article_id=article_id, qty=chunk, site_id=site_id,
+            assembler_id=service.id, actor_id=actor.id,
+        )
+        for unit in units:
+            unit.unlabeled = True
+            apply_transition(
+                session, unit, IN_STOCK, movement_type=MV_ACCEPT, user_id=actor.id,
+                to_site_id=site_id, note=note,
+            )
+        left -= chunk
+    session.flush()
+    return qty
+
+
+def apply_legacy(session: Session, rows: list[LegacyRow], *, actor: User) -> int:
+    """Завести старые зеркала без этикеток. Возвращает, сколько заведено."""
     created = 0
     for row in rows:
-        left = row.to_create
-        if not left or row.article is None or row.site is None:
-            continue
-        while left > 0:
-            chunk = min(left, MAX_PRINT_QTY)
-            units = create_printed_units(
-                session, article_id=row.article.id, qty=chunk, site_id=row.site.id,
-                assembler_id=service.id, actor_id=actor.id,
+        if row.to_create and row.article is not None and row.site is not None:
+            created += _create_legacy(
+                session, article_id=row.article.id, site_id=row.site.id, qty=row.to_create,
+                actor=actor, note=LEGACY_NOTE,
             )
-            for unit in units:
-                unit.unlabeled = True
-                apply_transition(
-                    session, unit, IN_STOCK, movement_type=MV_ACCEPT, user_id=actor.id,
-                    to_site_id=row.site.id, note=LEGACY_NOTE,
-                )
-            created += chunk
-            left -= chunk
-    session.flush()
     return created
+
+
+FOUND_NOTE = "нашлось старое без этикетки"
+MAX_FOUND_QTY = 10  # больше — это уже пересчёт через «Старый остаток»
+
+
+def add_found_legacy(session: Session, *, article_name: str, site_id: int, qty: int, actor: User) -> Article:
+    """«Нашлось старое»: склад просит нашу этикетку, а в руках старое без неё — начальник добавляет его.
+
+    Так бывает, если раньше отгрузили новое, не отсканировав нашу этикетку: склад списал вместо него старое.
+    """
+    article = Catalog(session).article(article_name)
+    if article is None or article.is_header:
+        raise UnitError(f"Артикула «{article_name}» нет в справочнике")
+    if not 1 <= qty <= MAX_FOUND_QTY:
+        raise UnitError(f"За раз от 1 до {MAX_FOUND_QTY}. Больше — пересчитайте через «Старый остаток»")
+    if session.get(Site, site_id) is None:
+        raise UnitError("Нет такой площадки")
+    _create_legacy(session, article_id=article.id, site_id=site_id, qty=qty, actor=actor, note=FOUND_NOTE)
+    return article
 
 
 def pick_legacy_unit(session: Session, *, article_id: int, site_id: int) -> Unit | None:

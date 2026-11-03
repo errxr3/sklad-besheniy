@@ -13,7 +13,15 @@ from app.services.legacy_stock import apply_legacy, legacy_counts, preview_legac
 from app.services.shipping import join_channel, scan_loading
 from app.services.units import accept_unit, create_printed_units
 from app.services.warehouse import inventory_diff, start_inventory
-from app.statuses import IN_STOCK, ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_LOADER, SHIP_LOADED, SHIPPED
+from app.statuses import (
+    IN_STOCK,
+    ROLE_ADMIN,
+    ROLE_ASSEMBLER,
+    ROLE_LOADER,
+    ROLE_SHIFT_LEAD,
+    SHIP_LOADED,
+    SHIPPED,
+)
 from app.timeutil import today_msk
 from tests.helpers import get_csrf, login, make_article, make_user, site_by_name
 
@@ -63,29 +71,97 @@ def test_excel_subtracts_labeled_and_creates_unlabeled(db: Session) -> None:
     assert sum(r.to_create for r in again) == 0
 
 
-def test_loader_ships_old_mirror_by_ozon_label(db: Session) -> None:
-    site, admin, loader, a, _ = _world(db)
-    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 3)]), actor=admin)  # 1 старое
+def _ozon_plan(db: Session, n: int) -> None:
     receive_batch(db, day=today_msk(), market="ozon", channel="Ozon", truck="Озон1", items=[
-        {"posting": "OZ-1", "article": "Zerkalo_60x160", "production": KOM, "codes": ["%OZ1"]},
-        {"posting": "OZ-2", "article": "Zerkalo_60x160", "production": KOM, "codes": ["%OZ2"]},
+        {"posting": f"OZ-{i}", "article": "Zerkalo_60x160", "production": KOM, "codes": [f"%OZ{i}"]}
+        for i in range(1, n + 1)
     ])
     db.commit()
+
+
+def _labeled(db: Session, site, article) -> list[Unit]:  # type: ignore[no-untyped-def]
+    return list(db.scalars(select(Unit).where(Unit.article_id == article.id, Unit.unlabeled.is_(False),
+                                              Unit.status == IN_STOCK).order_by(Unit.id)).all())
+
+
+def test_ozon_label_alone_ships_old_then_asks_for_ours(db: Session) -> None:
+    site, admin, loader, a, _ = _world(db)  # 2 новых с этикетками уже на складе
+    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 3)]), actor=admin)  # 1 старое
+    _ozon_plan(db, 3)
     pallet = join_channel(db, user=loader, site=site, channel="Ozon", truck="Озон1")
     db.commit()
-    need = scan_loading(db, code="%OZ1", pallet=pallet, actor=loader)
-    assert need.ok and need.await_unit
-    done = scan_loading(db, code="%OZ1", pallet=pallet, actor=loader, ship_code="%OZ1", legacy=True)
+    # Старое есть — одной наклейки Озона хватает, хотя новые тоже есть
+    done = scan_loading(db, code="%OZ1", pallet=pallet, actor=loader)
     db.commit()
-    assert done.ok and "без этикетки" in done.detail
+    assert done.ok and not done.await_unit and "Старое" in done.message
     item = db.scalar(select(ShipItem).where(ShipItem.posting == "OZ-1"))
     assert item is not None and item.state == SHIP_LOADED
     shipped = db.get(Unit, item.unit_id)
     assert shipped is not None and shipped.unlabeled and shipped.status == SHIPPED
-    # Старых больше нет — склад не даст «отгрузить» то, чего не вносили
-    none_left = scan_loading(db, code="%OZ2", pallet=pallet, actor=loader, ship_code="%OZ2", legacy=True)
-    assert not none_left.ok and "не осталось" in none_left.message
-    assert db.scalar(select(func.count()).select_from(Unit).where(Unit.status == IN_STOCK)) == 2
+    # Старых больше нет — склад просит нашу этикетку
+    need = scan_loading(db, code="%OZ2", pallet=pallet, actor=loader)
+    assert need.ok and need.await_unit
+    new = _labeled(db, site, a)[0]
+    second = scan_loading(db, code=new.number, pallet=pallet, actor=loader, ship_code="%OZ2")
+    db.commit()
+    assert second.ok and db.get(Unit, new.id).status == SHIPPED  # type: ignore[union-attr]
+
+
+def test_own_label_after_ozon_swaps_old_for_new(db: Session) -> None:
+    site, admin, loader, a, _ = _world(db)
+    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 4)]), actor=admin)  # 2 старых
+    _ozon_plan(db, 1)
+    pallet = join_channel(db, user=loader, site=site, channel="Ozon", truck="Озон1")
+    db.commit()
+    assert scan_loading(db, code="%OZ1", pallet=pallet, actor=loader).ok  # склад списал старое
+    db.commit()
+    new = _labeled(db, site, a)[0]
+    swap = scan_loading(db, code=new.number, pallet=pallet, actor=loader)  # а в руках было новое
+    db.commit()
+    assert swap.ok and "вместо старого" in swap.message
+    item = db.scalar(select(ShipItem).where(ShipItem.posting == "OZ-1"))
+    assert item is not None and item.unit_id == new.id and item.state == SHIP_LOADED
+    assert legacy_counts(db) == {(a.id, site.id): 2}  # старое вернулось
+    assert db.scalar(select(func.count()).select_from(Unit).where(Unit.status == SHIPPED)) == 1
+
+
+def test_swap_refuses_other_article(db: Session) -> None:
+    site, admin, loader, a, b = _world(db)
+    worker = make_user(db, name="Сборщик Б", role=ROLE_ASSEMBLER, home_site_id=site.id)
+    other = create_printed_units(db, article_id=b.id, qty=1, site_id=site.id, assembler_id=worker.id,
+                                 actor_id=worker.id)[0]
+    db.commit()
+    accept_unit(db, code=other.number, actor=worker)
+    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 3)]), actor=admin)
+    _ozon_plan(db, 1)
+    pallet = join_channel(db, user=loader, site=site, channel="Ozon", truck="Озон1")
+    db.commit()
+    assert scan_loading(db, code="%OZ1", pallet=pallet, actor=loader).ok
+    db.commit()
+    # Наша этикетка другого артикула — не замена, а начало следующего зеркала
+    result = scan_loading(db, code=other.number, pallet=pallet, actor=loader)
+    assert result.ok and result.await_mp
+    item = db.scalar(select(ShipItem).where(ShipItem.posting == "OZ-1"))
+    assert item is not None and db.get(Unit, item.unit_id).unlabeled  # type: ignore[union-attr]
+
+
+def test_lead_adds_found_old(client: TestClient, db: Session) -> None:
+    site, admin, loader, a, _ = _world(db)
+    lead = make_user(db, name="Начальник Остатков", role=ROLE_SHIFT_LEAD, home_site_id=site.id)
+    _ozon_plan(db, 1)
+    pallet = join_channel(db, user=loader, site=site, channel="Ozon", truck="Озон1")
+    db.commit()
+    assert scan_loading(db, code="%OZ1", pallet=pallet, actor=loader).await_unit  # старых нет
+    login(client, lead)
+    token = get_csrf(client, "/shipments/batches")
+    assert "Нашлось старое зеркало" in client.get("/shipments/batches").text
+    form = {"csrf_token": token, "article": "zerkalo_60х160", "site_id": str(site.id), "qty": "1"}
+    done = client.post("/shipments/found-old", data=form)
+    assert "Zerkalo_60x160 +1" in done.text
+    bad = client.post("/shipments/found-old", data={**form, "qty": "50"})
+    assert "Старый остаток" in bad.text
+    db.expire_all()
+    assert scan_loading(db, code="%OZ1", pallet=pallet, actor=loader).ok  # теперь списалось старое
 
 
 def test_channel_without_batch_ships_old_by_article(db: Session) -> None:
