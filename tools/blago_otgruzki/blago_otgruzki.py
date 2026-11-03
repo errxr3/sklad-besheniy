@@ -69,7 +69,7 @@ from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.pdfgen import canvas
 
 APP_NAME = "BLAGO OTGRUZKI"
-APP_VERSION = "03.11 · этикетки Ozon v3"
+APP_VERSION = "03.11.2 · склад по кнопке"
 API = "https://api-seller.ozon.ru"
 BATCH = 20                   # максимум отправлений в одном запросе этикеток
 READY = "awaiting_deliver"   # статус, в котором Ozon отдаёт этикетку
@@ -1804,9 +1804,10 @@ def wb_warehouses(token):
     return {}
 
 
-def ozon_reports(cabinets, days, out, log, statuses, names, shk=None, lines=None, truck="Озон1"):
+def ozon_reports(cabinets, days, out, log, statuses, names, shk=None, lines=None, truck="Озон1", cabs=None):
     """Отчёты Ozon из всех кабинетов. statuses — какие статусы брать (в этом порядке блоков);
     names — {"ozon" | "kgt": имя файла без .xlsx}: какие отчёты делать.
+    cabs — если передан, сюда пишется по каждому кабинету: (сколько отправлений | None, ошибка).
     Возвращает ({ключ: {артикул: шт}}, {ключ: путь})."""
     data, files = {}, {}
     with ThreadPoolExecutor(max_workers=max(1, len(cabinets))) as pool:
@@ -1821,7 +1822,11 @@ def ozon_reports(cabinets, days, out, log, statuses, names, shk=None, lines=None
             snap = lists[name].result()
         except (RuntimeError, requests.RequestException) as e:
             log(f"✖ {name}: не удалось получить заказы — {e}")
+            if cabs is not None:
+                cabs[name] = (None, str(e))
             continue
+        if cabs is not None:
+            cabs[name] = (sum(1 for i in snap.values() if i["status"] in statuses), "")
         for num, info in snap.items():
             if info["status"] not in statuses:
                 continue
@@ -1917,14 +1922,20 @@ def morning(cabinets, token, template, cdek, out, days, log, progress, today=Non
     out.mkdir(parents=True, exist_ok=True)
     files, data, shk = {}, {}, {}
     lines, markets = [], []   # заказы дня для склада: он решает по остаткам, что едет
+    sources = []              # что откуда пришло: (название, отправлений | None, ошибка) — для проверки
 
     # --- Ozon: все кабинеты сразу
     if cabinets:
-        markets.append("ozon")
+        cabs = {}
         d, f = ozon_reports(cabinets, days, out, log, OZON_STATUSES,
-                            {"ozon": f"Озон {stamp}", "kgt": f"КГТ {stamp}"}, shk, lines=lines)
+                            {"ozon": f"Озон {stamp}", "kgt": f"КГТ {stamp}"}, shk, lines=lines, cabs=cabs)
         data.update(d)
         files.update(f)
+        for name in cabinets:
+            count, err = cabs.get(name, (None, "нет ответа"))
+            sources.append((f"Ozon {name}", count, err))
+        if all(cabs.get(name, (None, ""))[0] is not None for name in cabinets):
+            markets.append("ozon")  # все кабинеты пришли — можно заменить список Ozon на складе
     else:
         log("⚠ Ключи Ozon не заполнены — отчёты Озон и КГТ пропущены")
     progress(1, 3)
@@ -1936,6 +1947,7 @@ def morning(cabinets, token, template, cdek, out, days, log, progress, today=Non
             names = wb_warehouses(token)
         except (RuntimeError, requests.RequestException) as e:
             log(f"✖ WB: {e}")
+            sources.append(("WB", None, str(e)))
             new = None
         if new is not None:
             mgt, sgt, later = [], [], defaultdict(int)
@@ -1962,6 +1974,7 @@ def morning(cabinets, token, template, cdek, out, days, log, progress, today=Non
                               "production": production_of(o.get("article", "")),
                               "ordered_at": iso(wb_time(o.get("createdAt")))})
             markets.append("wb")
+            sources += [("WB", len(mgt), ""), ("СГТ", len(sgt), "")]
             hdr = ["№ задания", "Артикул продавца", "Склад продавца", "Доставить на склад", "к"]
             for key, title, rows in (("wb", "ВБ", mgt), ("sgt", "СГТ", sgt)):
                 path = out / f"{title} {stamp}.xlsx"
@@ -1983,15 +1996,16 @@ def morning(cabinets, token, template, cdek, out, days, log, progress, today=Non
             data["cdek"] = read_totals(cdek)
             log(f"✔ {'СДЭК':<5} {sum(data['cdek'].values())} шт.")
             markets.append("cdek")
+            sources.append(("СДЭК", len(data["cdek"]), ""))
             for art, q in data["cdek"].items():  # у СДЭК в файле нет номеров — заказ «на артикул»
                 lines.append({"market": "cdek", "channel": "СДЭК", "posting": f"СДЭК {day:%d.%m} {art}"[:64],
                               "article": art, "qty": q, "production": production_of(art)})
         except Exception as e:  # noqa: BLE001
             log(f"✖ СДЭК: не удалось прочитать {Path(cdek).name} — {e}")
 
-    # --- Склад: полный список заказов дня → что едет по остаткам
-    if lines:
-        sklad_summary(sklad_demand(day, lines, log, replace=markets), log)
+    # --- Склад: заказы дня НЕ уходят сами — сначала проверка, потом кнопка «Отправить на склад»
+    if sklad_on() and (lines or sources):
+        morning_hold(day, lines, markets, sources, log)
 
     # --- Сборка
     if template and data:
@@ -2066,6 +2080,80 @@ def sklad_check():
         raise RuntimeError("ключ не подходит")
     if r.status_code != 200:
         raise RuntimeError(f"ошибка {r.status_code}")
+
+
+SKLAD_MORNING = BASE_DIR / "sklad_morning.json"   # заказы дня ждут проверки и кнопки «Отправить на склад»
+
+
+def morning_load():
+    """Заказы дня, которые ждут отправки (только сегодняшние)."""
+    try:
+        data = json.loads(SKLAD_MORNING.read_text(encoding="utf-8")) if SKLAD_MORNING.exists() else None
+    except ValueError:
+        data = None
+    if not data or data.get("day") != today_msk().isoformat():
+        return None
+    return data
+
+
+def morning_clear():
+    try:
+        if SKLAD_MORNING.exists():
+            SKLAD_MORNING.unlink()
+    except OSError:
+        pass
+
+
+def morning_text(data):
+    """«Ozon Z 120 · Ozon R ✖ · WB 160 · СГТ 40» — что пришло из каждого кабинета."""
+    parts = []
+    for name, count, err in data["sources"]:
+        parts.append(f"{name} ✖" if count is None else f"{name} {count}")
+    return " · ".join(parts)
+
+
+def morning_problems(data):
+    """Что подозрительно: кабинет не загрузился или пришло 0 заказов."""
+    bad = []
+    for name, count, err in data["sources"]:
+        if count is None:
+            bad.append(f"✖ {name}: не загрузился ({err[:120]})")
+        elif count == 0:
+            bad.append(f"⚠ {name}: 0 заказов — точно так?")
+    return bad
+
+
+def morning_hold(day, lines, markets, sources, log):
+    """Сохранить заказы дня до проверки. На склад они уйдут кнопкой «Отправить на склад»."""
+    data = {"day": day.isoformat(), "lines": lines, "markets": markets, "sources": sources}
+    try:
+        SKLAD_MORNING.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    except OSError as e:
+        log(f"✖ Не удалось сохранить заказы для склада: {e}")
+        return
+    log("")
+    log(f"⏸ Заказы дня на склад ПОКА НЕ ОТПРАВЛЕНЫ: {morning_text(data)}")
+    for line in morning_problems(data):
+        log(f"│ {line}")
+    log("│ Проверь отчёты. Если всё верно — нажми вверху «Отправить на склад».")
+
+
+def morning_send(log):
+    """Отправить сохранённые заказы дня на склад (после проверки)."""
+    data = morning_load()
+    if data is None:
+        log("Нечего отправлять: заказы дня не собраны или они вчерашние — нажми «Утро» ещё раз")
+        return False
+    day = datetime.fromisoformat(data["day"]).date()
+    lost = [name for name, count, _ in data["sources"] if count is None]
+    if lost:
+        log(f"⚠ Без {', '.join(lost)}: их заказы на складе не трогаю — остаются со вчера")
+    answer = sklad_demand(day, data["lines"], log, replace=data["markets"])
+    if answer is None:
+        return False
+    sklad_summary(answer, log)
+    morning_clear()
+    return True
 
 
 def _pending_load():
@@ -2318,6 +2406,9 @@ class App(tk.Tk):
         self.sklad_line.pack(side="left")
         self.sklad_resend = ttk.Button(srow, text="Отправить неотправленное", command=self.flush_sklad,
                                        cursor="hand2")
+        # Заказы дня уходят на склад только после проверки — этой кнопкой
+        self.sklad_send = ttk.Button(srow, text="Отправить на склад", style="Accent.TButton",
+                                     command=self.send_morning, cursor="hand2")
         self.page_box = ttk.Frame(main, style="Bg.TFrame")
         self.page_box.pack(fill="x")
         self.pages = {name: ttk.Frame(self.page_box, style="Bg.TFrame") for name in PAGES}
@@ -2376,8 +2467,13 @@ class App(tk.Tk):
             pending = len(_pending_load())
         except Exception:  # noqa: BLE001
             pending = 0
+        morning = morning_load() if sklad_on() else None
         if not sklad_on():
             text, color = "Склад: не подключён — «Настройки → Склад BLAGO»", C["dim"]
+        elif morning and not pending:
+            warn = morning_problems(morning)
+            text = f"Склад: заказы дня ждут проверки — {morning_text(morning)}"
+            color = C["warn"] if warn else C["accent"]
         elif pending:
             text = f"Склад: ✖ не ушло {plural(pending, 'партия', 'партии', 'партий')} — нет связи"
             color = C["err"]
@@ -2391,6 +2487,11 @@ class App(tk.Tk):
             self.sklad_resend.pack(side="left", padx=(12, 0))
         elif not pending and self.sklad_resend.winfo_ismapped():
             self.sklad_resend.pack_forget()
+        show_send = bool(morning) and not pending
+        if show_send and not self.sklad_send.winfo_ismapped():
+            self.sklad_send.pack(side="left", padx=(12, 0))
+        elif not show_send and self.sklad_send.winfo_ismapped():
+            self.sklad_send.pack_forget()
         self.after(2000, self.refresh_sklad_line)
 
     # ------------------------------------------------------------ навигация
@@ -2990,6 +3091,30 @@ class App(tk.Tk):
                 self.q.put(("status", self.sklad_status, f"✖ {e}", C["err"]))
 
         threading.Thread(target=work, daemon=True).start()
+
+    def send_morning(self):
+        """«Отправить на склад»: заказы дня — только после того, как ты проверил отчёты."""
+        if self.busy:
+            return
+        data = morning_load()
+        if data is None:
+            messagebox.showinfo(APP_NAME, "Нечего отправлять: сначала нажми «Утро».")
+            return
+        problems = morning_problems(data)
+        text = "Отправить заказы дня на склад?\n\n" + morning_text(data).replace(" · ", "\n")
+        if problems:
+            text += ("\n\nВНИМАНИЕ:\n" + "\n".join(problems)
+                     + "\n\nНе загрузившиеся кабинеты на складе не трогаются — там останутся их заказы со вчера."
+                     + "\nЛучше нажать «Утро» ещё раз. Всё равно отправить?")
+        if not messagebox.askyesno(APP_NAME, text, icon="warning" if problems else "question"):
+            return
+        self.headline("ОТПРАВКА ЗАКАЗОВ ДНЯ НА СКЛАД")
+
+        def work():
+            morning_send(lambda t: self.q.put(("log", t)))
+            self.q.put(("done",))
+
+        self.run(work)
 
     def flush_sklad(self):
         if self.busy:
