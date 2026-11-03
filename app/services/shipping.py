@@ -239,8 +239,19 @@ def scan_loading(
     shift_id: int | None = None,
     unit_number: str | None = None,
     ship_code: str | None = None,
+    legacy: bool = False,
+    legacy_article_id: int | None = None,
 ) -> LoadResult:
-    """Скан на погрузке: этикетка зеркала или ШК маркетплейса (SPEC §6.4)."""
+    """Скан на погрузке: этикетка зеркала или ШК маркетплейса (SPEC §6.4).
+
+    `legacy` — грузят старое зеркало без нашей этикетки: по наклейке маркетплейса (`ship_code`),
+    а в канале без партии — по выбранному артикулу (`legacy_article_id`).
+    """
+    if legacy or legacy_article_id:
+        return scan_legacy(
+            session, pallet=pallet, actor=actor, shift_id=shift_id,
+            ship_code=ship_code or code, article_id=legacy_article_id,
+        )
     value = clean_code(code)
     if not value:
         return LoadResult(False, "Пустой скан")
@@ -308,6 +319,53 @@ def _scan_unit_label(
         )
 
     return _do_ship(session, unit=unit, pallet=pallet, actor=actor, shift_id=shift_id)
+
+
+def scan_legacy(
+    session: Session,
+    *,
+    pallet: Pallet,
+    actor: User,
+    shift_id: int | None,
+    ship_code: str | None,
+    article_id: int | None,
+) -> LoadResult:
+    """Старое зеркало без нашей этикетки: склад сам берёт одно такое зеркало нужного артикула."""
+    from app.services.legacy_stock import pick_legacy_unit
+
+    if batch_mode(session, pallet):
+        code = clean_ship_code(ship_code or "")
+        item = find_ship_item(session, code) if code else None
+        if not code:
+            return LoadResult(
+                False, "Сначала отсканируйте наклейку маркетплейса", "по ней склад узнает артикул"
+            )
+        problem = _item_problem(item, code, pallet)
+        if problem is not None:
+            return problem
+        assert item is not None
+        if item.article_id is None:
+            return LoadResult(False, "Артикула нет в справочнике склада", item.article_name)
+        unit = pick_legacy_unit(session, article_id=item.article_id, site_id=pallet.site_id)
+        name = item.article.name if item.article else item.article_name
+        if unit is None:
+            return LoadResult(False, f"Старых {name} без этикетки не осталось",
+                              "возьмите зеркало с нашей этикеткой", article=name)
+        result = _ship_by_item(session, unit=unit, item=item, code=code, pallet=pallet,
+                               actor=actor, shift_id=shift_id)
+    else:
+        if not article_id:
+            return LoadResult(False, "Выберите артикул старого зеркала")
+        article = session.get(Article, article_id)
+        unit = pick_legacy_unit(session, article_id=article_id, site_id=pallet.site_id)
+        name = article.name if article else "этого артикула"
+        if unit is None:
+            return LoadResult(False, f"Старых {name} без этикетки не осталось",
+                              "возьмите зеркало с нашей этикеткой", article=name)
+        result = _do_ship(session, unit=unit, pallet=pallet, actor=actor, shift_id=shift_id)
+    if result.ok:
+        result.detail = f"старое без этикетки · {result.detail}" if result.detail else "старое без этикетки"
+    return result
 
 
 # ---------- погрузка по партиям BLAGO OTGRUZKI ----------

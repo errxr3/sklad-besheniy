@@ -285,6 +285,8 @@ class Unit(Base):
     mp_barcode: Mapped[str | None] = mapped_column(String(64))
     # Задача, под которую кладовщик напечатал этикетку (NULL — напечатано вне задач)
     task_id: Mapped[int | None] = mapped_column(ForeignKey("tasks.id", ondelete="SET NULL"))
+    # Старый остаток, заведённый числом: этикетку не печатали, грузят по наклейке маркетплейса
+    unlabeled: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     version: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
 
     article: Mapped[Article] = relationship(lazy="joined")

@@ -12,6 +12,10 @@
 	«Администратор → Площадки».</p>
 {% endif %}
 
+{% if legacy_total %}
+<p class="msg warn">В остатке {{ legacy_total }} старых зеркал без этикеток — их грузят по наклейке маркетплейса.
+	{% if can('/stock-entry/legacy') %}<a href="/stock-entry/legacy">Подробно</a>{% endif %}</p>
+{% endif %}
 <div class="card stock-controls">
 	<form method="get" action="/stock" class="row tight">
 		<div>

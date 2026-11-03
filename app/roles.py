@@ -94,6 +94,9 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("POST", "/labels/void"): PRINTERS,
     ("GET", "/warehouse/printed-old"): LEADS,
     # Ввод остатков
+    ("GET", "/stock-entry/legacy"): ADMIN_ONLY,
+    ("POST", "/stock-entry/legacy/preview"): ADMIN_ONLY,
+    ("POST", "/stock-entry/legacy/apply"): ADMIN_ONLY,
     ("GET", "/stock-entry"): STOCK_ENTRY,
     ("POST", "/stock-entry/print"): STOCK_ENTRY,
     ("GET", "/stock-entry/remove"): (*STOCK_ENTRY, ROLE_SHIFT_LEAD),

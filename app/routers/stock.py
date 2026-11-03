@@ -15,6 +15,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import Site
 from app.services.batches import day_batches, moved_items
+from app.services.legacy_stock import legacy_counts
 from app.services.shipment_report import build_shipment_table, shipment_xlsx
 from app.services.stock import build_stock_table, site_locative
 from app.timeutil import now_utc, today_msk
@@ -95,10 +96,12 @@ def stock_page(
             select(Site).where(Site.active.is_(True), Site.labeling_done.is_(False))
         ).all()
     )
+    legacy_total = sum(legacy_counts(db).values())
     return page(
         request,
         "stock.html",
         {
+            "legacy_total": legacy_total,
             "table": table,
             "columns_json": json.dumps(columns, ensure_ascii=False),
             "day": target_day,

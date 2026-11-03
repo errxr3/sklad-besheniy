@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import Pallet
 from app.services.context import site_and_shift
+from app.services.legacy_stock import legacy_articles
 from app.services.shipping import (
     CHANNEL_BUTTONS,
     ShippingError,
@@ -63,6 +64,8 @@ def loading_page(
             # Сегодня есть партия BLAGO OTGRUZKI для канала: двойной скан и список «что грузить»
             "batch_mode": batch_mode(db, pallet) if pallet else False,
             "batch_lines": channel_batch_lines(db, pallet) if pallet else [],
+            # Старый остаток без этикеток этой площадки — для кнопки «Старое зеркало, без этикетки»
+            "legacy": legacy_articles(db, pallet.site_id) if pallet else [],
             # Без смены грузить нельзя — вместо каналов кнопка «начать смену»
             "no_shift": no_shift,
             "err": err,
@@ -107,7 +110,12 @@ async def loading_scan(request: Request, db: Session = Depends(get_db)) -> JSONR
         check_channel_site(pallet, site, user)
     except ShippingError as exc:
         return JSONResponse({"ok": False, "message": str(exc), "closed": pallet.closed_at is not None})
-    if not code:
+    legacy = bool(payload.get("legacy"))
+    try:
+        legacy_article_id = int(payload.get("legacy_article_id") or 0) or None
+    except (TypeError, ValueError):
+        legacy_article_id = None
+    if not code and not (legacy or legacy_article_id):
         return JSONResponse({"ok": False, "message": "Пустой скан"})
 
     result = scan_loading(
@@ -118,6 +126,8 @@ async def loading_scan(request: Request, db: Session = Depends(get_db)) -> JSONR
         shift_id=shift_id,
         unit_number=str(unit_number) if unit_number else None,
         ship_code=str(ship_code) if ship_code else None,
+        legacy=legacy,
+        legacy_article_id=legacy_article_id,
     )
     return JSONResponse(
         {

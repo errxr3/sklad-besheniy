@@ -1,16 +1,19 @@
 """«Ввод остатков»: печать этикеток сразу на склад и уборка лишних сканом."""
 
+import json
 import logging
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, Form, Request
+from fastapi import APIRouter, Depends, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Site, User
+from app.models import Article, Site, User
 from app.routers.make import labels_pdf_response
+from app.services.admin import log_admin
+from app.services.legacy_stock import apply_legacy, legacy_counts, preview_legacy, read_legacy_xlsx
 from app.services.stock_entry import MAX_ENTRY_QTY, enter_stock, remove_extra
 from app.services.units import UnitError
 from app.statuses import ROLE_STOREKEEPER
@@ -103,4 +106,65 @@ async def stock_entry_remove_scan(request: Request, db: Session = Depends(get_db
             "article": result.article,
             "stock": result.stock,
         }
+    )
+
+
+# ---------- старый остаток без этикеток (решение владельца 2026-11-03) ----------
+
+
+def _legacy_page(request: Request, db: Session, *, rows: list | None = None, payload: str = "",
+                 site_id: int = 0, ok: str = "", err: str = "") -> Response:
+    sites = list(db.scalars(select(Site).where(Site.active.is_(True)).order_by(Site.sort_order)).all())
+    names = {s.id: s.name for s in sites}
+    counts = legacy_counts(db)
+    found = db.scalars(select(Article).where(Article.id.in_({a for a, _ in counts}))).all()
+    articles = {a.id: a.name for a in found}
+    current = sorted(
+        (names.get(site, "?"), articles.get(article, "?"), n) for (article, site), n in counts.items()
+    )
+    return page(
+        request,
+        "legacy_stock.html",
+        {"sites": sites, "rows": rows, "payload": payload, "site_id": site_id, "current": current,
+         "total": sum(n for _, _, n in current), "ok": ok, "err": err},
+    )
+
+
+@router.get("/stock-entry/legacy", response_class=HTMLResponse)
+def legacy_form(request: Request, db: Session = Depends(get_db), ok: str = "", err: str = "") -> Response:
+    """Старый остаток числом: загрузка Excel и сколько старых без этикеток сейчас."""
+    return _legacy_page(request, db, ok=ok, err=err)
+
+
+@router.post("/stock-entry/legacy/preview", response_class=HTMLResponse)
+async def legacy_preview(
+    request: Request, site_id: int = Form(0), file: UploadFile = File(...), db: Session = Depends(get_db)
+) -> Response:
+    """Показать, что будет заведено, ничего не записывая."""
+    content = await file.read()
+    try:
+        lines = read_legacy_xlsx(content)
+    except UnitError as exc:
+        return _legacy_page(request, db, site_id=site_id, err=str(exc))
+    rows = preview_legacy(db, lines, default_site=db.get(Site, site_id) if site_id else None)
+    payload = json.dumps(lines, ensure_ascii=False)
+    return _legacy_page(request, db, rows=rows, payload=payload, site_id=site_id)
+
+
+@router.post("/stock-entry/legacy/apply")
+async def legacy_apply(request: Request, db: Session = Depends(get_db)) -> Response:
+    """Завести старые зеркала без этикеток по проверенному файлу (цифры пересчитываются заново)."""
+    form = await request.form()
+    try:
+        lines = [(str(n), str(s), int(q)) for n, s, q in json.loads(str(form.get("payload") or "[]"))]
+        site_id = int(str(form.get("site_id") or 0))
+    except (ValueError, TypeError):
+        return RedirectResponse("/stock-entry/legacy?" + urlencode({"err": "Загрузите файл ещё раз"}), 303)
+    user = request.state.user
+    rows = preview_legacy(db, lines, default_site=db.get(Site, site_id) if site_id else None)
+    created = apply_legacy(db, rows, actor=user)
+    log_admin(db, user.id, "старый остаток без этикеток", "units", None, None, {"created": created})
+    logger.info("Старый остаток без этикеток", extra={"user_id": user.id, "status": str(created)})
+    return RedirectResponse(
+        "/stock-entry/legacy?" + urlencode({"ok": f"Заведено старых зеркал без этикеток: {created}"}), 303
     )

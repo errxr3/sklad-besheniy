@@ -354,7 +354,10 @@ def inventory_diff(session: Session, inventory: Inventory) -> InventoryDiff:
         ).all()
     )
 
-    expected_query = select(Unit).where(Unit.status == IN_STOCK, Unit.site_id == inventory.site_id)
+    # Старый остаток без этикеток сканом не посчитать — его пересчитывают числом, здесь не списываем
+    expected_query = select(Unit).where(
+        Unit.status == IN_STOCK, Unit.site_id == inventory.site_id, Unit.unlabeled.is_(False)
+    )
     if inventory.article_ids:
         expected_query = expected_query.where(Unit.article_id.in_(inventory.article_ids))
     expected = list(session.scalars(expected_query.order_by(Unit.number)).all())
