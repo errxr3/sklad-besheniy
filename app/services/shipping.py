@@ -533,9 +533,6 @@ def scan_batch(
                 return LoadResult(False, "Этикетка маркетплейса потерялась", "отсканируйте обе ещё раз")
             return _ship_by_item(session, unit=unit, item=item, code=ship_code, pallet=pallet,
                                  actor=actor, shift_id=shift_id)
-        swapped = _swap_old_for_new(session, unit=unit, pallet=pallet, actor=actor, shift_id=shift_id)
-        if swapped is not None:
-            return swapped
         return LoadResult(
             True, unit.article.name, "Теперь этикетку маркетплейса на этом зеркале",
             number=unit.number, article=unit.article.name, await_mp=True,
@@ -556,12 +553,28 @@ def scan_batch(
         assert unit is not None
         return _ship_by_item(session, unit=unit, item=item, code=value, pallet=pallet,
                              actor=actor, shift_id=shift_id)
-    # Пока по складу есть старые этого артикула (без нашей этикетки) — хватает одной наклейки
-    # маркетплейса: склад списывает старое сам (решение владельца 2026-11-03)
+    # Старые этого артикула (без нашей этикетки) уходят по наклейке маркетплейса (решение 2026-11-04):
+    # новых с нашей этикеткой нет — сразу, одним сканом; есть и новые — склад ждёт нашу этикетку
+    # или тот же скан наклейки ещё раз («пик-пик» = старое). Так склад не гадает, какое зеркало в руках.
     if item.article_id is not None:
         from app.services.legacy_stock import pick_legacy_unit
 
+        repeat = bool(ship_code) and clean_ship_code(ship_code) == clean_ship_code(value)
+        has_new = repeat or session.scalar(
+            select(Unit.id)
+            .where(
+                Unit.article_id == item.article_id, Unit.site_id == pallet.site_id,
+                Unit.status == IN_STOCK, Unit.unlabeled.is_(False),
+            )
+            .limit(1)
+        ) is not None
         old = pick_legacy_unit(session, article_id=item.article_id, site_id=pallet.site_id)
+        if old is not None and has_new and not repeat:
+            return LoadResult(
+                True, f"Нужно: {article}", "нашу этикетку или эту наклейку ещё раз",
+                article=article, await_unit=True, ship_code=value,
+                pallet_count=pallet_count(session, pallet.id),
+            )
         if old is not None:
             result = _ship_by_item(session, unit=old, item=item, code=value, pallet=pallet,
                                    actor=actor, shift_id=shift_id)
@@ -573,48 +586,6 @@ def scan_batch(
         True, f"Нужно: {article}", "пикните нашу этикетку. Нет её — позовите начальника смены",
         article=article, await_unit=True, ship_code=value, pallet_count=pallet_count(session, pallet.id),
     )
-
-
-SWAP_MINUTES = 3
-
-
-def _swap_old_for_new(
-    session: Session, *, unit: Unit, pallet: Pallet, actor: User, shift_id: int | None
-) -> LoadResult | None:
-    """Нашу этикетку отсканировали после наклейки маркетплейса, а склад уже списал по ней старое.
-
-    Значит, в руках новое зеркало: старое возвращается в остаток, отгружается новое.
-    Только последнее погруженное этим грузчиком в этот канал, того же артикула, за последние минуты.
-    """
-    last = session.scalars(
-        select(ShipItem)
-        .where(ShipItem.pallet_id == pallet.id, ShipItem.loaded_by == actor.id, ShipItem.state == SHIP_LOADED)
-        .order_by(ShipItem.loaded_at.desc(), ShipItem.id.desc())
-        .limit(1)
-    ).first()
-    if last is None or last.unit_id is None or last.loaded_at is None:
-        return None
-    if now_utc() - last.loaded_at > timedelta(minutes=SWAP_MINUTES):
-        return None
-    old = session.get(Unit, last.unit_id)
-    if old is None or not old.unlabeled or old.article_id != unit.article_id or old.status != SHIPPED:
-        return None
-    old = lock_unit(session, old.number)
-    assert old is not None
-    code = session.scalar(select(ShipCode.code).where(ShipCode.item_id == last.id).limit(1)) or ""
-    last.state, last.unit_id, last.pallet_id = SHIP_WAIT, None, None
-    last.loaded_at = last.loaded_by = last.moved_note = None
-    apply_transition(
-        session, old, IN_STOCK, movement_type=MV_SHIP_CANCEL, user_id=actor.id, shift_id=shift_id,
-        note=f"замена: вместо старого погружено {unit.number}",
-    )
-    session.flush()
-    result = _ship_by_item(session, unit=unit, item=last, code=code, pallet=pallet,
-                           actor=actor, shift_id=shift_id)
-    if result.ok:
-        result.message = f"Новое вместо старого: {unit.article.name}"
-        result.detail = f"старое вернулось в остаток · {result.detail}"
-    return result
 
 
 def _unit_problem(session: Session, unit: Unit | None, number: str, pallet: Pallet) -> LoadResult | None:

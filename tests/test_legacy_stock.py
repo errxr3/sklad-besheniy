@@ -4,7 +4,7 @@ from io import BytesIO
 
 from fastapi.testclient import TestClient
 from openpyxl import Workbook
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.models import ShipItem, Unit
@@ -77,9 +77,9 @@ def test_excel_sets_exact_old_count(db: Session) -> None:
     assert len(_labeled(db, site, a)) == 2
 
 
-def _ozon_plan(db: Session, n: int) -> None:
+def _ozon_plan(db: Session, n: int, article: str = "Zerkalo_60x160") -> None:
     receive_batch(db, day=today_msk(), market="ozon", channel="Ozon", truck="Озон1", items=[
-        {"posting": f"OZ-{i}", "article": "Zerkalo_60x160", "production": KOM, "codes": [f"%OZ{i}"]}
+        {"posting": f"OZ-{i}", "article": article, "production": KOM, "codes": [f"%OZ{i}"]}
         for i in range(1, n + 1)
     ])
     db.commit()
@@ -90,65 +90,61 @@ def _labeled(db: Session, site, article) -> list[Unit]:  # type: ignore[no-untyp
                                               Unit.status == IN_STOCK).order_by(Unit.id)).all())
 
 
-def test_ozon_label_alone_ships_old_then_asks_for_ours(db: Session) -> None:
-    site, admin, loader, a, _ = _world(db)  # 2 новых с этикетками уже на складе
-    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 1)]), actor=admin)  # 1 старое
-    _ozon_plan(db, 3)
+def test_only_old_goes_with_one_scan(db: Session) -> None:
+    site, admin, loader, _, b = _world(db)  # у 70x200 новых нет
+    apply_legacy(db, preview_legacy(db, [("Zerkalo_70x200", KOM, 1)]), actor=admin)
+    _ozon_plan(db, 2, article="Zerkalo_70x200")
     pallet = join_channel(db, user=loader, site=site, channel="Ozon", truck="Озон1")
     db.commit()
-    # Старое есть — одной наклейки Озона хватает, хотя новые тоже есть
     done = scan_loading(db, code="%OZ1", pallet=pallet, actor=loader)
     db.commit()
     assert done.ok and not done.await_unit and "Старое" in done.message
     item = db.scalar(select(ShipItem).where(ShipItem.posting == "OZ-1"))
     assert item is not None and item.state == SHIP_LOADED
-    shipped = db.get(Unit, item.unit_id)
-    assert shipped is not None and shipped.unlabeled and shipped.status == SHIPPED
+    assert db.get(Unit, item.unit_id).unlabeled  # type: ignore[union-attr]
     # Старых больше нет — склад просит нашу этикетку
     need = scan_loading(db, code="%OZ2", pallet=pallet, actor=loader)
     assert need.ok and need.await_unit
-    new = _labeled(db, site, a)[0]
-    second = scan_loading(db, code=new.number, pallet=pallet, actor=loader, ship_code="%OZ2")
+
+
+def test_old_and_new_double_pik(db: Session) -> None:
+    site, admin, loader, a, _ = _world(db)  # 2 новых 60x160
+    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 1)]), actor=admin)  # и 1 старое
+    _ozon_plan(db, 2)
+    pallet = join_channel(db, user=loader, site=site, channel="Ozon", truck="Озон1")
     db.commit()
-    assert second.ok and db.get(Unit, new.id).status == SHIPPED  # type: ignore[union-attr]
+    # Есть и старые, и новые — склад не гадает, ждёт
+    first = scan_loading(db, code="%OZ1", pallet=pallet, actor=loader)
+    assert first.ok and first.await_unit and first.ship_code == "%OZ1"
+    assert legacy_counts(db) == {(a.id, site.id): 1}
+    # Пик-пик той же наклейкой — старое
+    old = scan_loading(db, code="%OZ1", pallet=pallet, actor=loader, ship_code="%OZ1")
+    db.commit()
+    assert old.ok and "Старое" in old.message
+    assert legacy_counts(db) == {}
+    # Другая наклейка, потом наша — новое (старых уже нет: склад сразу ждёт нашу)
+    need = scan_loading(db, code="%OZ2", pallet=pallet, actor=loader)
+    assert need.await_unit
+    new = _labeled(db, site, a)[0]
+    assert scan_loading(db, code=new.number, pallet=pallet, actor=loader, ship_code="%OZ2").ok
+    db.commit()
+    assert db.get(Unit, new.id).status == SHIPPED  # type: ignore[union-attr]
 
 
-def test_own_label_after_ozon_swaps_old_for_new(db: Session) -> None:
+def test_ozon_then_own_label_ships_new_and_keeps_old(db: Session) -> None:
     site, admin, loader, a, _ = _world(db)
-    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 2)]), actor=admin)  # 2 старых
+    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 2)]), actor=admin)
     _ozon_plan(db, 1)
     pallet = join_channel(db, user=loader, site=site, channel="Ozon", truck="Озон1")
     db.commit()
-    assert scan_loading(db, code="%OZ1", pallet=pallet, actor=loader).ok  # склад списал старое
-    db.commit()
+    assert scan_loading(db, code="%OZ1", pallet=pallet, actor=loader).await_unit
     new = _labeled(db, site, a)[0]
-    swap = scan_loading(db, code=new.number, pallet=pallet, actor=loader)  # а в руках было новое
+    done = scan_loading(db, code=new.number, pallet=pallet, actor=loader, ship_code="%OZ1")
     db.commit()
-    assert swap.ok and "вместо старого" in swap.message
+    assert done.ok
     item = db.scalar(select(ShipItem).where(ShipItem.posting == "OZ-1"))
-    assert item is not None and item.unit_id == new.id and item.state == SHIP_LOADED
-    assert legacy_counts(db) == {(a.id, site.id): 2}  # старое вернулось
-    assert db.scalar(select(func.count()).select_from(Unit).where(Unit.status == SHIPPED)) == 1
-
-
-def test_swap_refuses_other_article(db: Session) -> None:
-    site, admin, loader, a, b = _world(db)
-    worker = make_user(db, name="Сборщик Б", role=ROLE_ASSEMBLER, home_site_id=site.id)
-    other = create_printed_units(db, article_id=b.id, qty=1, site_id=site.id, assembler_id=worker.id,
-                                 actor_id=worker.id)[0]
-    db.commit()
-    accept_unit(db, code=other.number, actor=worker)
-    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 3)]), actor=admin)
-    _ozon_plan(db, 1)
-    pallet = join_channel(db, user=loader, site=site, channel="Ozon", truck="Озон1")
-    db.commit()
-    assert scan_loading(db, code="%OZ1", pallet=pallet, actor=loader).ok
-    db.commit()
-    # Наша этикетка другого артикула — не замена, а начало следующего зеркала
-    result = scan_loading(db, code=other.number, pallet=pallet, actor=loader)
-    assert result.ok and result.await_mp
-    item = db.scalar(select(ShipItem).where(ShipItem.posting == "OZ-1"))
-    assert item is not None and db.get(Unit, item.unit_id).unlabeled  # type: ignore[union-attr]
+    assert item is not None and item.unit_id == new.id
+    assert legacy_counts(db) == {(a.id, site.id): 2}  # старые не тронуты
 
 
 def test_lead_adds_found_old(client: TestClient, db: Session) -> None:
@@ -167,7 +163,9 @@ def test_lead_adds_found_old(client: TestClient, db: Session) -> None:
     bad = client.post("/shipments/found-old", data={**form, "qty": "50"})
     assert "Старый остаток" in bad.text
     db.expire_all()
-    assert scan_loading(db, code="%OZ1", pallet=pallet, actor=loader).ok  # теперь списалось старое
+    # Телефон всё ещё держит эту наклейку: грузчик пикает её снова — списалось старое
+    again = scan_loading(db, code="%OZ1", pallet=pallet, actor=loader, ship_code="%OZ1")
+    assert again.ok and "Старое" in again.message
 
 
 def test_channel_without_batch_ships_old_by_article(db: Session) -> None:
