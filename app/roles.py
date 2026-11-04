@@ -95,6 +95,7 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("GET", "/warehouse/printed-old"): LEADS,
     # Ввод остатков
     ("GET", "/stock-entry/legacy"): ADMIN_ONLY,
+    ("GET", "/stock-entry/legacy/template.xlsx"): ADMIN_ONLY,
     ("POST", "/stock-entry/legacy/preview"): ADMIN_ONLY,
     ("POST", "/stock-entry/legacy/apply"): ADMIN_ONLY,
     ("GET", "/stock-entry"): STOCK_ENTRY,

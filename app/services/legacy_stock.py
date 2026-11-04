@@ -241,3 +241,38 @@ def legacy_articles(session: Session, site_id: int) -> list[tuple[int, str, int]
         select(Article).where(Article.id.in_(counts)).order_by(Article.sort_order)
     ).all()
     return [(a.id, a.name, counts[a.id]) for a in articles]
+
+
+def legacy_template_xlsx(session: Session) -> bytes:
+    """Шаблон для «Старого остатка»: все артикулы справочника с площадкой, количество пустое.
+
+    Пустые строки при загрузке пропускаются (не трогаются), 0 — старых этого артикула нет.
+    """
+    from openpyxl import Workbook
+    from openpyxl.styles import Font
+
+    sites = session.scalars(
+        select(Site).where(Site.active.is_(True)).order_by(Site.sort_order, Site.id)
+    ).all()
+    book = Workbook()
+    sheet = book.active
+    sheet.title = "Старый остаток"
+    sheet.append(["Артикул", "Площадка", "Количество"])
+    for cell in sheet[1]:
+        cell.font = Font(bold=True)
+    articles = session.scalars(
+        select(Article)
+        .where(Article.kind == "article", Article.active.is_(True))
+        .order_by(Article.sort_order)
+    ).all()
+    for article in articles:
+        makers = [site.name for site in sites if site.prefixes and site.makes(article.name)]
+        for site_name in makers or [site.name for site in sites]:
+            sheet.append([article.name, site_name, None])
+    sheet.column_dimensions["A"].width = 40
+    sheet.column_dimensions["B"].width = 16
+    sheet.column_dimensions["C"].width = 12
+    sheet.freeze_panes = "A2"
+    out = BytesIO()
+    book.save(out)
+    return out.getvalue()

@@ -208,3 +208,29 @@ def test_admin_page_preview_and_apply(client: TestClient, db: Session) -> None:
     db.expire_all()
     assert legacy_counts(db) == {(a.id, site.id): 7}
     assert "7 старых зеркал без этикеток" in client.get("/stock").text
+
+
+def test_template_lists_articles_with_site(client: TestClient, db: Session) -> None:
+    site, admin, _, a, _ = _world(db)
+    login(client, admin)
+    response = client.get("/stock-entry/legacy/template.xlsx")
+    assert response.status_code == 200
+    from openpyxl import load_workbook
+
+    sheet = load_workbook(BytesIO(response.content)).active
+    rows = list(sheet.iter_rows(values_only=True))
+    assert rows[0] == ("Артикул", "Площадка", "Количество")
+    assert ("Zerkalo_60x160", KOM, None) in rows
+    # Пустой шаблон загрузить нельзя — нечего; с одним числом — только эта строка
+    sheet.cell(row=rows.index(("Zerkalo_60x160", KOM, None)) + 1, column=3, value=4)
+    out = BytesIO()
+    sheet.parent.save(out)
+    assert read_legacy_xlsx(out.getvalue()) == [("Zerkalo_60x160", KOM, 4)]
+
+
+def test_loader_home_shows_stock(client: TestClient, db: Session) -> None:
+    site, _, loader, a, _ = _world(db)  # 2 зеркала 60x160 на складе
+    login(client, loader)
+    page = client.get("/").text
+    assert "Остатки склада" in page and "Zerkalo_60x160" in page
+    assert "Перемещение</h2>" not in page

@@ -101,15 +101,42 @@
 	<p class="muted">Сканировать можно после начала смены.</p>
 	{% endif %}
 </div>
-{% elif shift %}
-<div class="grid2">
-	<a class="card tile" href="/loading"><h2>Погрузка</h2><p class="muted">Канал → скан зеркал → закрыть канал</p></a>
-	<a class="card tile" href="/transfer"><h2>Перемещение</h2><p class="muted">Отправить зеркала на другое производство</p></a>
-	<a class="card tile" href="/transfer/in"><h2>Принять перемещение</h2><p class="muted">Принять приехавшие зеркала</p></a>
+{% elif stock %}
+{% set stock_sites, stock_rows = stock %}
+<div class="card">
+	<h2>Остатки склада</h2>
+	<input type="search" id="stock-search" placeholder="Найти артикул, например 60x160" autocomplete="off">
+	{% if stock_rows %}
+	<table class="dense mt" id="stock-table">
+		<tr><th>Артикул</th>{% for s in stock_sites %}<th class="num">{{ s.name }}</th>{% endfor %}</tr>
+		{% for name, values in stock_rows %}
+		<tr><td>{{ name }}</td>{% for n in values %}<td class="num">{{ n or '' }}</td>{% endfor %}</tr>
+		{% endfor %}
+	</table>
+	{% else %}
+	<p class="muted mt">На складе пусто.</p>
+	{% endif %}
 </div>
 {% endif %}
 {% endblock %}
 {% block scripts %}
+{% if stock %}
+<script>
+(function () {
+	// Поиск по артикулу: «60х160» и «60x160» — одно и то же
+	var box = document.getElementById('stock-search');
+	var table = document.getElementById('stock-table');
+	if (!box || !table) return;
+	function norm(text) { return text.toLowerCase().replace(/х/g, 'x').replace(/\s+/g, ''); }
+	box.addEventListener('input', function () {
+		var q = norm(box.value);
+		Array.prototype.forEach.call(table.rows, function (row, index) {
+			if (index) row.hidden = q && norm(row.cells[0].textContent).indexOf(q) < 0;
+		});
+	});
+})();
+</script>
+{% endif %}
 {% if user.role == ROLE_ASSEMBLER and shift %}
 <script src="/static/vendor/zxing-reader.min.js?v={{ STATIC_VERSION }}"></script>
 <script src="/static/scan.js?v={{ STATIC_VERSION }}"></script>

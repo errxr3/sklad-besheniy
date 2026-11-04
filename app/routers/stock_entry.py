@@ -13,7 +13,13 @@ from app.db import get_db
 from app.models import Article, Site, User
 from app.routers.make import labels_pdf_response
 from app.services.admin import log_admin
-from app.services.legacy_stock import apply_legacy, legacy_counts, preview_legacy, read_legacy_xlsx
+from app.services.legacy_stock import (
+    apply_legacy,
+    legacy_counts,
+    legacy_template_xlsx,
+    preview_legacy,
+    read_legacy_xlsx,
+)
 from app.services.stock_entry import MAX_ENTRY_QTY, enter_stock, remove_extra
 from app.services.units import UnitError
 from app.statuses import ROLE_STOREKEEPER
@@ -134,6 +140,18 @@ def _legacy_page(request: Request, db: Session, *, rows: list | None = None, pay
 def legacy_form(request: Request, db: Session = Depends(get_db), ok: str = "", err: str = "") -> Response:
     """Старый остаток числом: загрузка Excel и сколько старых без этикеток сейчас."""
     return _legacy_page(request, db, ok=ok, err=err)
+
+
+@router.get("/stock-entry/legacy/template.xlsx")
+def legacy_template(request: Request, db: Session = Depends(get_db)) -> Response:
+    """Шаблон Excel: все артикулы с площадкой, вписать только количество старых."""
+    from app.routers.stock import _attachment
+
+    return Response(
+        content=legacy_template_xlsx(db),
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers={"Content-Disposition": _attachment("Шаблон_старый_остаток.xlsx", "legacy_template.xlsx")},
+    )
 
 
 @router.post("/stock-entry/legacy/preview", response_class=HTMLResponse)

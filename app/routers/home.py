@@ -2,18 +2,41 @@
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import Site
+from app.models import Article, Site, Unit, User
 from app.services.shifts import open_shift, shift_sites
 from app.services.task_labels import assembler_tasks, upcoming_tasks
 from app.services.tasks import urgent_tasks
-from app.statuses import ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_LOADER, ROLE_RETURNS, ROLE_STOREKEEPER
+from app.statuses import IN_STOCK, ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_LOADER, ROLE_RETURNS, ROLE_STOREKEEPER
 from app.timeutil import today_msk
 from app.web import GuardedRoute, page
 
 router = APIRouter(route_class=GuardedRoute)
+
+
+def loader_stock(db: Session, user: User) -> tuple[list[Site], list[tuple[str, list[int]]]]:
+    """Остатки для грузчика: артикулы, которые есть на складе, по площадкам (своя — первой)."""
+    sites = sorted(
+        db.scalars(select(Site).where(Site.active.is_(True)).order_by(Site.sort_order, Site.id)).all(),
+        key=lambda site: site.id != user.home_site_id,
+    )
+    counts: dict[tuple[int, int], int] = {
+        (int(a), int(s)): int(n)
+        for a, s, n in db.execute(
+            select(Unit.article_id, Unit.site_id, func.count())
+            .where(Unit.status == IN_STOCK)
+            .group_by(Unit.article_id, Unit.site_id)
+        ).all()
+    }
+    present = {article_id for article_id, _ in counts}
+    articles = db.scalars(
+        select(Article).where(Article.id.in_(present)).order_by(Article.sort_order)
+    ).all() if present else []
+    rows = [(a.name, [counts.get((a.id, s.id), 0) for s in sites]) for a in articles]
+    return sites, rows
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -39,6 +62,8 @@ def home(request: Request, db: Session = Depends(get_db), err: str = "", ok: str
                 "urgent": urgent_tasks(db, day=today_msk(), user_id=user.id)
                 if user.role == ROLE_ASSEMBLER
                 else [],
+                # Грузчику — остатки склада, только посмотреть
+                "stock": loader_stock(db, user) if user.role == ROLE_LOADER else None,
                 "err": err,
                 "ok": ok,
             },
