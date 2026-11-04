@@ -448,8 +448,8 @@ def waits_for_plan(session: Session, pallet: Pallet) -> bool:
     ) is None
 
 
-NO_PLAN_MESSAGE = "Плана BLAGO на этот канал нет"
-NO_PLAN_HINT = "не грузите: позовите начальника смены (Склад → Партии → «Грузить без плана»)"
+NO_PLAN_MESSAGE = "Плана нет"
+NO_PLAN_HINT = "позовите начальника смены"
 
 
 def find_ship_item(session: Session, code: str) -> ShipItem | None:
@@ -567,10 +567,10 @@ def scan_batch(
                                    actor=actor, shift_id=shift_id)
             if result.ok:
                 result.message = f"Старое: {article}"
-                result.detail = f"без нашей этикетки · {result.detail}"
+                result.detail = f"старое · {result.detail}"
             return result
     return LoadResult(
-        True, f"Нужно: {article}", "Теперь нашу этикетку. Её нет — зовите начальника смены",
+        True, f"Нужно: {article}", "пикните нашу этикетку. Нет её — позовите начальника смены",
         article=article, await_unit=True, ship_code=value, pallet_count=pallet_count(session, pallet.id),
     )
 

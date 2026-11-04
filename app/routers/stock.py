@@ -96,12 +96,15 @@ def stock_page(
             select(Site).where(Site.active.is_(True), Site.labeling_done.is_(False))
         ).all()
     )
-    legacy_total = sum(legacy_counts(db).values())
+    legacy = legacy_counts(db)
+    legacy_total = sum(legacy.values())
     return page(
         request,
         "stock.html",
         {
             "legacy_total": legacy_total,
+            # Сколько из остатка — старые без нашей этикетки (только на сегодня; кончились — не показываем)
+            "legacy": legacy if target_day == today_msk() else {},
             "table": table,
             "columns_json": json.dumps(columns, ensure_ascii=False),
             "day": target_day,

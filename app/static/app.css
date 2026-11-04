@@ -570,3 +570,7 @@ label.check { display: flex; align-items: center; gap: 6px; align-self: end; min
 
 /* Заголовки каналов не переносятся: «Озон 1» в одну строку, иначе «1» выглядит как цифра в таблице */
 .shipments thead th.ch { white-space: nowrap; }
+
+/* Сколько из остатка — старые без нашей этикетки (2026-11-04) */
+.old-count { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 6px; font-size: 12px;
+	font-weight: 700; line-height: 18px; background: #f59e0b; color: #1f1300; vertical-align: 1px; }

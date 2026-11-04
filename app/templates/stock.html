@@ -13,7 +13,7 @@
 {% endif %}
 
 {% if legacy_total %}
-<p class="msg warn">В остатке {{ legacy_total }} старых зеркал без этикеток — их грузят по наклейке маркетплейса.
+<p class="msg warn">Старых без этикеток: {{ legacy_total }} <span class="old-count">N</span>.
 	{% if can('/stock-entry/legacy') %}<a href="/stock-entry/legacy">Подробно</a>{% endif %}</p>
 {% endif %}
 <div class="card stock-controls">
@@ -67,7 +67,8 @@
 					{{ row.name }}{% if not row.active %} <span class="badge">откл.</span>{% endif %}
 				</td>
 				{% for site in table.sites %}
-				<td class="num {% if row.stock[loop.index0] == 0 %}zero{% endif %}">{{ row.stock_text(loop.index0) }}</td>
+				{% set old = legacy.get((row.article_id, site.id), 0) %}
+				<td class="num {% if row.stock[loop.index0] == 0 %}zero{% endif %}">{{ row.stock_text(loop.index0) }}{% if old %}<span class="old-count" title="старых без этикетки">{{ old }}</span>{% endif %}</td>
 				{% endfor %}
 				{% for site in table.sites %}
 				<td class="num">{{ row.tasks_text(loop.index0) }}</td>

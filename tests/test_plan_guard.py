@@ -82,7 +82,7 @@ def test_lead_page_button_and_loader_banner(client: TestClient, db: Session) -> 
     db.commit()
 
     login(client, loader)
-    assert "Плана BLAGO на этот канал сегодня нет" in client.get(f"/loading?pallet_id={pallet.id}").text
+    assert "Плана нет. Позовите начальника смены." in client.get(f"/loading?pallet_id={pallet.id}").text
     client.post("/logout", data={"csrf_token": get_csrf(client, "/")})
 
     login(client, lead)

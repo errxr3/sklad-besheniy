@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models import Article, Site, Unit, User
+from app.services.legacy_stock import legacy_counts
 from app.services.shifts import open_shift, shift_sites
 from app.services.task_labels import assembler_tasks, upcoming_tasks
 from app.services.tasks import urgent_tasks
@@ -17,7 +18,9 @@ from app.web import GuardedRoute, page
 router = APIRouter(route_class=GuardedRoute)
 
 
-def loader_stock(db: Session, user: User) -> tuple[list[Site], list[tuple[str, list[int]]]]:
+def loader_stock(
+    db: Session, user: User
+) -> tuple[list[Site], list[tuple[str, list[tuple[int, int]]]]]:
     """Остатки для грузчика: артикулы, которые есть на складе, по площадкам (своя — первой)."""
     sites = sorted(
         db.scalars(select(Site).where(Site.active.is_(True)).order_by(Site.sort_order, Site.id)).all(),
@@ -35,7 +38,10 @@ def loader_stock(db: Session, user: User) -> tuple[list[Site], list[tuple[str, l
     articles = db.scalars(
         select(Article).where(Article.id.in_(present)).order_by(Article.sort_order)
     ).all() if present else []
-    rows = [(a.name, [counts.get((a.id, s.id), 0) for s in sites]) for a in articles]
+    old = legacy_counts(db)
+    rows = [
+        (a.name, [(counts.get((a.id, s.id), 0), old.get((a.id, s.id), 0)) for s in sites]) for a in articles
+    ]
     return sites, rows
 
 

@@ -4,7 +4,7 @@
 <h1>Погрузка</h1>
 {% if no_shift %}
 <div class="card">
-	<p class="msg warn">Смена не начата: грузить можно только на смене.</p>
+	<p class="msg warn">Смена не начата.</p>
 	<a class="btn big" href="/">Начать смену</a>
 </div>
 {% else %}
@@ -27,9 +27,6 @@
 		</form>
 		{% endfor %}
 	</div>
-	<p class="hint">Каналы общие для всех грузчиков площадки: если канал уже открыт (синий), нажмите его
-		и сканируйте вместе. Можно грузить разные каналы одновременно: Озон 1 и Озон 2, WB, СДЭК.
-		Одно зеркало дважды не отгрузится. Закрывает канал один, когда всё загружено.</p>
 </div>
 {% else %}
 <div class="card">
@@ -42,11 +39,7 @@
 	<p class="muted">Грузят: {% for name, n in loaders %}{{ name }} — {{ n }}{% if not loop.last %}, {% endif %}{% endfor %}</p>
 	{% endif %}
 	{% if no_plan %}
-	<div class="msg err no-plan">
-		<b>Плана BLAGO на этот канал сегодня нет. Не грузите.</b><br>
-		Позовите начальника смены. Он отправит план из BLAGO или нажмёт «Грузить без плана»
-		(Склад → Партии). После этого обновите страницу.
-	</div>
+	<p class="msg err">Плана нет. Позовите начальника смены.</p>
 	{% endif %}
 	<div id="scan-result" class="scan-result"></div>
 	<form id="scan-form">
@@ -59,10 +52,6 @@
 	</form>
 	<div id="camera-box" class="mt" hidden></div>
 	{% if batch_mode %}
-	<p class="hint">Отгрузка по плану BLAGO: этикетку маркетплейса сканируйте всегда.
-		Есть на зеркале наша этикетка — сканируйте и её, в любом порядке.{% if legacy %}
-		Старое зеркало без нашей этикетки: хватит наклейки маркетплейса, склад спишет старое сам.
-		Склад просит нашу этикетку, а её нет — позовите начальника смены («Нашлось старое»).{% endif %}</p>
 	{% elif legacy and not no_plan %}
 	<div class="legacy-box mt">
 		<label for="legacy-article">Старое зеркало без нашей этикетки</label>
@@ -72,7 +61,6 @@
 			</select>
 			<button type="button" class="secondary" id="legacy-btn">Отгрузить</button>
 		</div>
-		<p class="hint">Проверьте, что в руках именно этот артикул.</p>
 	</div>
 	{% endif %}
 </div>
@@ -93,10 +81,9 @@
 			<td class="num">{{ line.in_stock }}</td>
 		</tr>
 		{% else %}
-		<tr><td colspan="4" class="muted">В партии этой машины пусто — сюда можно догрузить остатки других машин.</td></tr>
+		<tr><td colspan="4" class="muted">Пусто</td></tr>
 		{% endfor %}
 	</table>
-	<p class="hint">Красным — на складе меньше, чем осталось погрузить: ждите, пока сборщики сдадут.</p>
 </div>
 {% endif %}
 
@@ -119,8 +106,6 @@
 		<input type="text" name="note" id="close-note" maxlength="200" placeholder="например, машина или номер отправки">
 		{% endif %}
 		<button type="submit" class="big mt">Закрыть канал {{ pallet.title }}</button>
-		<p class="hint">Канал закроется у всех, кто в нём грузит. После закрытия добавить зеркала в эту
-			отгрузку нельзя — для следующей выберите канал заново.</p>
 	</form>
 </div>
 

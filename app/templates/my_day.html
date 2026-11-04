@@ -105,12 +105,15 @@
 {% set stock_sites, stock_rows = stock %}
 <div class="card">
 	<h2>Остатки склада</h2>
+	{% set ns = namespace(old=0) %}
+	{% for _, values in stock_rows %}{% for n, old in values %}{% set ns.old = ns.old + old %}{% endfor %}{% endfor %}
+	{% if ns.old %}<p class="hint"><span class="old-count" style="margin:0">N</span> старые без этикетки</p>{% endif %}
 	<input type="search" id="stock-search" placeholder="Найти артикул, например 60x160" autocomplete="off">
 	{% if stock_rows %}
 	<table class="dense mt" id="stock-table">
 		<tr><th>Артикул</th>{% for s in stock_sites %}<th class="num">{{ s.name }}</th>{% endfor %}</tr>
 		{% for name, values in stock_rows %}
-		<tr><td>{{ name }}</td>{% for n in values %}<td class="num">{{ n or '' }}</td>{% endfor %}</tr>
+		<tr><td>{{ name }}</td>{% for n, old in values %}<td class="num">{{ n or '' }}{% if old %}<span class="old-count" title="старых без этикетки">{{ old }}</span>{% endif %}</td>{% endfor %}</tr>
 		{% endfor %}
 	</table>
 	{% else %}

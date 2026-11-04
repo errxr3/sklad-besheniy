@@ -207,7 +207,7 @@ def test_admin_page_preview_and_apply(client: TestClient, db: Session) -> None:
     assert "добавлено 7, списано 0" in done.text
     db.expire_all()
     assert legacy_counts(db) == {(a.id, site.id): 7}
-    assert "7 старых зеркал без этикеток" in client.get("/stock").text
+    assert "Старых без этикеток: 7" in client.get("/stock").text
 
 
 def test_template_lists_articles_with_site(client: TestClient, db: Session) -> None:
@@ -234,3 +234,15 @@ def test_loader_home_shows_stock(client: TestClient, db: Session) -> None:
     page = client.get("/").text
     assert "Остатки склада" in page and "Zerkalo_60x160" in page
     assert "Перемещение</h2>" not in page
+    assert "old-count" not in page  # старых нет — просто число
+
+
+def test_stock_shows_old_part_until_gone(client: TestClient, db: Session) -> None:
+    site, admin, loader, a, _ = _world(db)  # 2 новых 60x160
+    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 3)]), actor=admin)
+    db.commit()
+    login(client, admin)
+    assert 'old-count" title="старых без этикетки">3<' in client.get("/stock").text
+    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 0)]), actor=admin)
+    db.commit()
+    assert "old-count" not in client.get("/stock").text
