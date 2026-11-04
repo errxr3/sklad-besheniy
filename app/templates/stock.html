@@ -12,10 +12,6 @@
 	«Администратор → Площадки».</p>
 {% endif %}
 
-{% if legacy_total %}
-<p class="msg warn">Старых без этикеток: {{ legacy_total }} <span class="old-count">N</span>.
-	{% if can('/stock-entry/legacy') %}<a href="/stock-entry/legacy">Подробно</a>{% endif %}</p>
-{% endif %}
 <div class="card stock-controls">
 	<form method="get" action="/stock" class="row tight">
 		<div>

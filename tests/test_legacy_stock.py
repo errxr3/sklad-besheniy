@@ -207,7 +207,7 @@ def test_admin_page_preview_and_apply(client: TestClient, db: Session) -> None:
     assert "добавлено 7, списано 0" in done.text
     db.expire_all()
     assert legacy_counts(db) == {(a.id, site.id): 7}
-    assert "Старых без этикеток: 7" in client.get("/stock").text
+    assert 'old-count" title="старых без этикетки">7<' in client.get("/stock").text
 
 
 def test_template_lists_articles_with_site(client: TestClient, db: Session) -> None:

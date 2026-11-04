@@ -97,12 +97,10 @@ def stock_page(
         ).all()
     )
     legacy = legacy_counts(db)
-    legacy_total = sum(legacy.values())
     return page(
         request,
         "stock.html",
         {
-            "legacy_total": legacy_total,
             # Сколько из остатка — старые без нашей этикетки (только на сегодня; кончились — не показываем)
             "legacy": legacy if target_day == today_msk() else {},
             "table": table,
