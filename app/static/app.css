@@ -574,3 +574,76 @@ label.check { display: flex; align-items: center; gap: 6px; align-self: end; min
 /* Сколько из остатка — старые без нашей этикетки (2026-11-04) */
 .old-count { display: inline-block; margin-left: 6px; padding: 0 6px; border-radius: 6px; font-size: 12px;
 	font-weight: 700; line-height: 18px; background: #f59e0b; color: #1f1300; vertical-align: 1px; }
+
+/* ---------- Современный вид таблиц (2026-11-05) ----------
+   Формат прежний: те же столбцы, заливка цветами из TOP, заголовки подгрупп, кнопки «копировать».
+   Меняется только отделка: скругления, лёгкая тень, тонкие линии, подсветка строки под курсором. */
+:root {
+	--tbl-radius: 12px;
+	--tbl-shadow: 0 1px 2px rgba(15, 23, 42, .05), 0 4px 14px rgba(15, 23, 42, .05);
+	--tbl-line: rgba(15, 23, 42, .07);
+	--tbl-hover: rgba(15, 23, 42, .045);
+	--tbl-head: #f8fafc;
+	--tbl-head-text: #64748b;
+}
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		--tbl-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 18px rgba(0, 0, 0, .25);
+		--tbl-line: rgba(255, 255, 255, .07);
+		--tbl-hover: rgba(255, 255, 255, .05);
+		--tbl-head: #18233b;
+		--tbl-head-text: #94a3b8;
+	}
+}
+:root[data-theme="dark"] {
+	--tbl-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 18px rgba(0, 0, 0, .25);
+	--tbl-line: rgba(255, 255, 255, .07);
+	--tbl-hover: rgba(255, 255, 255, .05);
+	--tbl-head: #18233b;
+	--tbl-head-text: #94a3b8;
+}
+table { border-collapse: separate; border-spacing: 0; font-variant-numeric: tabular-nums; }
+th, td { border-bottom: 1px solid var(--tbl-line); }
+th {
+	background: var(--tbl-head); color: var(--tbl-head-text); font-size: 12px; font-weight: 600;
+	text-transform: uppercase; letter-spacing: .04em; border-bottom: 1px solid var(--line-strong);
+}
+tbody tr:last-child td { border-bottom: 0; }
+/* Подсветка строки под курсором поверх любой заливки, цвет из TOP остаётся виден */
+tbody tr:hover > td { box-shadow: inset 0 0 0 9999px var(--tbl-hover); }
+tbody tr:hover > td.sticky { box-shadow: inset 0 0 0 9999px var(--tbl-hover), 1px 0 0 var(--line); }
+/* В цветных строках линии чуть темнее, чтобы строки не сливались */
+tr[style*="background"] > td { border-bottom-color: rgba(20, 23, 31, .08); }
+tr.header-row td {
+	background: var(--group-bg); font-size: 12px; font-weight: 700; letter-spacing: .06em;
+	text-transform: uppercase; box-shadow: inset 3px 0 0 var(--brand); border-bottom: 1px solid var(--line-strong);
+}
+tbody tr.header-row:hover > td { box-shadow: inset 3px 0 0 var(--brand); }
+td.zero { color: rgba(20, 23, 31, .45); }
+
+/* Таблица внутри карточки и в прокрутке — скруглённый блок с тенью */
+.table-wrap, .card:has(> table), .card:has(> .scroll > table) {
+	border: 1px solid var(--line); border-radius: var(--tbl-radius); box-shadow: var(--tbl-shadow);
+}
+.card:has(> table) { padding: 0; overflow: hidden; }
+.card:has(> table) > :not(table) { margin-left: 14px; margin-right: 14px; }
+.table-wrap { background: var(--card); }
+.table-wrap thead th { padding: 8px 10px; font-size: 12px; }
+.dense td { padding: 3px 10px; font-size: 13.5px; }
+.dense tr.header-row td { padding: 7px 10px; }
+.table-wrap td.sticky, .table-wrap th.sticky { box-shadow: 1px 0 0 var(--tbl-line); }
+.table-wrap th.sticky { background: var(--tbl-head); }
+
+/* Кнопки «копировать» в шапке — аккуратные, не спорят с цифрами */
+.table-wrap .mini {
+	min-height: 24px; padding: 1px 10px; font-size: 12px; font-weight: 600; border-radius: 999px;
+	text-transform: none; letter-spacing: 0; color: var(--muted); background: var(--card); border-color: var(--line);
+}
+.table-wrap .mini:hover { color: var(--text); border-color: var(--line-strong); background: var(--card-alt); }
+
+/* Таблица отгрузок с сеткой как в Excel: линии тоньше */
+.shipments th, .shipments td { border-right-color: var(--tbl-line); border-bottom-color: var(--tbl-line); }
+.shipments thead tr:last-child th { border-bottom: 1px solid var(--line-strong); }
+.old-count { border-radius: 999px; }
+.table-wrap thead tr + tr th { text-transform: none; letter-spacing: 0; }
+.table-wrap .mini { color: var(--text); }
