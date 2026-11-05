@@ -34,6 +34,7 @@ class JournalFilters:
     date_to: date | None = None
     article_id: int | None = None
     user_id: int | None = None
+    role: str | None = None  # подразделение: все движения сотрудников этой должности
     movement_type: str | None = None
     site_id: int | None = None
     number: str | None = None
@@ -49,6 +50,8 @@ def _apply_filters(query: Select, filters: JournalFilters) -> Select:
         query = query.where(Movement.created_at < end)
     if filters.user_id:
         query = query.where(Movement.user_id == filters.user_id)
+    elif filters.role:
+        query = query.where(Movement.user_id.in_(select(User.id).where(User.role == filters.role)))
     if filters.movement_type:
         query = query.where(Movement.type == filters.movement_type)
     if filters.site_id:

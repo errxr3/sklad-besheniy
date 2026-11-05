@@ -346,7 +346,9 @@ async def inventory_access(request: Request, db: Session = Depends(get_db)) -> R
     log_admin(db, request.state.user.id, "доступ к инвентаризации", "user", None, None,
               {"day": today.isoformat(), "users": sorted(chosen)})
     logger.info("Доступ к инвентаризации", extra={"user_id": request.state.user.id, "status": str(opened)})
-    message = f"Инвентаризация открыта на сегодня: {opened} чел." if opened else "Доступ у грузчиков закрыт"
+    message = (
+        f"Инвентаризация открыта на сегодня: {opened} чел." if opened else "Доступ у операторов склада закрыт"
+    )
     return RedirectResponse(f"/inventory?{urlencode({'ok': message})}", status_code=303)
 
 

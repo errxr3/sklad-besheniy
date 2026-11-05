@@ -109,6 +109,7 @@
 	{% for _, values in stock_rows %}{% for n, old in values %}{% set ns.old = ns.old + old %}{% endfor %}{% endfor %}
 	{% if ns.old %}<p class="hint"><span class="old-count" style="margin:0">N</span> старые без этикетки</p>{% endif %}
 	<input type="search" id="stock-search" placeholder="Найти артикул, например 60x160" autocomplete="off">
+	<div id="loader-stock" data-live>
 	{% if stock_rows %}
 	<table class="dense mt" id="stock-table">
 		<tr><th>Артикул</th>{% for s in stock_sites %}<th class="num">{{ s.name }}</th>{% endfor %}</tr>
@@ -119,6 +120,7 @@
 	{% else %}
 	<p class="muted mt">На складе пусто.</p>
 	{% endif %}
+	</div>
 </div>
 {% endif %}
 {% endblock %}
@@ -128,15 +130,18 @@
 (function () {
 	// Поиск по артикулу: «60х160» и «60x160» — одно и то же
 	var box = document.getElementById('stock-search');
-	var table = document.getElementById('stock-table');
-	if (!box || !table) return;
+	if (!box) return;
 	function norm(text) { return text.toLowerCase().replace(/х/g, 'x').replace(/\s+/g, ''); }
-	box.addEventListener('input', function () {
+	function apply() {
+		var table = document.getElementById('stock-table');
+		if (!table) return;
 		var q = norm(box.value);
 		Array.prototype.forEach.call(table.rows, function (row, index) {
 			if (index) row.hidden = q && norm(row.cells[0].textContent).indexOf(q) < 0;
 		});
-	});
+	}
+	box.addEventListener('input', apply);
+	document.addEventListener('live:update', apply);  // таблица обновилась сама — фильтр остаётся
 })();
 </script>
 {% endif %}

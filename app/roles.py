@@ -38,7 +38,7 @@ ALL_LOGGED_IN: Final[tuple[str, ...]] = (
 ADMIN_ONLY: Final[tuple[str, ...]] = (ROLE_ADMIN,)
 LEADS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_SHIFT_LEAD)
 # Печать этикеток по задачам сборщиков
-PRINTERS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_SHIFT_LEAD, ROLE_STOREKEEPER)
+PRINTERS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_STOREKEEPER)  # начальник смены не печатает
 # Ввод остатков (инвентаризация на старте)
 STOCK_ENTRY: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_STOREKEEPER)
 # Приёмка сканом готового зеркала

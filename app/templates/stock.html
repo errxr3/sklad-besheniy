@@ -27,8 +27,8 @@
 		</div>
 		<div><label>&nbsp;</label><button type="submit" class="secondary">Обновить</button></div>
 	</form>
-	<p class="hint">Данные на момент загрузки: <b>{{ table.built_at }}</b>. Строк: {{ table.row_count }}.
-		Страница не обновляется сама, чтобы цифры не менялись во время копирования.</p>
+	<p class="hint">Данные на <b id="stock-time" data-live>{{ table.built_at }}</b> — обновляются сами каждые 15 секунд
+		(пока вы выделяете текст, таблица не меняется). Строк: {{ table.row_count }}.</p>
 	<div class="row tight mt">
 		<button type="button" class="secondary" data-copy="both">Копировать обе площадки</button>
 		<a class="btn secondary" href="/stock.xlsx?day={{ day.isoformat() }}">Скачать XLSX</a>
@@ -53,7 +53,7 @@
 				{% endfor %}
 			</tr>
 		</thead>
-		<tbody>
+		<tbody id="stock-body" data-live>
 		{% for row in table.rows %}
 			{% if row.is_header %}
 			<tr class="header-row"><td colspan="{{ 1 + table.sites|length * 2 }}"><span class="group-name">{{ row.name }}</span></td></tr>
@@ -75,13 +75,14 @@
 		</tbody>
 	</table>
 </div>
+<div id="stock-json" data-live hidden><script id="stock-data" type="application/json">{{ columns_json|safe }}</script></div>
 <div id="toast" class="msg ok" hidden style="position:fixed;bottom:16px;left:16px;right:16px;z-index:50"></div>
 {% endblock %}
 {% block scripts %}
-<script id="stock-data" type="application/json">{{ columns_json|safe }}</script>
 <script>
 (function () {
-	var data = JSON.parse(document.getElementById('stock-data').textContent);
+	// данные берём в момент копирования — таблица обновляется сама
+	function stockData() { return JSON.parse(document.getElementById('stock-data').textContent); }
 	var toast = document.getElementById('toast');
 
 	function show(message) {
@@ -118,6 +119,7 @@
 
 	Array.prototype.forEach.call(document.querySelectorAll('[data-copy]'), function (button) {
 		button.addEventListener('click', function () {
+			var data = stockData();
 			var kind = button.dataset.copy;
 			var lines = [];
 			if (kind === 'both') {

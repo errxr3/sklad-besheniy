@@ -7,8 +7,13 @@
 		<div><label>С даты</label><input type="date" name="date_from" value="{{ filters.date_from }}"></div>
 		<div><label>По дату</label><input type="date" name="date_to" value="{{ filters.date_to }}"></div>
 		<div><label>Номер</label><input type="text" name="number" value="{{ filters.number }}" placeholder="Z0000123"></div>
+		<div><label>Подразделение</label>
+			<select name="role" data-reset="user_id">
+				<option value="">все</option>
+				{% for value, title in departments %}<option value="{{ value }}" {% if filters.role == value %}selected{% endif %}>{{ title }}</option>{% endfor %}
+			</select></div>
 		<div><label>Сотрудник</label>
-			<select name="user_id">
+			<select name="user_id" data-default="0">
 				<option value="0">все</option>
 				{% for u in users %}<option value="{{ u.id }}" {% if filters.user_id == u.id %}selected{% endif %}>{{ u.name }}</option>{% endfor %}
 			</select></div>
@@ -35,7 +40,7 @@
 	</form>
 </div>
 
-<div class="card">
+<div class="card" id="journal-rows" data-live>
 	<table class="dense">
 		<tr><th>Когда</th><th>Номер</th><th>Артикул</th><th>Операция</th><th>Статус</th><th>Кто</th><th>Примечание</th></tr>
 		{% for m in rows %}

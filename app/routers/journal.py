@@ -11,11 +11,21 @@ from sqlalchemy.orm import Session
 from app.db import get_db
 from app.models import Article, Site, User
 from app.services.journal import JournalFilters, journal_csv, journal_page, output_report
-from app.statuses import ALL_MOVEMENT_TYPES, MOVEMENT_LABELS
+from app.statuses import ALL_MOVEMENT_TYPES, DEPARTMENTS, MOVEMENT_LABELS
 from app.timeutil import today_msk
 from app.web import GuardedRoute, page
 
 router = APIRouter(route_class=GuardedRoute)
+
+
+def staff(db: Session, role: str | None = None, roles: tuple[str, ...] | None = None) -> list[User]:
+    """Сотрудники для фильтра: выбрано подразделение — только его люди."""
+    query = select(User).where(User.is_service.is_(False))
+    if role:
+        query = query.where(User.role == role)
+    elif roles:
+        query = query.where(User.role.in_(roles))
+    return list(db.scalars(query.order_by(User.name)).all())
 
 
 def _day(value: str) -> date | None:
@@ -28,7 +38,7 @@ def _day(value: str) -> date | None:
 
 def _filters(
     date_from: str, date_to: str, article_id: int, user_id: int, movement_type: str, site_id: int,
-    number: str,
+    number: str, role: str = "",
 ) -> JournalFilters:
     """Собрать фильтры журнала из параметров адреса."""
     return JournalFilters(
@@ -36,6 +46,7 @@ def _filters(
         date_to=_day(date_to),
         article_id=article_id or None,
         user_id=user_id or None,
+        role=role if role in dict(DEPARTMENTS) else None,
         movement_type=movement_type or None,
         site_id=site_id or None,
         number=number or None,
@@ -53,16 +64,18 @@ def journal(
     movement_type: str = "",
     site_id: int = 0,
     number: str = "",
+    role: str = "",
     page_number: int = 1,
 ) -> Response:
     """Журнал движений с фильтрами и пагинацией."""
-    filters = _filters(date_from, date_to, article_id, user_id, movement_type, site_id, number)
+    filters = _filters(date_from, date_to, article_id, user_id, movement_type, site_id, number, role)
     rows, total = journal_page(db, filters, page=max(1, page_number))
     filters_dict = {
         "date_from": date_from,
         "date_to": date_to,
         "article_id": article_id,
         "user_id": user_id,
+        "role": filters.role or "",
         "movement_type": movement_type,
         "site_id": site_id,
         "number": number,
@@ -75,7 +88,8 @@ def journal(
             "total": total,
             "page_number": max(1, page_number),
             "pages": max(1, (total + 49) // 50),
-            "users": db.scalars(select(User).where(User.is_service.is_(False)).order_by(User.name)).all(),
+            "users": staff(db, filters.role),
+            "departments": DEPARTMENTS,
             "sites": db.scalars(select(Site).order_by(Site.sort_order)).all(),
             "articles": db.scalars(
                 select(Article).where(Article.kind == "article").order_by(Article.sort_order).limit(500)
@@ -98,9 +112,10 @@ def journal_export(
     movement_type: str = "",
     site_id: int = 0,
     number: str = "",
+    role: str = "",
 ) -> Response:
     """Журнал в CSV."""
-    filters = _filters(date_from, date_to, article_id, user_id, movement_type, site_id, number)
+    filters = _filters(date_from, date_to, article_id, user_id, movement_type, site_id, number, role)
     data = journal_csv(db, filters)
     return Response(
         content=data,

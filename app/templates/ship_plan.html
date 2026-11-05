@@ -14,7 +14,7 @@
 		<div><label>&nbsp;</label><button type="submit" class="secondary">Показать</button></div>
 	</form>
 	{% if plan.orders %}
-	<p class="plan-summary">Заказов <b>{{ plan.orders }}</b> на <b>{{ plan.need|sum }}</b> шт.:
+	<p class="plan-summary" id="plan-summary" data-live>Заказов <b>{{ plan.orders }}</b> на <b>{{ plan.need|sum }}</b> шт.:
 		<span class="plan-chip go">едет {{ plan.go }}</span>
 		{% if plan.later %}<span class="plan-chip work">вечером в Озон 3 {{ plan.later }}</span>{% endif %}
 		{% if plan.ask %}<span class="plan-chip ask">ждёт ответа {{ plan.ask }}</span>{% endif %}
@@ -38,7 +38,7 @@
 </div>
 
 {% if rows %}
-<div class="table-wrap">
+<div class="table-wrap" id="plan-table" data-live>
 	<table class="dense shipments plan">
 		<thead>
 			<tr>

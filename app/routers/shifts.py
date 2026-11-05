@@ -24,7 +24,7 @@ from app.services.shifts import (
 )
 from app.services.shipping import open_channels
 from app.services.tasks import tasks_progress, urgent_tasks
-from app.statuses import ROLE_ASSEMBLER, ROLE_LOADER
+from app.statuses import DEPARTMENTS
 from app.timeutil import MOSCOW, fmt_dt, msk_day_bounds, now_utc, to_moscow, today_msk
 from app.web import GuardedRoute, page
 
@@ -182,8 +182,9 @@ def timesheet_page(
     user_id: int = 0,
     date_from: str = "",
     date_to: str = "",
+    role: str = "",
 ) -> Response:
-    """Табель за период (SPEC §5.6)."""
+    """Табель за период (SPEC §5.6). Подразделение сужает список сотрудников."""
     today = today_msk()
     start = date.fromisoformat(date_from) if date_from else today.replace(day=1)
     end = date.fromisoformat(date_to) if date_to else today
@@ -193,14 +194,17 @@ def timesheet_page(
             .where(
                 User.active.is_(True),
                 User.is_service.is_(False),
-                User.role.in_((ROLE_ASSEMBLER, ROLE_LOADER)),
+                User.role == role if role in dict(DEPARTMENTS) else User.role.in_(dict(DEPARTMENTS)),
             )
             .order_by(User.name)
         ).all()
     )
     # user_id=-1 — все сотрудники: по человеку итог смен и часов
-    everyone = user_id == ALL_PEOPLE
-    chosen = None if everyone else (db.get(User, user_id) if user_id else (users[0] if users else None))
+    # без выбора — все сотрудники (раньше молча показывался первый по алфавиту)
+    everyone = user_id in (ALL_PEOPLE, 0)
+    chosen = None if everyone else db.get(User, user_id)
+    if chosen is not None and chosen not in users:
+        everyone, chosen = True, None
     rows = timesheet(db, user_id=chosen.id, date_from=start, date_to=end) if chosen else []
     summary = []
     if everyone:
@@ -213,6 +217,8 @@ def timesheet_page(
         "timesheet.html",
         {
             "users": users,
+            "departments": DEPARTMENTS,
+            "role": role if role in dict(DEPARTMENTS) else "",
             "everyone": everyone,
             "summary": summary,
             "summary_hours": round(sum(h for _, _, h in summary), 2),

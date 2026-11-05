@@ -4,7 +4,11 @@
 <h1>Табель</h1>
 <div class="card">
 	<form method="get" action="/reports/timesheet" class="row tight">
-		<select name="user_id">
+		<select name="role" data-reset="user_id" aria-label="Подразделение">
+			<option value="">все подразделения</option>
+			{% for value, title in departments %}<option value="{{ value }}" {% if role == value %}selected{% endif %}>{{ title }}</option>{% endfor %}
+		</select>
+		<select name="user_id" data-default="-1" aria-label="Сотрудник">
 			<option value="-1" {% if everyone %}selected{% endif %}>все сотрудники</option>
 			{% for u in users %}<option value="{{ u.id }}" {% if chosen and u.id == chosen.id %}selected{% endif %}>{{ u.name }}</option>{% endfor %}
 		</select>
@@ -17,12 +21,12 @@
 	</form>
 </div>
 {% if everyone %}
-<div class="card">
+<div class="card" id="ts-table" data-live>
 	<table class="dense">
 		<tr><th>Сотрудник</th><th class="num">Смен</th><th class="num">Часы</th><th></th></tr>
 		{% for person, count, hours in summary %}
 		<tr><td>{{ person.name }}</td><td class="num">{{ count }}</td><td class="num">{{ hours|hours }}</td>
-			<td><a href="/reports/timesheet?user_id={{ person.id }}&date_from={{ date_from.isoformat() }}&date_to={{ date_to.isoformat() }}">по дням</a></td></tr>
+			<td><a href="/reports/timesheet?role={{ role }}&user_id={{ person.id }}&date_from={{ date_from.isoformat() }}&date_to={{ date_to.isoformat() }}">по дням</a></td></tr>
 		{% else %}
 		<tr><td colspan="4" class="muted">За эти дни смен не было.</td></tr>
 		{% endfor %}
@@ -30,7 +34,7 @@
 	</table>
 </div>
 {% else %}
-<div class="card">
+<div class="card" id="ts-table" data-live>
 	<table class="dense">
 		<tr><th>Дата</th><th>Начало</th><th>Окончание</th><th class="num">Часы</th><th>Как закрыта</th></tr>
 		{% for row in rows %}

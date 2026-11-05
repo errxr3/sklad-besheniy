@@ -192,7 +192,7 @@ def shipments_found_old(
     db.commit()
     logger.info("Нашлось старое", extra={"user_id": user.id, "status": f"{found.name} +{qty}"})
     return _back("/shipments/batches", ok=f"Добавлено старых без этикетки: {found.name} +{qty}. "
-                                         "Пусть грузчик снова отсканирует наклейку маркетплейса")
+                                         "Пусть оператор склада снова отсканирует наклейку маркетплейса")
 
 
 async def _ids(request: Request) -> tuple[list[int], str, str]:

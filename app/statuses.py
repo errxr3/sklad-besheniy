@@ -87,9 +87,16 @@ ROLE_LABELS: Final[dict[str, str]] = {
     ROLE_SHIFT_LEAD: "Начальник смены",
     ROLE_ASSEMBLER: "Сборщик зеркал",
     ROLE_STOREKEEPER: "Кладовщик",
-    ROLE_LOADER: "Грузчик",
+    ROLE_LOADER: "Оператор склада",
     ROLE_RETURNS: "Возвраты",
 }
+
+# Подразделения для фильтров табеля и журнала: роль → как называется отдел
+DEPARTMENTS: Final[tuple[tuple[str, str], ...]] = (
+    (ROLE_LOADER, "Операторы склада"),
+    (ROLE_ASSEMBLER, "Сборщики"),
+    (ROLE_STOREKEEPER, "Кладовщицы"),
+)
 
 # Роли, которым нужна открытая смена для сканирующих операций (SPEC §4)
 ROLES_NEED_SHIFT: Final[tuple[str, ...]] = (ROLE_ASSEMBLER, ROLE_LOADER)

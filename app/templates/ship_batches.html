@@ -15,7 +15,7 @@
 <div class="card">
 	<h2>Озон и ВБ сегодня</h2>
 	<p class="hint">Без плана погрузка закрыта.</p>
-	<table class="dense plan">
+	<table class="dense plan" id="channel-state" data-live>
 		{% for channel, state, note in channel_state %}
 		{% set title = 'Озон' if channel == 'Ozon' else channel %}
 		<tr class="{% if state == 'plan' %}plan-go{% elif state == 'closed' %}plan-no{% else %}plan-ask{% endif %}">
@@ -73,6 +73,7 @@
 	</form>
 </div>
 {% endif %}
+<div id="batches-list" data-live>
 {% if not batches %}
 <div class="card"><p class="muted">За этот день партий нет. Они появляются, когда BLAGO OTGRUZKI скачивает этикетки.</p></div>
 {% endif %}
@@ -111,7 +112,7 @@
 		{% if b.removed %}
 		<div class="row tight mt">
 			<button type="submit" class="secondary" formaction="/shipments/batches/return">Вернуть отмеченные в отгрузку</button>
-			<span class="hint">Сняли по ошибке — отметьте снятые и верните, грузчики снова их увидят.</span>
+			<span class="hint">Сняли по ошибке — отметьте снятые и верните, операторы склада снова их увидят.</span>
 		</div>
 		{% endif %}
 	</form>
@@ -133,4 +134,5 @@
 	{% endif %}
 </div>
 {% endfor %}
+</div>
 {% endblock %}
