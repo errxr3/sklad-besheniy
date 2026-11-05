@@ -244,3 +244,13 @@ def test_stock_shows_old_part_until_gone(client: TestClient, db: Session) -> Non
     apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 0)]), actor=admin)
     db.commit()
     assert "old-count" not in client.get("/stock").text
+
+
+def test_preview_warns_about_bad_rows(client: TestClient, db: Session) -> None:
+    site, admin, _, a, _ = _world(db)
+    login(client, admin)
+    token = get_csrf(client, "/stock-entry/legacy")
+    page = client.post("/stock-entry/legacy/preview", data={"csrf_token": token, "site_id": "0"},
+                       files={"file": ("ost.xlsx", _xlsx([("Zerkalo_60x16", KOM, 3)]))}).text
+    assert "Ошибки в файле: 1 строка не запишется" in page and "Zerkalo_60x16 — нет в справочнике" in page
+    assert "Применять нечего: исправьте красные строки" in page and "Всё совпадает" not in page

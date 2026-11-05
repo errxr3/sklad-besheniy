@@ -32,8 +32,16 @@
 {% if rows %}
 {% set add = rows|sum(attribute='to_create') %}
 {% set remove = rows|sum(attribute='to_remove') %}
+{% set bad = rows|selectattr('problem')|list %}
 <div class="card">
 	<h2>Проверка: добавить {{ add }}, списать {{ remove }}</h2>
+	{% if bad %}
+	<div class="msg err">
+		<b>Ошибки в файле: {{ bad|length }} {{ 'строка не запишется' if bad|length == 1 else 'строк не запишутся' }}.</b>
+		{% for r in bad[:10] %}<br>{{ r.name }} — {{ r.problem }}{% endfor %}{% if bad|length > 10 %}<br>и ещё {{ bad|length - 10 }}{% endif %}
+		<br>Исправьте их в Excel (лучше возьмите «Скачать шаблон Excel») и загрузите файл ещё раз.
+	</div>
+	{% endif %}
 	<table class="dense">
 		<tr><th>Площадка</th><th>Артикул</th><th class="num">На полке</th><th class="num">По складу</th>
 			<th class="num">Добавить</th><th class="num">Списать</th><th></th></tr>
@@ -51,14 +59,14 @@
 	</table>
 	{% if add or remove %}
 	<form method="post" action="/stock-entry/legacy/apply" class="mt"
-	      onsubmit="return confirm('Старых без этикеток: добавить {{ add }}, списать {{ remove }}?')">
+	      onsubmit="return confirm('Старых без этикеток: добавить {{ add }}, списать {{ remove }}?{% if bad %}\n\nСтрок с ошибками: {{ bad|length }} — они НЕ запишутся.{% endif %}')">
 		<input type="hidden" name="csrf_token" value="{{ csrf }}">
 		<input type="hidden" name="site_id" value="{{ site_id }}">
 		<input type="hidden" name="payload" value="{{ payload }}">
 		<button type="submit" class="big">Применить: +{{ add }} / −{{ remove }}</button>
 	</form>
 	{% else %}
-	<p class="muted">Всё совпадает, менять нечего.</p>
+	<p class="muted">{% if bad %}Применять нечего: исправьте красные строки.{% else %}Всё совпадает, менять нечего.{% endif %}</p>
 	{% endif %}
 	<p class="hint">Красным — строка не будет применена (нет в справочнике, не понятна площадка). Жёлтым — на полке
 		старых меньше, чем по складу: разница спишется как недостача и попадёт в журнал.</p>
