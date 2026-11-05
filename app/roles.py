@@ -67,6 +67,7 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("POST", "/login"): PUBLIC,
     ("POST", "/logout"): ALL_LOGGED_IN,
     ("GET", "/"): ALL_LOGGED_IN,
+    ("GET", "/live/stamp"): ALL_LOGGED_IN,
     # Настройки администратора
     ("GET", "/admin"): ADMIN_ONLY,
     ("GET", "/admin/section/{key}"): ADMIN_ONLY,

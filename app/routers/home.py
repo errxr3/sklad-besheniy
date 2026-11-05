@@ -1,8 +1,8 @@
 """Главная страница: своя для каждой роли (SPEC §4)."""
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
-from sqlalchemy import func, select
+from fastapi.responses import HTMLResponse, PlainTextResponse, RedirectResponse, Response
+from sqlalchemy import func, select, text
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -81,3 +81,20 @@ def home(request: Request, db: Session = Depends(get_db), err: str = "", ok: str
     if user.role == ROLE_ADMIN:
         return RedirectResponse("/admin/section/lead", status_code=303)
     return RedirectResponse("/board", status_code=303)
+
+
+# Метка «что-то поменялось»: новый скан, отмена, план, канал, смена. Дёшево — по первичным ключам.
+_STAMP_SQL = text(
+    "SELECT concat_ws('-',"
+    " (SELECT max(id) FROM movements),"
+    " (SELECT max(id) FROM ship_items),"
+    " (SELECT max(id) FROM pallets), (SELECT count(*) FROM pallets WHERE closed_at IS NULL),"
+    " (SELECT max(id) FROM shifts), (SELECT count(*) FROM shifts WHERE ended_at IS NULL),"
+    " (SELECT max(id) FROM manual_channels), (SELECT count(*) FROM manual_channels))"
+)
+
+
+@router.get("/live/stamp", response_class=PlainTextResponse)
+def live_stamp(db: Session = Depends(get_db)) -> str:
+    """Таблицы на экранах обновляются сразу после скана: страница сверяет эту метку раз в 3 с."""
+    return str(db.scalar(_STAMP_SQL) or "")

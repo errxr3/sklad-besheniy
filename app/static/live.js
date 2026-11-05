@@ -1,4 +1,4 @@
-/* Фильтры применяются сразу, без «Показать», а таблицы со [data-live] обновляются сами (решение владельца 2026-11-05). */
+/* Фильтры применяются сразу, без «Показать», а таблицы со [data-live] обновляются после каждого скана (решение владельца 2026-11-05). */
 (function () {
 	// 1. Фильтры: выбрал — страница сразу показала. Текст — через 0,7 с после ввода.
 	Array.prototype.forEach.call(document.querySelectorAll('form[method="get"]'), function (form) {
@@ -24,7 +24,7 @@
 		});
 	});
 
-	// 2. Живые таблицы: раз в 15 с подтягиваем свежие данные этой же страницы.
+	// 2. Живые таблицы: обновляются сразу после скана или другого изменения на складе.
 	// Не трогаем, пока человек что-то выделяет, печатает или отмечает галочки.
 	var live = document.querySelectorAll('[data-live]');
 	if (!live.length) return;
@@ -40,12 +40,17 @@
 		}
 		return false;
 	}
-	setInterval(function () {
-		if (busy()) return;
+	// Обновляем не по таймеру, а когда на складе что-то поменялось: скан в канал, отмена, план.
+	// Сервер отдаёт короткую метку; поменялась — подтягиваем свежую страницу.
+	var stamp = null, pending = false;
+	function refresh() {
+		if (busy()) { pending = true; return; }
+		pending = false;
 		fetch(window.location.href, { headers: { 'X-Requested-With': 'live' }, credentials: 'same-origin' })
 			.then(function (response) { return response.ok ? response.text() : null; })
 			.then(function (html) {
-				if (!html || busy()) return;
+				if (!html) return;
+				if (busy()) { pending = true; return; }
 				var fresh = new DOMParser().parseFromString(html, 'text/html');
 				Array.prototype.forEach.call(live, function (element) {
 					var next = element.id && fresh.getElementById(element.id);
@@ -53,6 +58,18 @@
 				});
 				document.dispatchEvent(new CustomEvent('live:update'));
 			})
+			.catch(function () { pending = true; });
+	}
+	setInterval(function () {
+		if (document.hidden) return;
+		fetch('/live/stamp', { credentials: 'same-origin', cache: 'no-store' })
+			.then(function (response) { return response.ok ? response.text() : null; })
+			.then(function (value) {
+				if (value === null) return;
+				if (stamp !== null && value !== stamp) pending = true;
+				stamp = value;
+				if (pending) refresh();
+			})
 			.catch(function () {});
-	}, 15000);
+	}, 3000);
 })();
