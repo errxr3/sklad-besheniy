@@ -83,15 +83,9 @@ def home(request: Request, db: Session = Depends(get_db), err: str = "", ok: str
     return RedirectResponse("/board", status_code=303)
 
 
-# Метка «что-то поменялось»: новый скан, отмена, план, канал, смена. Дёшево — по первичным ключам.
-_STAMP_SQL = text(
-    "SELECT concat_ws('-',"
-    " (SELECT max(id) FROM movements),"
-    " (SELECT max(id) FROM ship_items),"
-    " (SELECT max(id) FROM pallets), (SELECT count(*) FROM pallets WHERE closed_at IS NULL),"
-    " (SELECT max(id) FROM shifts), (SELECT count(*) FROM shifts WHERE ended_at IS NULL),"
-    " (SELECT max(id) FROM manual_channels), (SELECT count(*) FROM manual_channels))"
-)
+# Метка «что-то поменялось»: счётчик, который триггеры сдвигают при любом изменении склада,
+# плана, каналов, смен и задач (миграция 0019). Чтение — доли миллисекунды.
+_STAMP_SQL = text("SELECT CASE WHEN is_called THEN last_value ELSE 0 END FROM live_stamp_seq")
 
 
 @router.get("/live/stamp", response_class=PlainTextResponse)

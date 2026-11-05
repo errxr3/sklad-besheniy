@@ -53,7 +53,7 @@
 				{% endfor %}
 			</tr>
 		</thead>
-		<tbody id="stock-body" data-live>
+		<tbody id="stock-body" data-live data-live-every="10">
 		{% for row in table.rows %}
 			{% if row.is_header %}
 			<tr class="header-row"><td colspan="{{ 1 + table.sites|length * 2 }}"><span class="group-name">{{ row.name }}</span></td></tr>

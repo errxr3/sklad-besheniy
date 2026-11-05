@@ -42,15 +42,21 @@
 	}
 	// Обновляем не по таймеру, а когда на складе что-то поменялось: скан в канал, отмена, план.
 	// Сервер отдаёт короткую метку; поменялась — подтягиваем свежую страницу.
-	var stamp = null, pending = false;
+	// Тяжёлые страницы (Остатки) ставят data-live-every="10": не чаще раза в 10 с, даже в час пик.
+	var every = 0;
+	Array.prototype.forEach.call(live, function (element) {
+		every = Math.max(every, (parseInt(element.getAttribute('data-live-every'), 10) || 0) * 1000);
+	});
+	var stamp = null, pending = 0, last = 0;
 	function refresh() {
-		if (busy()) { pending = true; return; }
-		pending = false;
+		if (busy() || Date.now() - last < every) return;
+		last = Date.now();
+		pending -= 1;
 		fetch(window.location.href, { headers: { 'X-Requested-With': 'live' }, credentials: 'same-origin' })
 			.then(function (response) { return response.ok ? response.text() : null; })
 			.then(function (html) {
 				if (!html) return;
-				if (busy()) { pending = true; return; }
+				if (busy()) { pending = Math.max(pending, 1); return; }
 				var fresh = new DOMParser().parseFromString(html, 'text/html');
 				Array.prototype.forEach.call(live, function (element) {
 					var next = element.id && fresh.getElementById(element.id);
@@ -58,7 +64,7 @@
 				});
 				document.dispatchEvent(new CustomEvent('live:update'));
 			})
-			.catch(function () { pending = true; });
+			.catch(function () { pending = Math.max(pending, 1); });
 	}
 	setInterval(function () {
 		if (document.hidden) return;
@@ -66,9 +72,10 @@
 			.then(function (response) { return response.ok ? response.text() : null; })
 			.then(function (value) {
 				if (value === null) return;
-				if (stamp !== null && value !== stamp) pending = true;
+				// Два обновления: второе ловит скан, который в момент первого ещё не дописался в базу
+				if (stamp !== null && value !== stamp) pending = 2;
 				stamp = value;
-				if (pending) refresh();
+				if (pending > 0) refresh();
 			})
 			.catch(function () {});
 	}, 3000);
