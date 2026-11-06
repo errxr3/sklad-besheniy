@@ -62,6 +62,7 @@ class LoadResult(ScanResult):
     await_unit: bool = False
     ship_code: str = ""
     level: str = ""  # «warn» — погружено, но не в свою машину (жёлтый экран)
+    unknown: bool = False  # код наклейки склад не знает — показать выбор артикула для старого
 
 
 def open_channel_at(session: Session, site_id: int, channel: str, truck: str = "") -> Pallet | None:
@@ -260,6 +261,11 @@ def scan_loading(
     """
     if waits_for_plan(session, pallet):
         return LoadResult(False, NO_PLAN_MESSAGE, NO_PLAN_HINT)
+    if legacy_article_id and ship_code and batch_mode(session, pallet):
+        return _ship_old_by_new_code(
+            session, code=ship_code, pallet=pallet, actor=actor, shift_id=shift_id,
+            article_id=legacy_article_id,
+        )
     if legacy_article_id:
         return scan_legacy(
             session, pallet=pallet, actor=actor, shift_id=shift_id, article_id=legacy_article_id
@@ -281,6 +287,31 @@ def scan_loading(
         "Это код маркетплейса",
         "на этот канал сегодня нет партии из BLAGO OTGRUZKI — сканируйте только этикетку BLAGO",
     )
+
+
+def _ship_old_by_new_code(
+    session: Session, *, code: str, pallet: Pallet, actor: User, shift_id: int | None, article_id: int
+) -> LoadResult:
+    """Незнакомая наклейка + старое зеркало: артикул выбрал оператор, код запоминаем."""
+    from app.services.legacy_stock import pick_legacy_unit
+
+    old = pick_legacy_unit(session, article_id=article_id, site_id=pallet.site_id)
+    if old is None:
+        return LoadResult(False, "Старых этого артикула на складе нет", "пикните нашу этикетку на зеркале")
+    item = find_ship_item(session, code, article_id=article_id) or learn_code(
+        session, code=code, pallet=pallet, article_id=article_id
+    )
+    if item is None:
+        return LoadResult(False, "Этот артикул в канале не ждут", "или все такие уже погружены")
+    problem = _item_problem(item, code, pallet)
+    if problem is not None:
+        return problem
+    result = _ship_by_item(
+        session, unit=old, item=item, code=code, pallet=pallet, actor=actor, shift_id=shift_id
+    )
+    if result.ok:
+        result.message = f"Старое: {old.article.name}"
+    return result
 
 
 def _scan_unit_label(
@@ -470,6 +501,43 @@ def find_ship_item(session: Session, code: str, article_id: int | None = None) -
     return (same or waiting or [item])[0]
 
 
+def learn_code(session: Session, *, code: str, pallet: Pallet, article_id: int) -> ShipItem | None:
+    """Незнакомый код с наклейки маркетплейса привязать к заказу этого артикула в канале.
+
+    КГТ Ozon печатает на наклейке только свой код «ii…» — без номера отправления, и Ozon не
+    отдаёт его в BLAGO (2026-11-06). Оператор пикает наклейку и наше зеркало (или выбирает артикул
+    старого): склад берёт первое непогруженное отправление этого артикула в этом канале
+    и запоминает код. Зеркала одного артикула одинаковые — какому заказу какое, не важно.
+    """
+    clean = clean_ship_code(code)
+    if not clean or session.get(ShipCode, clean) is not None:
+        return None
+    truck = pallet_truck(pallet)
+    candidates = list(session.scalars(
+        select(ShipItem)
+        .join(ShipBatch, ShipBatch.id == ShipItem.batch_id)
+        .where(
+            ShipItem.state == SHIP_WAIT, ShipItem.article_id == article_id,
+            ShipBatch.channel == pallet.channel,
+            (ShipItem.site_id == pallet.site_id) | ShipItem.site_id.is_(None),
+        )
+        .order_by(ShipBatch.day.desc(), ShipItem.posting)
+        .with_for_update(of=ShipItem)
+    ).all())
+    if not candidates:
+        return None
+    # Своя машина и сегодняшняя партия — первыми
+    candidates.sort(key=lambda i: (i.batch.truck != truck, i.batch.day != today_msk()))
+    item = candidates[0]
+    session.add(ShipCode(code=clean, item_id=item.id))
+    session.flush()
+    return item
+
+
+UNKNOWN_CODE = "Код наклейки новый"
+UNKNOWN_HINT = "пикните нашу этикетку на этом зеркале. Старое без этикетки — выберите артикул ниже"
+
+
 def piece_note(session: Session, item: ShipItem) -> str:
     """«заказ из 2 зеркал: погружено 1» — для экрана погрузки."""
     pieces = order_pieces(session, item)
@@ -488,6 +556,7 @@ class BatchLine:
     loaded: int
     removed: int
     in_stock: int
+    article_id: int | None = None
 
     @property
     def left(self) -> int:
@@ -523,7 +592,7 @@ def channel_batch_lines(session: Session, pallet: Pallet) -> list[BatchLine]:
     for item in [*items, *[m for m in moved if m not in items]]:
         name = item.article.name if item.article else item.article_name
         line = lines.setdefault(
-            name, BatchLine(name, 0, 0, 0, stock.get(item.article_id or 0, 0))
+            name, BatchLine(name, 0, 0, 0, stock.get(item.article_id or 0, 0), item.article_id)
         )
         line.total += 1
         line.loaded += item.state == SHIP_LOADED
@@ -551,7 +620,12 @@ def scan_batch(
         if ship_code:
             item = find_ship_item(session, ship_code, article_id=unit.article_id)
             if item is None:
-                return LoadResult(False, "Этикетка маркетплейса потерялась", "отсканируйте обе ещё раз")
+                item = learn_code(session, code=ship_code, pallet=pallet, article_id=unit.article_id)
+            if item is None:
+                return LoadResult(
+                    False, f"{unit.article.name} в этом канале не ждут",
+                    "или все такие уже погружены — проверьте наклейку", number=unit.number,
+                )
             problem = _item_problem(item, ship_code, pallet)
             if problem is not None:
                 return problem
@@ -564,6 +638,25 @@ def scan_batch(
         )
 
     item = find_ship_item(session, value)
+    if item is None and not is_own_label(value):
+        if unit_number:
+            unit = lock_unit(session, clean_code(unit_number))
+            problem = _unit_problem(session, unit, unit_number, pallet)
+            if problem is not None:
+                return problem
+            assert unit is not None
+            item = learn_code(session, code=value, pallet=pallet, article_id=unit.article_id)
+            if item is None:
+                return LoadResult(
+                    False, f"{unit.article.name} в этом канале не ждут",
+                    "или все такие уже погружены — проверьте наклейку", number=unit.number,
+                )
+            return _ship_by_item(session, unit=unit, item=item, code=value, pallet=pallet,
+                                 actor=actor, shift_id=shift_id)
+        return LoadResult(
+            True, UNKNOWN_CODE, UNKNOWN_HINT, await_unit=True, ship_code=value, unknown=True,
+            pallet_count=pallet_count(session, pallet.id),
+        )
     problem = _item_problem(item, value, pallet)
     if problem is not None:
         return problem

@@ -52,6 +52,16 @@
 	</form>
 	<div id="camera-box" class="mt" hidden></div>
 	{% if batch_mode %}
+	{# Наклейку склад не знает (КГТ Ozon печатает только свой код «ii…»): старое зеркало — выбрать артикул #}
+	<div class="legacy-box mt" id="unknown-box" hidden>
+		<label for="unknown-article">Старое зеркало без нашей этикетки — какой артикул?</label>
+		<div class="row tight">
+			<select id="unknown-article">
+				{% for line in batch_lines if line.left and line.article_id %}<option value="{{ line.article_id }}">{{ line.article }} · осталось {{ line.left }}</option>{% endfor %}
+			</select>
+			<button type="button" class="secondary" id="unknown-btn">Отгрузить старое</button>
+		</div>
+	</div>
 	{% elif legacy and not no_plan %}
 	<div class="legacy-box mt">
 		<label for="legacy-article">Старое зеркало без нашей этикетки</label>
@@ -153,9 +163,13 @@
 			} else if (data.await_unit) {
 				pendingCode = data.ship_code; pendingUnit = null;
 				input.placeholder = 'Теперь этикетку BLAGO на этом зеркале';
+				var unknownBox = document.getElementById('unknown-box');
+				if (unknownBox) unknownBox.hidden = !data.unknown;
 			} else {
 				pendingUnit = null; pendingCode = null;
 				input.placeholder = basePlaceholder;
+				var box = document.getElementById('unknown-box');
+				if (box) box.hidden = true;
 				if (batchMode) refreshBatch();
 			}
 			if (typeof data.pallet_count === 'number') {
@@ -177,6 +191,18 @@
 		});
 	}
 
+	// Незнакомая наклейка + старое зеркало: оператор выбирает артикул, склад запоминает код наклейки
+	var unknownBtn = document.getElementById('unknown-btn');
+	if (unknownBtn) {
+		unknownBtn.addEventListener('click', function () {
+			var select = document.getElementById('unknown-article');
+			if (!select.value || !pendingCode) return;
+			var name = select.options[select.selectedIndex].text.split(' · ')[0];
+			legacyNext = select.value;
+			screen.send('СТАРОЕ ' + name);
+		});
+	}
+
 	// Список «что грузить» обновляется сам: грузят несколько человек, сборщики сдают зеркала
 	function refreshBatch() {
 		fetch('/loading/batch/{{ pallet.id }}', { headers: { 'X-Requested-With': 'fetch' } })
@@ -186,6 +212,19 @@
 				if (!table || !data.lines) return;
 				while (table.rows.length > 1) table.deleteRow(1);
 				var left = 0;
+				var picker = document.getElementById('unknown-article');
+				if (picker) {
+					var keep = picker.value;
+					picker.innerHTML = '';
+					data.lines.forEach(function (line) {
+						if (!line.left || !line.article_id) return;
+						var option = document.createElement('option');
+						option.value = line.article_id;
+						option.textContent = line.article + ' · осталось ' + line.left;
+						picker.appendChild(option);
+					});
+					if (keep) picker.value = keep;
+				}
 				data.lines.forEach(function (line) {
 					left += line.left;
 					var row = table.insertRow(-1);

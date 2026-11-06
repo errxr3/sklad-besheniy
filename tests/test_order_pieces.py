@@ -46,8 +46,9 @@ def _setup(db: Session, second: str = "Zerkalo_50x130"):  # type: ignore[no-unty
     return site, loader, pallet, units_a, units_b, rows
 
 
-def _scan(db: Session, pallet, loader, code: str, unit: str | None = None):  # type: ignore[no-untyped-def]
-    result = scan_loading(db, code=code, pallet=pallet, actor=loader, unit_number=unit)
+def _scan(db: Session, pallet, loader, code: str, unit: str | None = None,  # type: ignore[no-untyped-def]
+          ship: str | None = None):
+    result = scan_loading(db, code=code, pallet=pallet, actor=loader, unit_number=unit, ship_code=ship)
     db.commit()
     return result
 
@@ -190,3 +191,40 @@ def test_colored_orders_stay_in_plan_but_dont_go(db: Session) -> None:
     receive_demand(db, day=today_msk(), lines=lines[:1])
     db.commit()
     assert "убрано" not in (db.scalar(select(ShipDemand).where(ShipDemand.posting == "R-1")).reason or "")
+
+
+def test_unknown_kgt_sticker_learns_code(db: Session) -> None:
+    """КГТ Ozon: на наклейке только «ii…» — склад привязывает её к заказу артикула (2026-11-06)."""
+    from app.services.legacy_stock import apply_legacy, preview_legacy
+
+    site = site_by_name(db, KOM)
+    worker = make_user(db, name="Сборщик КГТ", role=ROLE_ASSEMBLER)
+    loader = make_user(db, name="Оператор КГТ", role=ROLE_LOADER)
+    admin = make_user(db, name="Админ КГТ", role="admin")
+    a = make_article(db, name="Zerkalo_50x130", sort_order=1)
+    make_article(db, name="Zerkalo_60x160", sort_order=2)
+    units = _units(db, site, worker, a, 1)
+    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 1)]), actor=admin)
+    receive_batch(db, day=today_msk(), market="ozon", channel="КГТ", items=[
+        {"posting": "K-1", "article": "Zerkalo_50x130", "production": KOM, "codes": ["651668005236000"]},
+        {"posting": "K-2", "article": "Zerkalo_60x160", "production": KOM, "codes": ["502184971349000"]},
+    ])
+    db.commit()
+    pallet = join_channel(db, user=loader, site=site, channel="КГТ")
+    db.commit()
+    # Новое зеркало: наклейка → «код новый» → наша этикетка → погружено, код запомнен
+    first = _scan(db, pallet, loader, "ii50196073009")
+    assert first.ok and first.await_unit and first.unknown
+    done = _scan(db, pallet, loader, units[0].number, ship="II50196073009")
+    assert done.ok, done.message
+    assert _items(db)["K-1"].state == SHIP_LOADED
+    again = _scan(db, pallet, loader, "ii50196073009")
+    assert not again.ok and "уже погружена" in again.message
+    # Старое без этикетки: наклейка → выбрать артикул → погружено старое
+    _scan(db, pallet, loader, "ii50196071349")
+    old_id = db.scalar(select(ShipItem.article_id).where(ShipItem.posting == "K-2"))
+    old = scan_loading(db, code="СТАРОЕ", pallet=pallet, actor=loader, ship_code="II50196071349",
+                       legacy_article_id=old_id)
+    db.commit()
+    assert old.ok and "Старое" in old.message, old.message
+    assert _items(db)["K-2"].state == SHIP_LOADED

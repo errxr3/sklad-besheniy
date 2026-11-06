@@ -142,6 +142,7 @@ async def loading_scan(request: Request, db: Session = Depends(get_db)) -> JSONR
             "ship_code": result.ship_code,
             "level": result.level,
             "pallet_count": result.pallet_count,
+            "unknown": result.unknown,
         }
     )
 
@@ -157,7 +158,8 @@ def loading_batch(request: Request, pallet_id: int, db: Session = Depends(get_db
             "count": pallet_count(db, pallet.id),
             "closed": pallet.closed_at is not None,
             "lines": [
-                {"article": line.article, "total": line.total, "loaded": line.loaded,
+                {"article": line.article, "article_id": line.article_id, "total": line.total,
+                 "loaded": line.loaded,
                  "removed": line.removed, "left": line.left, "in_stock": line.in_stock}
                 for line in channel_batch_lines(db, pallet)
             ],
