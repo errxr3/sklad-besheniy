@@ -116,3 +116,29 @@ def test_not_on_shelf_takes_one_piece(db: Session) -> None:
     db.commit()
     states = sorted(i.state for i in _items(db).values())
     assert states == [SHIP_REMOVED, SHIP_WAIT]
+
+
+def test_ozon_split_order_holds_only_unloaded(db: Session) -> None:
+    """Ozon разделил заказ на 3 грузоместа с новыми номерами: погружено 2 — держим одно зеркало."""
+    site = site_by_name(db, KOM)
+    worker = make_user(db, name="Сборщик Озон", role=ROLE_ASSEMBLER)
+    loader = make_user(db, name="Оператор Озон", role=ROLE_LOADER)
+    a = make_article(db, name="Zerkalo_50x130", sort_order=1)
+    units = _units(db, site, worker, a, 4)
+    order = [{"market": "ozon", "channel": "Ozon", "truck": "Озон1", "posting": "777-0001-1",
+              "article": "Zerkalo_50x130", "qty": 3, "production": KOM}]
+    assert receive_demand(db, day=today_msk(), lines=order)[0].decision == "go"
+    receive_batch(db, day=today_msk(), market="ozon", channel="Ozon", truck="Озон1", items=[
+        {"posting": f"777-0001-{n}", "origin": "777-0001-1", "article": "Zerkalo_50x130", "production": KOM,
+         "codes": [f"%77{n}"]} for n in (2, 3, 4)
+    ])
+    db.commit()
+    pallet = join_channel(db, user=loader, site=site, channel="Ozon", truck="Озон1")
+    db.commit()
+    for n, unit in zip((2, 3), units[:2], strict=True):
+        assert _scan(db, pallet, loader, f"%77{n}", unit=unit.number).ok
+    # На складе осталось 2, заказ держит одно — второе достаётся ровно одному новому заказу
+    extra = [{"market": "wb", "channel": "WB", "posting": p, "article": "Zerkalo_50x130", "qty": 1,
+              "production": KOM} for p in ("W9", "W10")]
+    decided = receive_demand(db, day=today_msk(), lines=extra)
+    assert sorted(d.decision for d in decided) == ["go", "no"]

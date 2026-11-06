@@ -453,7 +453,9 @@ def allocate(session: Session, *, day: date | None = None) -> None:
         .where(ShipBatch.day >= day - HISTORY, ShipItem.state == SHIP_LOADED)
     ).all():
         if piece.site_id is not None and piece.article_id is not None:
-            loaded_pieces[(piece.market, base_posting(piece.posting), piece.site_id, piece.article_id)] += 1
+            # Заказ из отчёта: номер без «#места» или исходный номер Ozon до деления на грузоместа
+            for order_no in {base_posting(piece.posting), piece.origin} - {None, ""}:
+                loaded_pieces[(piece.market, str(order_no), piece.site_id, piece.article_id)] += 1
     # Этикетки, скачанные без утреннего заказа (заказ не присылали), тоже держат свои зеркала
     ordered = {
         (line.market, line.posting)
