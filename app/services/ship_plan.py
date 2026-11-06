@@ -22,18 +22,30 @@ from app.models import Article, ShipDemand, ShipQuestion
 from app.services.batches import ASK, GO, LATER, NO, in_work_by_article_site
 from app.services.shipment_report import CHANNEL_COLUMNS, shipped_by_article_column
 from app.services.stock import active_sites, stock_at, stock_by_article_site
-from app.statuses import OZON
+from app.statuses import OZON, OZON_TRUCKS
 from app.timeutil import fmt_dt, msk_day_bounds, now_utc, today_msk
 
-# Столбцы плана: (заголовок, канал заказа)
-PLAN_CHANNELS: tuple[tuple[str, str], ...] = (
-    ("Озон", OZON),
-    ("КГТ", "КГТ"),
-    ("СДЭК", "СДЭК"),
-    ("WB", "WB"),
-    ("СГТ", "СГТ"),
+# Столбцы плана: (заголовок, канал заказа, машина Ozon). Озон по машинам, как в «Отгрузке»
+# (решение владельца 2026-11-06); «Озон 4» — только если в этот день по нему что-то есть.
+PLAN_CHANNELS: tuple[tuple[str, str, str], ...] = (
+    ("Озон 1", OZON, OZON_TRUCKS[0]),
+    ("Озон 2", OZON, OZON_TRUCKS[1]),
+    ("Озон 3", OZON, OZON_TRUCKS[2]),
+    ("Озон 4", OZON, OZON_TRUCKS[3]),
+    ("КГТ", "КГТ", ""),
+    ("СДЭК", "СДЭК", ""),
+    ("WB", "WB", ""),
+    ("СГТ", "СГТ", ""),
 )
-_PLAN_INDEX = {channel: index for index, (_, channel) in enumerate(PLAN_CHANNELS)}
+_PLAN_INDEX = {(channel, truck): index for index, (_, channel, truck) in enumerate(PLAN_CHANNELS)}
+OPTIONAL_COLUMN = 3  # «Озон 4»
+
+
+def _plan_index(channel: str, truck: str | None) -> int | None:
+    """Столбец плана по каналу и машине; Ozon без машины — «Озон 1»."""
+    if channel == OZON:
+        return _PLAN_INDEX.get((OZON, truck if truck in OZON_TRUCKS else OZON_TRUCKS[0]))
+    return _PLAN_INDEX.get((channel, ""))
 
 
 @dataclass
@@ -96,7 +108,7 @@ class ShipPlan:
     site_names: list[str]
     rows: list[PlanRow]
     built_at: str
-    columns: list[str] = field(default_factory=lambda: [title for title, _ in PLAN_CHANNELS])
+    columns: list[str] = field(default_factory=lambda: [title for title, _, _ in PLAN_CHANNELS])
     need: list[int] = field(default_factory=list)
     loaded: list[int] = field(default_factory=list)
     go: int = 0
@@ -135,7 +147,7 @@ def build_ship_plan(session: Session, *, day: date) -> ShipPlan:
         if line.article_id is None:
             unknown.add(line.article_name)
             continue
-        index = _PLAN_INDEX.get(line.channel)
+        index = _plan_index(line.channel, line.truck)
         if line.excluded and line.decision == NO:
             cut[line.article_id] += line.qty  # покрашено «не едет»: не в «нужно», отдельным числом
             if index is not None:
@@ -158,7 +170,7 @@ def build_ship_plan(session: Session, *, day: date) -> ShipPlan:
             for (article_id, column), count in source.items():
                 if not 0 <= column < len(CHANNEL_COLUMNS):
                     continue
-                index = _PLAN_INDEX.get(CHANNEL_COLUMNS[column][1])
+                index = _plan_index(CHANNEL_COLUMNS[column][1], CHANNEL_COLUMNS[column][2])
                 if index is not None:
                     loaded[article_id][index] += count
 
@@ -191,7 +203,7 @@ def build_ship_plan(session: Session, *, day: date) -> ShipPlan:
     questions = session.scalars(
         select(ShipQuestion).where(ShipQuestion.day == day, ShipQuestion.answer == "open")
     ).all()
-    return ShipPlan(
+    plan = ShipPlan(
         day=day,
         site_names=[site.name for site in sites],
         rows=rows,
@@ -210,6 +222,14 @@ def build_ship_plan(session: Session, *, day: date) -> ShipPlan:
         open_questions=sum(1 for q in questions if q.short > q.promised),
         is_today=day >= today_msk(),
     )
+    i = OPTIONAL_COLUMN
+    if not (plan.need[i] or plan.loaded[i] or plan.cut_ch[i]):
+        # «Озон 4» пуст — столбца нет совсем, как в «Отгрузке»
+        plan.columns.pop(i)
+        for holder in (plan, *items):
+            for name in ("need", "loaded", "cut_ch", "no_ch"):
+                getattr(holder, name).pop(i)
+    return plan
 
 
 def visible_rows(plan: ShipPlan, *, show_all: bool) -> list[PlanRow]:

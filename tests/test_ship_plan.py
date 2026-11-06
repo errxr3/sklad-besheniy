@@ -64,7 +64,8 @@ def test_plan_counts_need_decisions_and_loaded(db: Session) -> None:
     plan = build_ship_plan(db, day=today_msk())
     rows = {row.name: row for row in visible_rows(plan, show_all=False) if not row.is_header}
     assert set(rows) == {"Zerkalo_50x130", "Zerkalo_60x160"}
-    ozon, wb = plan.columns.index("Озон"), plan.columns.index("WB")
+    ozon, wb = plan.columns.index("Озон 1"), plan.columns.index("WB")
+    assert "Озон 2" in plan.columns and "Озон 4" not in plan.columns
     first = rows["Zerkalo_50x130"]
     assert first.need[ozon] == 2 and first.need[wb] == 1 and first.loaded[ozon] == 1
     assert first.go == 3 and first.state == "ok"
@@ -105,3 +106,19 @@ def test_colored_orders_shown_as_cut(db: Session) -> None:
     row = next(r for r in plan.rows if r.name == "Zerkalo_40x130")
     assert row.cut == 2 and row.need_total == 1
     assert sum(plan.cut_ch) == 2 and sum(row.cut_ch) == 2  # в канале Озон 3: упало 3, едет 1, убрано 2
+
+
+def test_plan_kgt_loaded_counted(db: Session) -> None:
+    """Погруженное в КГТ видно в плане в колонке КГТ (2026-11-06)."""
+    site, _, loader, units = _world(db)
+    receive_batch(db, day=today_msk(), market="ozon", channel="КГТ", truck="", items=[
+        {"posting": "KG-1", "article": "Zerkalo_50x130", "production": KOM, "codes": ["%KG1"]},
+    ])
+    db.commit()
+    pallet = join_channel(db, user=loader, site=site, channel="КГТ", truck="")
+    db.commit()
+    assert scan_loading(db, code=units[0].number, pallet=pallet, actor=loader, ship_code="%KG1").ok
+    db.commit()
+    plan = build_ship_plan(db, day=today_msk())
+    kgt = plan.columns.index("КГТ")
+    assert plan.loaded[kgt] == 1
