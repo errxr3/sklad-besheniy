@@ -35,6 +35,12 @@ jobs:
             WHERE b.day = (now() AT TIME ZONE 'Europe/Moscow')::date
             GROUP BY b.channel, b.truck, i.market, i.posting, i.origin, i.article_name, i.state
             ORDER BY b.channel, b.truck, i.posting LIMIT 300;\""
+          echo "== Отгрузки за сегодня по каналам"
+          $SSH "cd /opt/sklad && docker compose exec -T postgres psql -U sklad -d sklad -c \"
+            SELECT p.channel, p.note, p.closed_at IS NOT NULL AS closed, s.name AS site, count(*)
+            FROM movements m JOIN pallets p ON p.id = m.ref_id LEFT JOIN sites s ON s.id = m.from_site_id
+            WHERE m.type = 'ship' AND m.created_at >= date_trunc('day', now() AT TIME ZONE 'Europe/Moscow') AT TIME ZONE 'Europe/Moscow'
+            GROUP BY 1,2,3,4 ORDER BY 1,2;\""
           if [ -n "$FIND" ]; then
             $SSH "cd /opt/sklad && docker compose exec -T postgres psql -U sklad -d sklad -c \"
               SELECT c.code, i.posting, i.state, b.day, b.channel FROM ship_codes c
