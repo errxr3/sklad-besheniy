@@ -105,7 +105,7 @@ def test_colored_orders_shown_as_cut(db: Session) -> None:
     assert plan.orders == 3 and plan.cut == 2
     row = next(r for r in plan.rows if r.name == "Zerkalo_40x130")
     assert row.cut == 2 and row.need_total == 1
-    assert sum(plan.cut_ch) == 2 and sum(row.cut_ch) == 2  # в канале Озон 3: упало 3, едет 1, убрано 2
+    assert sum(plan.cut_ch) == 2 and sum(row.cut_ch) == 2  # в канале Озон 3: заказов 3, едет 1, убрано 2
 
 
 def test_plan_kgt_loaded_counted(db: Session) -> None:

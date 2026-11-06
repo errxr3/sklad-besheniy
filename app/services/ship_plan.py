@@ -27,18 +27,18 @@ from app.timeutil import fmt_dt, msk_day_bounds, now_utc, today_msk
 
 # Столбцы плана: (заголовок, канал заказа, машина Ozon). Озон по машинам, как в «Отгрузке»
 # (решение владельца 2026-11-06); «Озон 4» — только если в этот день по нему что-то есть.
-PLAN_CHANNELS: tuple[tuple[str, str, str], ...] = (
+PLAN_CHANNELS: tuple[tuple[str, str, str], ...] = (  # порядок как в «Отгрузке»
     ("Озон 1", OZON, OZON_TRUCKS[0]),
-    ("Озон 2", OZON, OZON_TRUCKS[1]),
-    ("Озон 3", OZON, OZON_TRUCKS[2]),
-    ("Озон 4", OZON, OZON_TRUCKS[3]),
     ("КГТ", "КГТ", ""),
     ("СДЭК", "СДЭК", ""),
     ("WB", "WB", ""),
     ("СГТ", "СГТ", ""),
+    ("Озон 2", OZON, OZON_TRUCKS[1]),
+    ("Озон 3", OZON, OZON_TRUCKS[2]),
+    ("Озон 4", OZON, OZON_TRUCKS[3]),
 )
 _PLAN_INDEX = {(channel, truck): index for index, (_, channel, truck) in enumerate(PLAN_CHANNELS)}
-OPTIONAL_COLUMN = 3  # «Озон 4»
+OPTIONAL_COLUMN = len(PLAN_CHANNELS) - 1  # «Озон 4»
 
 
 def _plan_index(channel: str, truck: str | None) -> int | None:
@@ -116,7 +116,7 @@ class ShipPlan:
     ask: int = 0
     no: int = 0
     cut: int = 0
-    cut_ch: list[int] = field(default_factory=list)  # убрано по каналам: упало = нужно + убрано
+    cut_ch: list[int] = field(default_factory=list)  # убрано по каналам: заказов = нужно + убрано
     no_ch: list[int] = field(default_factory=list)  # склад не пустил, по каналам
     orders: int = 0
     unknown: list[str] = field(default_factory=list)  # артикулов нет в справочнике склада

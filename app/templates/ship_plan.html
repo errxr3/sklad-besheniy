@@ -24,7 +24,7 @@
 	{% if plan.no or plan.cut %}
 	<p class="plan-summary" id="plan-channels" data-live>По каналам:
 		{% for title in plan.columns %}{% set cut = plan.cut_ch[loop.index0] %}{% set no = plan.no_ch[loop.index0] %}{% set need = plan.need[loop.index0] %}
-		{% if cut or no %}<span class="plan-chip neutral">{{ title }}: упало {{ need + cut }}, едет {{ need - no }},
+		{% if cut or no %}<span class="plan-chip neutral">{{ title }}: заказов {{ need + cut }}, едет {{ need - no }},
 			<b>не едет {{ no + cut }}</b>{% if cut and no %} (убрано вами {{ cut }}, склад {{ no }}){% elif cut %} (убрано вами){% else %} (склад){% endif %}</span>{% endif %}
 		{% endfor %}
 	</p>
@@ -65,7 +65,7 @@
 			<tr class="totals">
 				<th class="sticky">Всего</th>
 				<th colspan="{{ plan.site_names|length + 1 }}"></th>
-				{% for need in plan.need %}{% set cut = plan.cut_ch[loop.index0] %}<th class="num">{% if need or plan.loaded[loop.index0] %}{{ plan.loaded[loop.index0] }} / {{ need }}{% endif %}{% if cut %}<div class="cut-note">упало {{ need + cut }} · убрано вами {{ cut }}</div>{% endif %}</th>{% endfor %}
+				{% for need in plan.need %}{% set cut = plan.cut_ch[loop.index0] %}<th class="num">{% if need or plan.loaded[loop.index0] %}{{ plan.loaded[loop.index0] }} / {{ need }}{% endif %}{% if cut %}<div class="cut-note">заказов {{ need + cut }} · убрано вами {{ cut }}</div>{% endif %}</th>{% endfor %}
 				<th colspan="2"></th>
 			</tr>
 		</thead>
@@ -82,7 +82,7 @@
 				{% for need in row.need %}
 				{% set got = row.loaded[loop.index0] %}
 				{% set cut = row.cut_ch[loop.index0] %}
-				<td class="num ch {% if need and got >= need %}full{% endif %}">{% if need or got %}{{ got }} / {{ need }}{% endif %}{% set no = row.no_ch[loop.index0] %}{% if cut or no %} <span class="cut-mark tip" tabindex="0" data-tip="Упало: {{ need + cut }}&#10;Убрано вами: {{ cut }}&#10;Не пустил склад: {{ no }}">−{{ cut + no }}</span>{% endif %}</td>
+				<td class="num ch {% if need and got >= need %}full{% endif %}">{% if need or got %}{{ got }} / {{ need }}{% endif %}{% set no = row.no_ch[loop.index0] %}{% if cut or no %} <span class="cut-mark tip" tabindex="0" data-tip="Заказов: {{ need + cut }}&#10;Убрано вами: {{ cut }}&#10;Не пустил склад: {{ no }}">−{{ cut + no }}</span>{% endif %}</td>
 				{% endfor %}
 				<td class="state">{{ state_labels[state] }}{% if row.later %} · {{ row.later }} шт. в Озон 3{% endif %}{% if row.cut and state != 'cut' %} · убрано вами {{ row.cut }}{% endif %}{% if row.no_reason %}<div class="muted">{{ row.no_reason }}</div>{% endif %}</td>
 				<td class="num">{% if row.no or row.cut %}<b class="tip" tabindex="0" data-tip="Убрано вами: {{ row.cut }}&#10;Не пустил склад: {{ row.no }}">{{ row.no + row.cut }}</b>{% elif row.ask %}{{ row.ask }}?{% endif %}</td>
