@@ -53,6 +53,16 @@
 		if (document.querySelector('main .table-wrap')) document.body.classList.add('wide');
 	}
 
+	// Пока крутится — без подсветки строк под мышкой (см. .is-scrolling в app.css)
+	var timers = new WeakMap();
+	document.addEventListener('scroll', function (event) {
+		var wrap = event.target;
+		if (!wrap.classList || !wrap.classList.contains('table-wrap')) return;
+		if (!wrap.classList.contains('is-scrolling')) wrap.classList.add('is-scrolling');
+		clearTimeout(timers.get(wrap));
+		timers.set(wrap, setTimeout(function () { wrap.classList.remove('is-scrolling'); }, 200));
+	}, { capture: true, passive: true });
+
 	document.addEventListener('keydown', function (event) {
 		if (event.key === 'Escape') close();
 	});

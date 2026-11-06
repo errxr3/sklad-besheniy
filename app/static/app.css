@@ -581,7 +581,7 @@ label.check { display: flex; align-items: center; gap: 6px; align-self: end; min
 :root {
 	--tbl-radius: 12px;
 	--tbl-shadow: 0 1px 2px rgba(15, 23, 42, .05), 0 4px 14px rgba(15, 23, 42, .05);
-	--tbl-line: rgba(15, 23, 42, .07);
+	--tbl-line: #e9edf2;
 	--tbl-hover: rgba(15, 23, 42, .045);
 	--tbl-head: #f8fafc;
 	--tbl-head-text: #64748b;
@@ -589,7 +589,7 @@ label.check { display: flex; align-items: center; gap: 6px; align-self: end; min
 @media (prefers-color-scheme: dark) {
 	:root:not([data-theme="light"]) {
 		--tbl-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 18px rgba(0, 0, 0, .25);
-		--tbl-line: rgba(255, 255, 255, .07);
+		--tbl-line: #222d42;
 		--tbl-hover: rgba(255, 255, 255, .05);
 		--tbl-head: #18233b;
 		--tbl-head-text: #94a3b8;
@@ -597,7 +597,7 @@ label.check { display: flex; align-items: center; gap: 6px; align-self: end; min
 }
 :root[data-theme="dark"] {
 	--tbl-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 6px 18px rgba(0, 0, 0, .25);
-	--tbl-line: rgba(255, 255, 255, .07);
+	--tbl-line: #222d42;
 	--tbl-hover: rgba(255, 255, 255, .05);
 	--tbl-head: #18233b;
 	--tbl-head-text: #94a3b8;
@@ -613,7 +613,7 @@ tbody tr:last-child td { border-bottom: 0; }
 /* Подсветка — фоновой картинкой поверх заливки: дешевле огромной внутренней тени, скролл не тормозит */
 tbody tr:hover > td { background-image: linear-gradient(var(--tbl-hover), var(--tbl-hover)); }
 /* В цветных строках линии чуть темнее, чтобы строки не сливались */
-tr[style*="background"] > td { border-bottom-color: rgba(20, 23, 31, .08); }
+tr[style*="background"] > td { border-bottom-color: #d9dde3; }
 tr.header-row td {
 	background: var(--group-bg); font-size: 12px; font-weight: 700; letter-spacing: .06em;
 	text-transform: uppercase; box-shadow: inset 3px 0 0 var(--brand); border-bottom: 1px solid var(--line-strong);
@@ -688,9 +688,12 @@ body.tbl-full-open .tbl-exit { display: inline-flex; align-items: center; }
 
 /* Цветные строки (заливка из TOP) всегда светлые — линии в них тёмные в любой теме,
    иначе в тёмной теме белёсые линии столбцов на светлой заливке не видны */
-tr[style*="background"] > td {
-	border-bottom-color: rgba(20, 23, 31, .14);
-	border-right-color: rgba(20, 23, 31, .14);
-}
-.shipments tbody td { border-right-color: rgba(127, 140, 160, .35); }
-.shipments tr[style*="background"] > td { border-right-color: rgba(20, 23, 31, .16); }
+/* Линии только сплошным цветом: полупрозрачные на тысячах ячеек «Отгрузки» тормозят прокрутку */
+tr[style*="background"] > td { border-bottom-color: #d0d4db; border-right-color: #d0d4db; }
+.shipments th, .shipments td { border-right-color: var(--line-strong); border-bottom-color: var(--line-strong); }
+.shipments tr[style*="background"] > td { border-right-color: #c6cbd3; border-bottom-color: #d0d4db; }
+
+/* Пока таблицу крутят, строки не реагируют на мышь: иначе подсветка «бежит» по строкам
+   и широкая «Отгрузка» перерисовывается на каждом кадре. Остановились — подсветка снова есть */
+.table-wrap.is-scrolling table { pointer-events: none; }
+.table-wrap.is-scrolling tbody tr:hover > td { background-image: none; }
