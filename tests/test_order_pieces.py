@@ -3,7 +3,7 @@
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from app.models import ShipCode, ShipItem, Unit
+from app.models import ShipCode, ShipDemand, ShipItem, Unit
 from app.services.batches import receive_batch, receive_demand
 from app.services.not_on_shelf import not_on_shelf
 from app.services.shipping import join_channel, scan_loading
@@ -142,3 +142,27 @@ def test_ozon_split_order_holds_only_unloaded(db: Session) -> None:
               "production": KOM} for p in ("W9", "W10")]
     decided = receive_demand(db, day=today_msk(), lines=extra)
     assert sorted(d.decision for d in decided) == ["go", "no"]
+
+
+def test_old_big_order_holds_stock(db: Session) -> None:
+    """Большой заказ ждёт со вчера: 13 зеркал копятся под него, новые заказы их не забирают."""
+    from datetime import timedelta
+
+    site = site_by_name(db, KOM)
+    worker = make_user(db, name="Сборщик Копит", role=ROLE_ASSEMBLER)
+    article = make_article(db, name="Zerkalo_40x130", sort_order=1)
+    _units(db, site, worker, article, 13)
+    big = [{"market": "ozon", "channel": "Ozon", "truck": "Озон1", "posting": "BIG-1",
+            "article": "Zerkalo_40x130", "qty": 15, "production": KOM}]
+    small = [{"market": "wb", "channel": "WB", "posting": "S1", "article": "Zerkalo_40x130", "qty": 1,
+              "production": KOM}]
+    yesterday = today_msk() - timedelta(days=1)
+    # Вчера: большой не едет, мелкий забирает своё — как раньше
+    assert receive_demand(db, day=yesterday, lines=big)[0].decision == "no"
+    db.commit()
+    # Сегодня большой ждёт со вчера: склад держит под него всё, новый мелкий не едет
+    decided = receive_demand(db, day=today_msk(), lines=small)
+    db.commit()
+    assert decided[0].decision == "no"
+    order = db.scalar(select(ShipDemand).where(ShipDemand.posting == "BIG-1"))
+    assert order is not None and order.decision == "no" and "копит" in (order.reason or "")

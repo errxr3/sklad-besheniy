@@ -36,6 +36,22 @@
 	этикетки: их скан больше не пройдёт.</p>
 </div>
 
+{% set waiting = groups|selectattr('to_print')|list %}
+{% if waiting %}
+<div class="card" id="print-all" data-day="{{ day.isoformat() }}" data-site="{{ site.id }}">
+	<h2>Все сборщики сразу</h2>
+	<p class="hint">Каждый сборщик — отдельный PDF со всеми его этикетками, открывается в своей вкладке.
+	По {{ 10 }} за раз, чтобы компьютер не тормозил. Если браузер написал «всплывающие окна заблокированы» —
+	разрешите их для этого сайта и нажмите ещё раз.</p>
+	<div class="row tight mt">
+		<button type="button" class="big" id="print-all-btn">Напечатать всех: {{ waiting|length }} сборщ., {{ waiting|sum(attribute='to_print') }} шт.</button>
+	</div>
+	<p class="hint" id="print-all-status" aria-live="polite"></p>
+	<script type="application/json" id="print-all-list">{{ waiting|map(attribute='user')|map(attribute='id')|list|tojson }}</script>
+	<script type="application/json" id="print-all-names">{{ waiting|map(attribute='user')|map(attribute='name')|list|tojson }}</script>
+</div>
+{% endif %}
+
 {% if not groups %}
 <div class="card"><p class="muted">На этот день задач на изготовление нет. Задачи ставит начальник смены.</p></div>
 {% endif %}
@@ -108,6 +124,61 @@
 			setTimeout(function () { window.location.reload(); }, 1500);
 		});
 	});
+	// «Напечатать всех»: по 10 сборщиков за нажатие, каждый PDF — в своей вкладке
+	var box = document.getElementById('print-all');
+	if (box) {
+		var ids = JSON.parse(document.getElementById('print-all-list').textContent);
+		var names = JSON.parse(document.getElementById('print-all-names').textContent);
+		var button = document.getElementById('print-all-btn');
+		var status = document.getElementById('print-all-status');
+		var next = 0, BATCH = 10, busy = false;
+		button.addEventListener('click', function () {
+			if (busy || next >= ids.length) return;
+			busy = true;
+			var part = ids.slice(next, next + BATCH).map(function (id, i) { return [id, names[next + i]]; });
+			// Вкладки открываем сразу, в момент нажатия, — иначе браузер их заблокирует
+			var tabs = part.map(function () { return window.open('', '_blank'); });
+			var blocked = tabs.some(function (tab) { return !tab; });
+			var done = 0, failed = [];
+			status.textContent = 'Печатаю ' + part.length + '…';
+			(function step(i) {
+				if (i >= part.length) {
+					next += part.length;
+					busy = false;
+					var left = ids.length - next;
+					status.textContent = 'Готово: ' + done + (failed.length ? ', не получилось: ' + failed.join(', ') : '') +
+						(blocked ? '. Часть вкладок браузер заблокировал — файлы скачались' : '') +
+						(left ? '. Осталось сборщиков: ' + left : '');
+					button.textContent = left ? 'Напечатать следующих: ' + Math.min(BATCH, left) + ' из ' + left : 'Все напечатаны';
+					if (!left) { button.disabled = true; setTimeout(function () { window.location.reload(); }, 3000); }
+					return;
+				}
+				var data = new FormData();
+				data.append('csrf_token', '{{ csrf }}');
+				data.append('day', box.dataset.day);
+				data.append('site_id', box.dataset.site);
+				data.append('user_id', part[i][0]);
+				fetch('/labels/print', { method: 'POST', body: data, credentials: 'same-origin' })
+					.then(function (response) {
+						var type = response.headers.get('Content-Type') || '';
+						if (!response.ok || type.indexOf('application/pdf') !== 0) throw new Error('нет PDF');
+						return response.blob();
+					})
+					.then(function (blob) {
+						var url = URL.createObjectURL(blob);
+						if (tabs[i]) { tabs[i].location.href = url; }
+						else {
+							var link = document.createElement('a');
+							link.href = url; link.download = 'Этикетки ' + part[i][1] + '.pdf';
+							document.body.appendChild(link); link.click(); link.remove();
+						}
+						done += 1;
+					})
+					.catch(function () { failed.push(part[i][1]); if (tabs[i]) tabs[i].close(); })
+					.then(function () { status.textContent = 'Печатаю: ' + (i + 1) + ' из ' + part.length; step(i + 1); });
+			})(0);
+		});
+	}
 	Array.prototype.forEach.call(document.querySelectorAll('.void-form'), function (form) {
 		form.addEventListener('submit', function (event) {
 			if (!window.confirm(form.dataset.confirm)) event.preventDefault();

@@ -56,6 +56,7 @@ LATER = "later"
 EVENING_TRUCK = OZON_TRUCKS[2]
 EARLY_TRUCKS = OZON_TRUCKS[:2]
 HISTORY = timedelta(days=14)  # заказы и партии старше двух недель в расчёт не берём
+HOLD_REASON = "ждёт со вчера: не хватает, склад копит под него зеркала"
 ALLOCATE_LOCK = 70014
 STATE_ORDER = {SHIP_WAIT: 0, SHIP_REMOVED: 1, SHIP_LOADED: 2}
 MAX_CODES = 8
@@ -547,6 +548,13 @@ def allocate(session: Session, *, day: date | None = None) -> None:
                 free[ak] = free.get(ak, 0) - min(qty, max(0, free.get(ak, 0)))
         if verdict == GO and group[0].channel == OZON and group[0].truck in EARLY_TRUCKS:
             verdict, reason = LATER, "поедет в Озон 3: начальник обещал доделать к вечеру"
+        if verdict == NO and min(line.day for line in group) < day:
+            # Заказ ждёт со вчера и раньше: зеркала больше не уходят новым заказам, копятся под него,
+            # иначе большой заказ не наберётся никогда (решение владельца 2026-11-06)
+            for stock_key, qty in wanted.items():
+                ak = (stock_key[1], stock_key[0])
+                free[ak] = free.get(ak, 0) - min(qty, max(0, free.get(ak, 0)))
+            reason = HOLD_REASON
         _decide(group, verdict, reason)
 
     _sync_questions(session, day=day, questions=questions, asked=asked, covered=covered,
