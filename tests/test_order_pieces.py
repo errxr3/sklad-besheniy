@@ -71,7 +71,7 @@ def test_two_mirrors_on_one_track(db: Session) -> None:
     need = _scan(db, pallet, loader, "[CDK]1001")
     assert need.ok and need.await_unit and "погружено 1" in need.detail
     second = _scan(db, pallet, loader, "[CDK]1001", unit=units[1].number)
-    assert second.ok and "заказ из 2 зеркал погружен полностью" in second.detail
+    assert second.ok and "заказ из 2 зеркал: погружено 2" in second.detail
     assert {i.state for i in _items(db).values()} == {SHIP_LOADED}
     barcodes = {db.get(Unit, u.id).mp_barcode for u in units[:2]}  # type: ignore[union-attr]
     assert barcodes == {"[CDK]1001", "[CDK]1001#2"}
