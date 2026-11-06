@@ -476,6 +476,8 @@ def piece_note(session: Session, item: ShipItem) -> str:
     if len(pieces) < 2:
         return ""
     loaded = sum(1 for p in pieces if p.state == SHIP_LOADED)
+    if loaded == len(pieces):
+        return f"заказ из {len(pieces)} зеркал погружен полностью"
     return f"заказ из {len(pieces)} зеркал: погружено {loaded}"
 
 
