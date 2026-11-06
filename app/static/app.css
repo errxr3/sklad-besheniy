@@ -733,3 +733,10 @@ tr[style*="background"] > td { border-bottom-color: #d0d4db; border-right-color:
 .plan-chip.cut b { color: var(--warn); }
 .plan-chip .chip-split { font-weight: 500; opacity: .85; margin-left: 4px; }
 .plan-chip.neutral { background: var(--card-alt); color: var(--text); border: 1px solid var(--line-strong); font-weight: 500; }
+/* Плавающая подсказка [data-tip] */
+.float-tip {
+	position: fixed; z-index: 300; max-width: 280px; padding: 6px 10px; border-radius: 6px;
+	white-space: pre-line; font-size: 13px; font-weight: 600; line-height: 1.4;
+	background: var(--top-bg); color: #fff; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); pointer-events: none;
+}
+[data-tip]:not(.open-mark) { cursor: help; }
