@@ -784,8 +784,10 @@ def _ship_by_item(
         moved = f"{source} → {pallet.title}"
     piece = item.posting.split(PIECE_MARK, 1)[1] if PIECE_MARK in item.posting else ""
     barcode = clean_ship_code(code)[:60] + (PIECE_MARK + piece if piece else "")
+    shown = next((c.code for c in session.scalars(select(ShipCode).where(ShipCode.item_id == item.id))
+                  if c.code.startswith("II")), clean_ship_code(code))
     result = _do_ship(session, unit=unit, pallet=pallet, actor=actor, shift_id=shift_id,
-                      mp_barcode=barcode[:64])
+                      mp_barcode=barcode[:64], sticker=f"наклейка {shown}, отправление {item.posting}")
     if not result.ok:
         return result
     item.state = SHIP_LOADED
@@ -812,8 +814,12 @@ def _do_ship(
     actor: User,
     shift_id: int | None,
     mp_barcode: str | None = None,
+    sticker: str = "",
 ) -> LoadResult:
-    """Перевести зеркало в «Отгружено» и привязать к отгрузке канала."""
+    """Перевести зеркало в «Отгружено» и привязать к отгрузке канала.
+
+    sticker — «наклейка II…, отправление …»: в журнале видно, по какой наклейке и куда уехало.
+    """
     try:
         apply_transition(
             session,
@@ -826,7 +832,7 @@ def _do_ship(
             pallet_id=pallet.id,
             mp_barcode=mp_barcode,
             ref_id=pallet.id,
-            note=f"канал {pallet.title}, отгрузка {pallet.number}",
+            note=f"{pallet.title}, отгрузка {pallet.number}" + (f", {sticker}" if sticker else ""),
         )
     except TransitionError as exc:
         return LoadResult(False, str(exc), number=unit.number, article=unit.article.name)

@@ -142,13 +142,17 @@ END_MANUAL: Final = "manual"
 
 
 def movement_label(movement: object) -> str:
-    """Название операции в истории и журнале.
+    """Название операции в истории и журнале. Пусто — строку не показывать.
 
-    Старое зеркало без этикетки склад заводит как обычное: «номер выдан» и сразу «на склад».
-    Для таких — «Старый остаток: заведён», чтобы не путать с печатью и изготовлением (2026-11-06).
+    Старое зеркало без этикетки склад заводит из таблицы: внутренний номер и сразу «на склад».
+    Это одна строка «Старый остаток из таблицы» — без «напечатано» и «приёмки после
+    изготовления», чтобы не путать с печатью и изготовлением (решение владельца 2026-11-06).
     """
     kind = str(getattr(movement, "type", ""))
     unit = getattr(movement, "unit", None)
     if kind in (MV_PRINT, MV_ACCEPT) and unit is not None and getattr(unit, "unlabeled", False):
-        return "Старый остаток: номер выдан" if kind == MV_PRINT else "Старый остаток: заведён на склад"
+        if kind == MV_PRINT:
+            return ""
+        note = str(getattr(movement, "note", "") or "")
+        return "Нашлось старое" if note.startswith("нашлось") else "Старый остаток из таблицы"
     return MOVEMENT_LABELS.get(kind, kind)

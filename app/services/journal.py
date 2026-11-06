@@ -98,6 +98,8 @@ def journal_csv(session: Session, filters: JournalFilters, limit: int = 20000) -
     writer = csv.writer(buffer, delimiter=";")
     writer.writerow(["Когда", "Номер", "Артикул", "Операция", "Было", "Стало", "Кто", "Примечание"])
     for movement in session.scalars(query).unique().all():
+        if not movement_label(movement):
+            continue  # технический шаг старого остатка — в журнале не показываем
         writer.writerow(
             [
                 fmt_dt(movement.created_at),

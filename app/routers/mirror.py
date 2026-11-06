@@ -9,7 +9,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.models import User
+from app.models import Pallet, ShipCode, ShipItem, User
 from app.services.context import site_and_shift
 from app.services.units import (
     UnitError,
@@ -53,11 +53,21 @@ def mirror_card(
         .where(User.active.is_(True), User.role == ROLE_ASSEMBLER, User.is_service.is_(False))
         .order_by(User.name)
     ).all()
+    # По какой наклейке маркетплейса и в какую машину уехало (решение владельца 2026-11-06)
+    shipped_by = db.scalar(select(ShipItem).where(ShipItem.unit_id == unit.id))
+    sticker = ""
+    if shipped_by is not None:
+        codes = db.scalars(select(ShipCode.code).where(ShipCode.item_id == shipped_by.id)).all()
+        sticker = next((c for c in codes if c.startswith("II")), "")
+    pallet = db.get(Pallet, unit.pallet_id) if unit.pallet_id else None
     return page(
         request,
         "mirror.html",
         {
             "unit": unit,
+            "shipped_by": shipped_by,
+            "sticker": sticker,
+            "pallet": pallet,
             "movements": unit_history(db, unit.id),
             "assemblers": assemblers,
             "reasons": WRITE_OFF_REASONS,

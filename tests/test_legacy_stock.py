@@ -108,6 +108,11 @@ def test_only_old_goes_with_double_pik(db: Session) -> None:
     db.refresh(item)
     assert item.state == SHIP_LOADED
     assert db.get(Unit, item.unit_id).unlabeled  # type: ignore[union-attr]
+    # В журнале: машина, наклейка и номер отправления — по чему и куда уехало
+    from app.models import Movement
+
+    note = db.scalar(select(Movement.note).where(Movement.unit_id == item.unit_id, Movement.type == "ship"))
+    assert note is not None and "Озон 1" in note and "наклейка %OZ1" in note and "отправление OZ-1" in note
     # Старых больше нет — склад просит нашу этикетку
     need = scan_loading(db, code="%OZ2", pallet=pallet, actor=loader)
     assert need.ok and need.await_unit
@@ -310,4 +315,5 @@ def test_old_stock_history_says_old_not_made(client: TestClient, db: Session) ->
     assert old is not None
     login(client, admin)
     page = client.get(f"/mirror/{old.number}").text
-    assert "Старый остаток: заведён на склад" in page and "Приёмка после изготовления" not in page
+    assert "Старый остаток из таблицы" in page
+    assert "Приёмка после изготовления" not in page and "Этикетка напечатана" not in page

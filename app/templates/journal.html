@@ -43,7 +43,7 @@
 <div class="card" id="journal-rows" data-live>
 	<table class="dense">
 		<tr><th>Когда</th><th>Номер</th><th>Артикул</th><th>Операция</th><th>Статус</th><th>Кто</th><th>Примечание</th></tr>
-		{% for m in rows %}
+		{% for m in rows if movement_label(m) %}
 		<tr>
 			<td>{{ m.created_at|dt }}</td>
 			<td><a href="/mirror/{{ m.unit.number }}">{{ m.unit.number }}</a></td>
