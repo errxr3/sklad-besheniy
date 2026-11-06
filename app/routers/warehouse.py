@@ -376,7 +376,9 @@ def inventory_start(request: Request, db: Session = Depends(get_db), site_id: in
 
 
 @router.get("/inventory/{inventory_id}", response_class=HTMLResponse)
-def inventory_page(request: Request, inventory_id: int, db: Session = Depends(get_db)) -> Response:
+def inventory_page(
+    request: Request, inventory_id: int, db: Session = Depends(get_db), err: str = ""
+) -> Response:
     """Экран инвентаризации: скан и расхождения."""
     inventory = db.get(Inventory, inventory_id)
     if inventory is None:
@@ -394,6 +396,7 @@ def inventory_page(request: Request, inventory_id: int, db: Session = Depends(ge
             "finished": inventory.finished_at is not None,
             # Грузчик только сканирует: расхождения и подтверждение — у администратора
             "loader": request.state.user.role == ROLE_LOADER,
+            "err": err,
         },
     )
 
@@ -414,14 +417,18 @@ async def inventory_scan(
 
 
 @router.post("/inventory/{inventory_id}/finish")
-def inventory_finish(request: Request, inventory_id: int, db: Session = Depends(get_db)) -> Response:
+def inventory_finish(
+    request: Request, inventory_id: int, db: Session = Depends(get_db), confirm_count: str = Form("")
+) -> Response:
     """Подтвердить инвентаризацию: списать ненайденное, оприходовать лишнее."""
+    typed = confirm_count.strip()
     try:
         written_off, restored = finish_inventory(
-            db, inventory_id=inventory_id, actor=request.state.user
+            db, inventory_id=inventory_id, actor=request.state.user,
+            confirm_count=int(typed) if typed.isdigit() else None,
         )
     except WarehouseError as exc:
-        return RedirectResponse(f"/inventory?{urlencode({'err': str(exc)})}", status_code=303)
+        return RedirectResponse(f"/inventory/{inventory_id}?{urlencode({'err': str(exc)})}", status_code=303)
     logger.info(
         "Инвентаризация завершена",
         extra={"user_id": request.state.user.id, "status": f"списано {written_off}, найдено {restored}"},

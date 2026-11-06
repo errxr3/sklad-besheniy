@@ -251,6 +251,11 @@ def scan_return(
 # --- Инвентаризация (SPEC §6.6) ---
 
 
+# Списание больше 10% числящегося (и не меньше 10 зеркал) подтверждается вводом числа
+BIG_WRITE_OFF_MIN = 10
+BIG_WRITE_OFF_PCT = 10
+
+
 @dataclass
 class InventoryDiff:
     """Расхождения инвентаризации."""
@@ -258,6 +263,13 @@ class InventoryDiff:
     missing: list[Unit] = field(default_factory=list)  # по учёту есть, не отсканировано
     extra: list[Unit] = field(default_factory=list)  # отсканировано, по учёту не на складе
     scanned: int = 0
+    expected: int = 0  # сколько по учёту на складе в пересчёте
+
+    @property
+    def big_write_off(self) -> bool:
+        """Спишется много: недосчитали стеллаж, сел телефон — подтверждать числом (2026-11-06)."""
+        lost = len(self.missing)
+        return lost >= BIG_WRITE_OFF_MIN and lost * 100 > self.expected * BIG_WRITE_OFF_PCT
 
 
 def active_inventory(session: Session, site_id: int) -> Inventory | None:
@@ -362,7 +374,7 @@ def inventory_diff(session: Session, inventory: Inventory) -> InventoryDiff:
         expected_query = expected_query.where(Unit.article_id.in_(inventory.article_ids))
     expected = list(session.scalars(expected_query.order_by(Unit.number)).all())
 
-    diff = InventoryDiff(scanned=len(scanned_ids))
+    diff = InventoryDiff(scanned=len(scanned_ids), expected=len(expected))
     diff.missing = [
         unit for unit in expected if unit.id not in scanned_ids and unit.id not in moved_after
     ]
@@ -379,8 +391,13 @@ def inventory_diff(session: Session, inventory: Inventory) -> InventoryDiff:
     return diff
 
 
-def finish_inventory(session: Session, *, inventory_id: int, actor: User) -> tuple[int, int]:
-    """Подтвердить инвентаризацию: списать ненайденное, оприходовать лишнее."""
+def finish_inventory(
+    session: Session, *, inventory_id: int, actor: User, confirm_count: int | None = None
+) -> tuple[int, int]:
+    """Подтвердить инвентаризацию: списать ненайденное, оприходовать лишнее.
+
+    Большое списание проходит, только если начальник вписал точное число списываемых зеркал.
+    """
     inventory = session.get(Inventory, inventory_id)
     if inventory is None:
         raise WarehouseError("Инвентаризация не найдена")
@@ -388,6 +405,11 @@ def finish_inventory(session: Session, *, inventory_id: int, actor: User) -> tup
         raise WarehouseError("Инвентаризация уже завершена")
 
     diff = inventory_diff(session, inventory)
+    if diff.big_write_off and confirm_count != len(diff.missing):
+        raise WarehouseError(
+            f"Спишется {len(diff.missing)} из {diff.expected} зеркал — это много. Проверьте, всё ли "
+            f"отсканировали, и впишите число {len(diff.missing)}, чтобы подтвердить"
+        )
     written_off = 0
     restored = 0
 

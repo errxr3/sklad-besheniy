@@ -3,6 +3,7 @@
 {% block content %}
 <h1>Инвентаризация · {{ site.name }}</h1>
 <p class="muted">Начата {{ inventory.started_at|dt }}{% if finished %} · завершена {{ inventory.finished_at|dt }}{% endif %}</p>
+{% if err and not loader %}<p class="msg err">{{ err }}</p>{% endif %}
 
 {% if not finished %}
 <div class="card">
@@ -51,7 +52,16 @@
 	{% if not finished %}
 	<form method="post" action="/inventory/{{ inventory.id }}/finish" class="mt">
 		<input type="hidden" name="csrf_token" value="{{ csrf }}">
-		<button type="submit" class="danger big">Закончить пересчёт: ненайденное списать, найденное добавить</button>
+		{% if diff.big_write_off %}
+		<p class="msg warn">Спишется <b>{{ diff.missing|length }}</b> из {{ diff.expected }} зеркал на складе — это много.
+			Так бывает, если пересчитали не всё: не обошли стеллаж, у кого-то сел телефон.
+			Если уверены, впишите число <b>{{ diff.missing|length }}</b> и нажмите «Закончить».</p>
+		<div class="row tight">
+			<div><label for="confirm_count">Сколько списать</label>
+				<input type="text" inputmode="numeric" id="confirm_count" name="confirm_count" autocomplete="off" required></div>
+		</div>
+		{% endif %}
+		<button type="submit" class="danger big mt">Закончить пересчёт: ненайденное списать, найденное добавить</button>
 	</form>
 	{% else %}
 	<p class="msg ok">{{ inventory.note or 'Инвентаризация завершена' }}</p>

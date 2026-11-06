@@ -299,3 +299,31 @@ def test_finished_inventory_cannot_be_scanned(db: Session) -> None:
     assert "завершена" in result.message
     stored = db.get(Inventory, inventory.id)
     assert stored is not None and stored.finished_at is not None
+
+
+def test_big_inventory_write_off_needs_typed_count(db: Session) -> None:
+    """Недосчитали стеллаж: списать больше 10% можно, только вписав точное число (2026-11-06)."""
+    scan = scan_inventory
+    site = site_by_name(db, "Коминтерна")
+    lead = make_user(db, name="Начальник Пересчёта", role=ROLE_SHIFT_LEAD, home_site_id=site.id)
+    worker = make_user(db, name="Сборщик Пересчёта", role=ROLE_ASSEMBLER)
+    article = make_article(db, name="Zerkalo_60x160", sort_order=1)
+    units = create_printed_units(db, article_id=article.id, qty=20, site_id=site.id,
+                                 assembler_id=worker.id, actor_id=worker.id)
+    db.commit()
+    for unit in units:
+        accept_unit(db, code=unit.number, actor=worker)
+    db.commit()
+    inventory = start_inventory(db, site_id=site.id, actor=lead)
+    db.commit()
+    for unit in units[:5]:  # пересчитали только 5 из 20
+        scan(db, inventory_id=inventory.id, code=unit.number, actor=lead)
+    db.commit()
+    diff = inventory_diff(db, inventory)
+    assert diff.big_write_off and len(diff.missing) == 15 and diff.expected == 20
+    with pytest.raises(WarehouseError, match="впишите число 15"):
+        finish_inventory(db, inventory_id=inventory.id, actor=lead)
+    with pytest.raises(WarehouseError):
+        finish_inventory(db, inventory_id=inventory.id, actor=lead, confirm_count=14)
+    assert inventory.finished_at is None
+    assert finish_inventory(db, inventory_id=inventory.id, actor=lead, confirm_count=15) == (15, 0)
