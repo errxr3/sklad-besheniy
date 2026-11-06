@@ -208,7 +208,8 @@ def test_admin_page_preview_and_apply(client: TestClient, db: Session) -> None:
     assert 'old-count" title="старых без этикетки">7<' in client.get("/stock").text
 
 
-def test_template_lists_articles_with_site(client: TestClient, db: Session) -> None:
+def test_template_like_owner_sheet(client: TestClient, db: Session) -> None:
+    """Шаблон как гугл-таблица владельца: артикулы строками, площадки столбцами (2026-11-06)."""
     site, admin, _, a, _ = _world(db)
     login(client, admin)
     response = client.get("/stock-entry/legacy/template.xlsx")
@@ -217,13 +218,38 @@ def test_template_lists_articles_with_site(client: TestClient, db: Session) -> N
 
     sheet = load_workbook(BytesIO(response.content)).active
     rows = list(sheet.iter_rows(values_only=True))
-    assert rows[0] == ("Артикул", "Площадка", "Количество")
-    assert ("Zerkalo_60x160", KOM, None) in rows
-    # Пустой шаблон загрузить нельзя — нечего; с одним числом — только эта строка
-    sheet.cell(row=rows.index(("Zerkalo_60x160", KOM, None)) + 1, column=3, value=4)
+    assert rows[0][0] == "Артикул" and KOM in rows[0] and "Учительская" in rows[0]
+    names = [r[0] for r in rows]
+    assert "Zerkalo_60x160" in names
+    # Пустой шаблон загрузить нельзя — нечего; с одним числом — только эта ячейка
+    sheet.cell(row=names.index("Zerkalo_60x160") + 1, column=rows[0].index(KOM) + 1, value=4)
     out = BytesIO()
     sheet.parent.save(out)
     assert read_legacy_xlsx(out.getvalue()) == [("Zerkalo_60x160", KOM, 4)]
+
+
+def test_owner_sheet_with_dates_and_groups(db: Session) -> None:
+    """Файл владельца: дата под шапкой, заголовки групп, площадки столбцами, кириллическая «х»."""
+    site, admin, _, a, b = _world(db)
+    book = Workbook()
+    sheet = book.active
+    sheet.append(["Артикул", "Учительская", "Коминтерна"])
+    from datetime import datetime as dt
+
+    sheet.append([None, dt(2026, 11, 5), None])
+    sheet.append(["Полотна", None, None])
+    sheet.append(["Zerkalo_60x160", None, 15])
+    sheet.append(["Zerkalo_70х200", 3, 0])
+    out = BytesIO()
+    book.save(out)
+    lines = read_legacy_xlsx(out.getvalue())
+    assert lines == [
+        ("Zerkalo_60x160", KOM, 15), ("Zerkalo_70х200", "Учительская", 3), ("Zerkalo_70х200", KOM, 0),
+    ]
+    rows = {(r.name, r.site.name if r.site else ""): r for r in preview_legacy(db, lines)}
+    assert rows[("Zerkalo_60x160", KOM)].to_create == 15
+    assert rows[("Zerkalo_70x200", "Учительская")].to_create == 3
+    assert not any(r.problem for r in rows.values())
 
 
 def test_loader_home_shows_stock(client: TestClient, db: Session) -> None:

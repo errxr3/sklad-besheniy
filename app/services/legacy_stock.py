@@ -13,6 +13,7 @@
 
 from collections import defaultdict
 from dataclasses import dataclass
+from datetime import date, datetime
 from io import BytesIO
 
 from sqlalchemy import func, select
@@ -64,7 +65,11 @@ def _header_index(header: list[str], *words: str) -> int | None:
 def read_legacy_xlsx(content: bytes) -> list[tuple[str, str, int]]:
     """(артикул, площадка или "", количество) из первого листа. Шапка — в первой строке.
 
-    Нужны столбцы «Артикул» и «Количество» (или «Остаток», «Шт»); «Площадка» — по желанию.
+    Два вида файла:
+    * «Артикул | Площадка | Количество» (наш шаблон; «Площадка» — по желанию);
+    * «Артикул | Учительская | Коминтерна» — площадки столбцами, как в гугл-таблице владельца
+      (решение 2026-11-06). Пустая ячейка — артикул на этой площадке не трогать, 0 — старых нет.
+    Строки без цифр (заголовки групп, дата под шапкой) пропускаются.
     """
     from openpyxl import load_workbook
 
@@ -77,22 +82,34 @@ def read_legacy_xlsx(content: bytes) -> list[tuple[str, str, int]]:
     col_article = _header_index(header, "артикул")
     col_qty = _header_index(header, "кол", "остат", "шт")
     col_site = _header_index(header, "площад", "производ")
-    if col_article is None or col_qty is None:
-        raise UnitError("В первой строке нужны столбцы «Артикул» и «Количество»")
+    if col_article is None:
+        raise UnitError("В первой строке нужен столбец «Артикул»")
+    # Без «Количества» — площадки столбцами: каждый подписанный столбец справа от артикула
+    if col_qty is None:
+        columns = [(i, title) for i, title in enumerate(header) if i != col_article and title]
+        if not columns:
+            raise UnitError("В первой строке нужны «Артикул» и «Количество» или названия площадок")
+    else:
+        columns = [(col_qty, "")]
     out: list[tuple[str, str, int]] = []
     for row in rows:
         cells = list(row)
         name = str(cells[col_article] or "").strip() if col_article < len(cells) else ""
-        raw = cells[col_qty] if col_qty < len(cells) else None
-        if not name or raw in (None, ""):
+        if not name:
             continue
-        try:
-            qty = int(float(str(raw).replace(",", ".")))
-        except ValueError:
-            continue
-        site = str(cells[col_site] or "").strip() if col_site is not None and col_site < len(cells) else ""
-        if qty >= 0:  # 0 — старых этого артикула больше нет, лишние спишутся
-            out.append((name, site, qty))
+        for col, site_title in columns:
+            raw = cells[col] if col < len(cells) else None
+            if raw in (None, "") or isinstance(raw, datetime | date):
+                continue
+            try:
+                qty = int(float(str(raw).replace(",", ".")))
+            except ValueError:
+                continue
+            site = site_title
+            if not site and col_site is not None and col_site < len(cells):
+                site = str(cells[col_site] or "").strip()
+            if qty >= 0:  # 0 — старых этого артикула больше нет, лишние спишутся
+                out.append((name, site, qty))
     if not out:
         raise UnitError("В файле нет строк с артикулом и количеством")
     return out
@@ -244,35 +261,45 @@ def legacy_articles(session: Session, site_id: int) -> list[tuple[int, str, int]
 
 
 def legacy_template_xlsx(session: Session) -> bytes:
-    """Шаблон для «Старого остатка»: все артикулы справочника с площадкой, количество пустое.
-
-    Пустые строки при загрузке пропускаются (не трогаются), 0 — старых этого артикула нет.
+    """Шаблон «Старого остатка» в виде гугл-таблицы владельца (2026-11-06):
+    «Артикул | Учительская | Коминтерна», под шапкой — дата, дальше артикулы по порядку TOP
+    с заголовками групп. Пустая ячейка при загрузке не трогается, 0 — старых этого артикула нет.
     """
     from openpyxl import Workbook
-    from openpyxl.styles import Font
+    from openpyxl.styles import Font, PatternFill
+
+    from app.timeutil import today_msk
 
     sites = session.scalars(
         select(Site).where(Site.active.is_(True)).order_by(Site.sort_order, Site.id)
     ).all()
     book = Workbook()
     sheet = book.active
-    sheet.title = "Старый остаток"
-    sheet.append(["Артикул", "Площадка", "Количество"])
+    sheet.title = "Остатки"
+    sheet.append(["Артикул", *[site.name for site in sites]])
     for cell in sheet[1]:
         cell.font = Font(bold=True)
-    articles = session.scalars(
+    sheet.append([None, today_msk()])
+    sheet.cell(row=2, column=2).number_format = "DD.MM.YYYY"
+    rows = session.scalars(
         select(Article)
-        .where(Article.kind == "article", Article.active.is_(True))
+        .where((Article.kind != "article") | Article.active.is_(True))
         .order_by(Article.sort_order)
     ).all()
-    for article in articles:
-        makers = [site.name for site in sites if site.prefixes and site.makes(article.name)]
-        for site_name in makers or [site.name for site in sites]:
-            sheet.append([article.name, site_name, None])
+    for row in rows:
+        if row.kind != "article":
+            sheet.append([row.name])
+            sheet.cell(row=sheet.max_row, column=1).font = Font(bold=True)
+            continue
+        sheet.append([row.name])
+        if row.color_hex:
+            fill = PatternFill("solid", fgColor=row.color_hex.lstrip("#").upper())
+            for col in range(1, len(sites) + 2):
+                sheet.cell(row=sheet.max_row, column=col).fill = fill
     sheet.column_dimensions["A"].width = 40
-    sheet.column_dimensions["B"].width = 16
-    sheet.column_dimensions["C"].width = 12
-    sheet.freeze_panes = "A2"
+    for col in "BCDE"[: len(sites)]:
+        sheet.column_dimensions[col].width = 14
+    sheet.freeze_panes = "B2"
     out = BytesIO()
     book.save(out)
     return out.getvalue()
