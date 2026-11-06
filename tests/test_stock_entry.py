@@ -7,7 +7,7 @@ from sqlalchemy.orm import Session
 from app.models import Movement, Unit
 from app.seed import INVENTORY_SERVICE_NAME
 from app.services.units import accept_unit, create_printed_units, stock_count
-from app.statuses import IN_STOCK, MV_INVENTORY_FIX, ROLE_ASSEMBLER, ROLE_STOREKEEPER, WRITTEN_OFF
+from app.statuses import IN_STOCK, MV_INVENTORY_FIX, ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_STOREKEEPER, WRITTEN_OFF
 from tests.helpers import get_csrf, login, make_article, make_user, site_by_name
 
 
@@ -21,9 +21,10 @@ def _scan(client: TestClient, token: str, code: str) -> dict:
 
 def test_entry_prints_into_stock_and_extra_removed(client: TestClient, db: Session) -> None:
     site = site_by_name(db, "Учительская")
+    admin = make_user(db, name="Админ ввода", role=ROLE_ADMIN)
     keeper = make_user(db, name="Кладовщик ввода", role=ROLE_STOREKEEPER, home_site_id=site.id)
     article = make_article(db, name="Ambient 90 krug multi")
-    login(client, keeper)
+    login(client, admin)  # ввод остатков — только у администратора (2026-11-06)
     token = get_csrf(client, "/stock-entry")
 
     pdf = client.post(
@@ -37,7 +38,9 @@ def test_entry_prints_into_stock_and_extra_removed(client: TestClient, db: Sessi
     assert {u.assembler.name for u in units if u.assembler} == {INVENTORY_SERVICE_NAME}
     assert stock_count(db, article.id, site.id) == 5
 
-    # По факту 2 — три лишние этикетки сканируются и убираются
+    # По факту 2 — три лишние этикетки приносят кладовщице, она их сканирует и убирает
+    client.cookies.clear()
+    login(client, keeper)
     token = get_csrf(client, "/stock-entry/remove")
     for unit in units[2:]:
         assert _scan(client, token, unit.number)["ok"] is True
@@ -68,18 +71,20 @@ def test_real_mirror_cannot_be_removed_as_extra(client: TestClient, db: Session)
     assert result["ok"] is False and "так убрать нельзя" in result["message"]
 
 
-def test_storekeeper_only_own_site(client: TestClient, db: Session) -> None:
+def test_storekeeper_only_removes_extra(client: TestClient, db: Session) -> None:
+    """У кладовщицы нет ввода остатков, только «Лишние этикетки» (решение владельца 2026-11-06)."""
     own = site_by_name(db, "Учительская")
-    other = site_by_name(db, "Коминтерна")
     keeper = make_user(db, name="Кладовщик Учит", role=ROLE_STOREKEEPER, home_site_id=own.id)
     article = make_article(db)
     login(client, keeper)
-    token = get_csrf(client, "/stock-entry")
+    assert client.get("/stock-entry").status_code == 403
+    token = get_csrf(client, "/stock-entry/remove")
     response = client.post(
         "/stock-entry/print",
-        data={"csrf_token": token, "article_id": str(article.id), "qty": "2", "site_id": str(other.id)},
+        data={"csrf_token": token, "article_id": str(article.id), "qty": "2", "site_id": str(own.id)},
         follow_redirects=False,
     )
-    assert "err=" in response.headers["location"]
+    assert response.status_code == 403
     assert db.scalars(select(Unit)).all() == []
-    assert 'href="/stock-entry"' in client.get("/labels").text  # пункт меню у кладовщика
+    menu = client.get("/labels").text
+    assert 'href="/stock-entry"' not in menu and 'href="/stock-entry/remove"' in menu

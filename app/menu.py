@@ -25,7 +25,6 @@ MENU: tuple[MenuItem, ...] = (
     MenuItem("Этикетки без ШК", "/returns/print", RETURNS),
     MenuItem("Табло смены", "/board", LEADS),
     MenuItem("Печать этикеток", "/labels", PRINTERS),
-    MenuItem("Ввод остатков", "/stock-entry", (ROLE_STOREKEEPER,)),
     MenuItem("Лишние этикетки", "/stock-entry/remove", (ROLE_STOREKEEPER,)),
     MenuItem("Задачи", "/tasks", LEADS),
     MenuItem("Найти зеркало", "/mirror", LEADS),
@@ -60,8 +59,7 @@ ADMIN_SECTIONS: tuple[AdminSection, ...] = (
     )),
     AdminSection("keeper", "Кладовщица", (
         ("/labels", "Печать этикеток", "Этикетки каждому сборщику в коробку с комплектующими"),
-        ("/stock-entry", "Ввод остатков", "Этикетки сразу на склад, лишние — убрать сканом"),
-        ("/stock-entry/remove", "Лишние этикетки", "Скан ненаклеенных: после ввода остатков и «Собрал всё»"),
+        ("/stock-entry/remove", "Лишние этикетки", "Скан ненаклеенных этикеток, которые принесли сборщики"),
     )),
     AdminSection("loader", "Оператор склада", (
         ("/loading", "Погрузка", "Канал (Ozon, WB, СГТ, КГТ, СДЭК) → скан → закрыть"),
@@ -76,6 +74,7 @@ ADMIN_SECTIONS: tuple[AdminSection, ...] = (
         ("/admin/employees", "Сотрудники", "Создать, роль, площадка, пароль"),
         ("/admin/sites", "Площадки", "Название, какие артикулы делают"),
         ("/admin/articles", "Артикулы", "Импорт TOP.xlsx, цвета, активность"),
+        ("/stock-entry", "Ввод остатков", "Этикетки сразу на склад, лишние — убрать сканом"),
         ("/stock-entry/legacy", "Старый остаток", "Остаток числом из Excel, без этикеток"),
         ("/admin/settings", "Параметры", "Размер этикетки"),
         ("/inventory", "Инвентаризация", "Пересчёт склада и исправление"),

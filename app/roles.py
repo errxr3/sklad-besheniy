@@ -40,7 +40,10 @@ LEADS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_SHIFT_LEAD)
 # Печать этикеток по задачам сборщиков
 PRINTERS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_STOREKEEPER)  # начальник смены не печатает
 # Ввод остатков (инвентаризация на старте)
-STOCK_ENTRY: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_STOREKEEPER)
+# Ввод остатков (печать сразу «На складе») — только администратор: у кладовщицы убрано,
+# она только убирает лишние этикетки, когда сборщики их приносят (решение владельца 2026-11-06)
+STOCK_ENTRY: Final[tuple[str, ...]] = (ROLE_ADMIN,)
+EXTRA_LABELS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_STOREKEEPER, ROLE_SHIFT_LEAD)
 # Приёмка сканом готового зеркала
 ACCEPTORS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_ASSEMBLER)
 # Погрузка по каналам и перемещение между площадками
@@ -101,8 +104,8 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("POST", "/stock-entry/legacy/apply"): ADMIN_ONLY,
     ("GET", "/stock-entry"): STOCK_ENTRY,
     ("POST", "/stock-entry/print"): STOCK_ENTRY,
-    ("GET", "/stock-entry/remove"): (*STOCK_ENTRY, ROLE_SHIFT_LEAD),
-    ("POST", "/stock-entry/remove/scan"): (*STOCK_ENTRY, ROLE_SHIFT_LEAD),
+    ("GET", "/stock-entry/remove"): EXTRA_LABELS,
+    ("POST", "/stock-entry/remove/scan"): EXTRA_LABELS,
     # «Собрал всё»: сборщик сдаёт задачу кнопкой, без скана
     ("POST", "/tasks/submit"): ACCEPTORS,
     ("POST", "/labels/void-unit"): LEADS,
