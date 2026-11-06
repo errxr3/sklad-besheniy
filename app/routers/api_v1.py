@@ -42,8 +42,9 @@ async def api_demand(request: Request, db: Session = Depends(get_db)) -> JSONRes
     """Заказы дня → что едет. Ответ по каждому отправлению: go / ask / no и почему.
 
     Тело: {"day": "2026-10-29", "replace": ["ozon", "wb"], "lines": [{market, channel, truck,
-    posting, article, qty, production, ordered_at}]}. `replace` — полный утренний список
-    этих маркетплейсов: заказы, которых в нём нет и на которые нет этикеток, убираются.
+    posting, article, qty, production, ordered_at}], "drop": [{market, posting}]}. `replace` —
+    полный утренний список этих маркетплейсов: заказы, которых в нём нет и на которые нет
+    этикеток, убираются. `drop` — отправления, покрашенные «не едет»: убираются из плана.
     """
     try:
         payload = await request.json()
@@ -52,10 +53,16 @@ async def api_demand(request: Request, db: Session = Depends(get_db)) -> JSONRes
     if not isinstance(payload, dict) or not isinstance(payload.get("lines"), list):
         return JSONResponse({"ok": False, "error": "Ожидается {day, lines: [...]}"}, status_code=400)
     replace = [str(m) for m in payload.get("replace") or [] if isinstance(m, str)]
+    # Покрашенное «не едет» после отправки: убрать из плана (BLAGO 1.27+)
+    drop = [
+        (str(x.get("market") or ""), str(x.get("posting") or "")[:64])
+        for x in payload.get("drop") or []
+        if isinstance(x, dict) and x.get("market") and x.get("posting")
+    ]
     try:
         lines = receive_demand(
             db, day=_day(payload.get("day")), lines=[x for x in payload["lines"] if isinstance(x, dict)],
-            replace_markets=replace or None,
+            replace_markets=replace or None, drop=drop or None,
         )
     except BatchError as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)

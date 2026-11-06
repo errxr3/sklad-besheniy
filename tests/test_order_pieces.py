@@ -166,3 +166,27 @@ def test_old_big_order_holds_stock(db: Session) -> None:
     assert decided[0].decision == "no"
     order = db.scalar(select(ShipDemand).where(ShipDemand.posting == "BIG-1"))
     assert order is not None and order.decision == "no" and "копит" in (order.reason or "")
+
+
+def test_colored_orders_stay_in_plan_but_dont_go(db: Session) -> None:
+    """Покрасил «не едет» — заказ в плане остаётся (видно, сколько упало), но не едет и зеркала не держит."""
+    site = site_by_name(db, KOM)
+    worker = make_user(db, name="Сборщик Красный", role=ROLE_ASSEMBLER)
+    article = make_article(db, name="Zerkalo_40x130", sort_order=1)
+    _units(db, site, worker, article, 1)
+    art = "Zerkalo_40x130"
+    lines = [{"market": "ozon", "channel": "Ozon", "truck": "Озон3", "posting": p, "article": art,
+              "qty": 1, "production": KOM} for p in ("R-1", "R-2")]
+    receive_demand(db, day=today_msk(), lines=lines)
+    db.commit()
+    # Покрасил R-1 красным уже после отправки: BLAGO присылает drop
+    receive_demand(db, day=today_msk(), lines=[], drop=[("ozon", "R-1")])
+    db.commit()
+    plan = {d.posting: d for d in db.scalars(select(ShipDemand)).all()}
+    assert set(plan) == {"R-1", "R-2"}  # оба в плане
+    assert plan["R-1"].decision == "no" and "убрано" in (plan["R-1"].reason or "")
+    assert plan["R-2"].decision == "go"  # единственное зеркало досталось R-2
+    # Сняли покраску и прислали заново — снова едет (зеркал нет — значит «не хватает», но не «покрашено»)
+    receive_demand(db, day=today_msk(), lines=lines[:1])
+    db.commit()
+    assert "убрано" not in (db.scalar(select(ShipDemand).where(ShipDemand.posting == "R-1")).reason or "")

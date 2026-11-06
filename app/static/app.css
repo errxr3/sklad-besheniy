@@ -723,3 +723,11 @@ tr[style*="background"] > td { border-bottom-color: #d0d4db; border-right-color:
 	/* Копирование столбцов — с компьютера; на телефоне эта строка только раздувает столбцы */
 	.table-wrap tr.copy-row { display: none; }
 }
+
+/* План: покрашено «не едет» в отчёте BLAGO — серым, отдельно от «не хватит» */
+.plan-chip.cut { background: var(--card-alt); color: var(--muted); border: 1px solid var(--line-strong); }
+.plan tr.plan-cut td { color: var(--muted); }
+.plan .cut-note { font-size: 11px; font-weight: 600; color: var(--warn); white-space: nowrap; text-transform: none; letter-spacing: 0; }
+.plan .cut-mark { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 999px; font-size: 11px; font-weight: 700;
+	line-height: 16px; background: #f59e0b; color: #1f1300; }
+.plan-chip.cut b { color: var(--warn); }

@@ -535,6 +535,8 @@ class ShipDemand(Base):
     ordered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     decision: Mapped[str] = mapped_column(String(10), default="no", server_default="no")
     reason: Mapped[str | None] = mapped_column(String(200))
+    # Владелец покрасил «не едет» в отчёте BLAGO: в плане остаётся, зеркала не держит (2026-11-06)
+    excluded: Mapped[bool] = mapped_column(Boolean, default=False, server_default="false")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
 

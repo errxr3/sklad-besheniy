@@ -85,3 +85,23 @@ def test_plan_page_and_xlsx(client, db: Session) -> None:  # type: ignore[no-unt
     sheet = load_workbook(BytesIO(response.content)).active
     names = [row[0] for row in sheet.iter_rows(values_only=True)]
     assert "Zerkalo_50x130" in names and names[-1] == "Всего"
+
+
+def test_colored_orders_shown_as_cut(db: Session) -> None:
+    """Покрашенные «не едет» видны в плане отдельным числом и не входят в «нужно» (2026-11-06)."""
+    from app.services.batches import receive_demand
+    from app.services.ship_plan import build_ship_plan
+    from app.timeutil import today_msk
+    from tests.helpers import make_article
+
+    make_article(db, name="Zerkalo_40x130", sort_order=1)
+    art = "Zerkalo_40x130"
+    lines = [{"market": "ozon", "channel": "Ozon", "truck": "Озон3", "posting": p, "article": art,
+              "qty": 1, "production": "Коминтерна"} for p in ("C-1", "C-2", "C-3")]
+    receive_demand(db, day=today_msk(), lines=lines, drop=[("ozon", "C-1"), ("ozon", "C-2")])
+    db.commit()
+    plan = build_ship_plan(db, day=today_msk())
+    assert plan.orders == 3 and plan.cut == 2
+    row = next(r for r in plan.rows if r.name == "Zerkalo_40x130")
+    assert row.cut == 2 and row.need_total == 1
+    assert sum(plan.cut_ch) == 2 and sum(row.cut_ch) == 2  # в канале Озон 3: упало 3, едет 1, убрано 2

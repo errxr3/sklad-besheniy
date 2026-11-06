@@ -57,6 +57,7 @@ EVENING_TRUCK = OZON_TRUCKS[2]
 EARLY_TRUCKS = OZON_TRUCKS[:2]
 HISTORY = timedelta(days=14)  # заказы и партии старше двух недель в расчёт не берём
 HOLD_REASON = "ждёт со вчера: не хватает, склад копит под него зеркала"
+EXCLUDED_REASON = "убрано в отчёте BLAGO"
 ALLOCATE_LOCK = 70014
 STATE_ORDER = {SHIP_WAIT: 0, SHIP_REMOVED: 1, SHIP_LOADED: 2}
 MAX_CODES = 8
@@ -274,12 +275,20 @@ def _parse_time(value: object) -> datetime | None:
 
 
 def receive_demand(
-    session: Session, *, day: date, lines: list[dict], replace_markets: list[str] | None = None
+    session: Session,
+    *,
+    day: date,
+    lines: list[dict],
+    replace_markets: list[str] | None = None,
+    drop: list[tuple[str, str]] | None = None,
 ) -> list[ShipDemand]:
     """Принять заказы дня и сразу решить, что едет.
 
     `replace_markets` — утренний полный список: заказы этих маркетплейсов, которых нет в новом
     списке и на которые ещё не скачаны этикетки, убираются (их отменили или уже отгрузили).
+    `drop` — (маркетплейс, отправление), которые владелец покрасил «не едет» в отчёте BLAGO:
+    в плане остаются (видно, сколько заказов упало всего), но не едут и зеркала не держат.
+    Присланное в `lines` без `drop` снова едет — значит, покраску сняли (решение 2026-11-06).
     """
     _lock(session)
     catalog = Catalog(session)
@@ -318,6 +327,15 @@ def receive_demand(
         line.site_id = site.id if site else None
         line.ordered_at = _parse_time(raw.get("ordered_at")) or line.ordered_at
         line.updated_at = now_utc()
+    session.flush()
+    dropped = set(drop or [])
+    for (market, posting, _), line in seen.items():
+        line.excluded = (market, posting) in dropped
+    for market, posting in dropped:
+        for old in session.scalars(
+            select(ShipDemand).where(ShipDemand.market == market, ShipDemand.posting == posting)
+        ).all():
+            old.excluded = True
     session.flush()
     if replace_markets:
         printed = set(session.scalars(select(ShipItem.posting)).all())
@@ -490,6 +508,9 @@ def allocate(session: Session, *, day: date | None = None) -> None:
     for key in sorted(postings, key=order):
         group = postings[key]
         committed = key in items and items[key].state == SHIP_WAIT
+        if not committed and any(line.excluded for line in group):
+            _decide(group, NO, EXCLUDED_REASON)  # покрашено владельцем — зеркала не держим
+            continue
         wanted: dict[tuple[int, int], int] = defaultdict(int)
         broken = ""
         for line in group:
