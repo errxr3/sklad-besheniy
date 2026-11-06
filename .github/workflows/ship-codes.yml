@@ -1,0 +1,43 @@
+# Коды этикеток в сегодняшних партиях BLAGO OTGRUZKI — только чтение, на сервере ничего не меняет.
+# Нужна, когда оператор сканирует наклейку, а склад отвечает «Этикетки нет в сегодняшних отгрузках».
+name: Коды партий за сегодня
+
+on:
+  workflow_dispatch:
+    inputs:
+      find:
+        description: "Код с экрана (необязательно) — где он встречается"
+        required: false
+        default: ""
+
+jobs:
+  codes:
+    name: Коды
+    runs-on: ubuntu-latest
+    env:
+      HOST: ${{ secrets.SERVER_HOST }}
+      SSHPASS: ${{ secrets.SERVER_PASSWORD }}
+      USER_NAME: ${{ secrets.SERVER_USER || 'root' }}
+      FIND: ${{ github.event.inputs.find }}
+    steps:
+      - name: Проверка ввода
+        run: |
+          if ! [[ "$FIND" =~ ^[A-Za-z0-9%*-]*$ ]]; then echo "Код — только латиница, цифры, % * -"; exit 1; fi
+      - name: Партии и коды
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          SSH="sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 $USER_NAME@$HOST"
+          $SSH "cd /opt/sklad && docker compose exec -T postgres psql -U sklad -d sklad -c \"
+            SELECT b.channel, b.truck, i.market, i.posting, i.origin, i.article_name, i.state,
+                   string_agg(c.code, ' ' ORDER BY c.code) AS codes
+            FROM ship_batches b JOIN ship_items i ON i.batch_id = b.id
+            LEFT JOIN ship_codes c ON c.item_id = i.id
+            WHERE b.day = (now() AT TIME ZONE 'Europe/Moscow')::date
+            GROUP BY b.channel, b.truck, i.market, i.posting, i.origin, i.article_name, i.state
+            ORDER BY b.channel, b.truck, i.posting LIMIT 300;\""
+          if [ -n "$FIND" ]; then
+            $SSH "cd /opt/sklad && docker compose exec -T postgres psql -U sklad -d sklad -c \"
+              SELECT c.code, i.posting, i.state, b.day, b.channel FROM ship_codes c
+              JOIN ship_items i ON i.id = c.item_id JOIN ship_batches b ON b.id = i.batch_id
+              WHERE c.code ILIKE '%$FIND%' OR i.posting ILIKE '%$FIND%' LIMIT 20;\""
+          fi
