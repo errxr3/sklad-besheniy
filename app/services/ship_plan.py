@@ -54,6 +54,7 @@ class PlanRow:
     no_reason: str = ""
     cut: int = 0  # покрашено владельцем «не едет»: в плане видно, но не грузится
     cut_ch: list[int] = field(default_factory=list)  # убрано по каналам
+    no_ch: list[int] = field(default_factory=list)  # склад не пустил, по каналам
 
     @property
     def need_total(self) -> int:
@@ -104,6 +105,7 @@ class ShipPlan:
     no: int = 0
     cut: int = 0
     cut_ch: list[int] = field(default_factory=list)  # убрано по каналам: упало = нужно + убрано
+    no_ch: list[int] = field(default_factory=list)  # склад не пустил, по каналам
     orders: int = 0
     unknown: list[str] = field(default_factory=list)  # артикулов нет в справочнике склада
     open_questions: int = 0
@@ -127,6 +129,7 @@ def build_ship_plan(session: Session, *, day: date) -> ShipPlan:
     reasons: dict[int, Counter[str]] = defaultdict(Counter)
     cut: dict[int, int] = defaultdict(int)
     cut_ch: dict[int, list[int]] = defaultdict(lambda: [0] * len(PLAN_CHANNELS))
+    no_ch: dict[int, list[int]] = defaultdict(lambda: [0] * len(PLAN_CHANNELS))
     unknown: set[str] = set()
     for line in lines:
         if line.article_id is None:
@@ -141,6 +144,8 @@ def build_ship_plan(session: Session, *, day: date) -> ShipPlan:
         if index is not None:
             need[line.article_id][index] += line.qty
         decided[line.article_id][line.decision or ASK] += line.qty
+        if line.decision == NO and index is not None:
+            no_ch[line.article_id][index] += line.qty
         if line.decision == NO and line.reason:
             reasons[line.article_id][line.reason] += line.qty
 
@@ -179,6 +184,7 @@ def build_ship_plan(session: Session, *, day: date) -> ShipPlan:
                 no_reason=reasons[article.id].most_common(1)[0][0] if reasons.get(article.id) else "",
                 cut=cut.get(article.id, 0),
                 cut_ch=list(cut_ch.get(article.id, [0] * len(PLAN_CHANNELS))),
+                no_ch=list(no_ch.get(article.id, [0] * len(PLAN_CHANNELS))),
             )
         )
     items = [row for row in rows if not row.is_header]
@@ -198,6 +204,7 @@ def build_ship_plan(session: Session, *, day: date) -> ShipPlan:
         no=sum(row.no for row in items),
         cut=sum(row.cut for row in items),
         cut_ch=[sum(row.cut_ch[i] for row in items) for i in range(len(PLAN_CHANNELS))],
+        no_ch=[sum(row.no_ch[i] for row in items) for i in range(len(PLAN_CHANNELS))],
         orders=len({(line.market, line.posting) for line in lines}),
         unknown=sorted(unknown),
         open_questions=sum(1 for q in questions if q.short > q.promised),
@@ -229,7 +236,7 @@ def visible_rows(plan: ShipPlan, *, show_all: bool) -> list[PlanRow]:
 
 STATE_LABELS = {
     "no": "не хватит",
-    "cut": "убрано в отчёте",
+    "cut": "не едет: убрано вами",
     "ask": "ждёт ответа",
     "work": "доделают к вечеру",
     "ok": "хватает",

@@ -731,3 +731,5 @@ tr[style*="background"] > td { border-bottom-color: #d0d4db; border-right-color:
 .plan .cut-mark { display: inline-block; margin-left: 4px; padding: 0 5px; border-radius: 999px; font-size: 11px; font-weight: 700;
 	line-height: 16px; background: #f59e0b; color: #1f1300; }
 .plan-chip.cut b { color: var(--warn); }
+.plan-chip .chip-split { font-weight: 500; opacity: .85; margin-left: 4px; }
+.plan-chip.neutral { background: var(--card-alt); color: var(--text); border: 1px solid var(--line-strong); font-weight: 500; }
