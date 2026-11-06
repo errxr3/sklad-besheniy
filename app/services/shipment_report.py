@@ -29,6 +29,7 @@ from app.services.shipping import AUTO_CLOSE_NOTE, open_channels
 from app.services.stock import active_sites, stock_at, stock_by_article_site
 from app.services.tasks import plan_sum_by_site
 from app.statuses import (
+    MV_ACCEPT,
     MV_INVENTORY_FIX,
     MV_LABEL_VOID,
     MV_SHIP,
@@ -269,6 +270,26 @@ def task_workers(session: Session, *, day: date) -> dict[tuple[int, int], str]:
     return {key: ", ".join(value) for key, value in people.items()}
 
 
+def made_by_assemblers(session: Session, *, day: date) -> dict[tuple[int, int], int]:
+    """Сколько зеркал за день сдали настоящие сборщики: (артикул, площадка) → штук.
+
+    Служебные «сборщики» (старый остаток, ввод остатков, возврат без ШК) сюда не входят:
+    это не производство дня, а то, что завели на склад.
+    """
+    start, end = msk_day_bounds(day)
+    rows = session.execute(
+        select(Unit.article_id, Movement.to_site_id, func.count())
+        .join(Unit, Unit.id == Movement.unit_id)
+        .join(User, User.id == Unit.assembler_id)
+        .where(
+            Movement.type == MV_ACCEPT, Movement.created_at >= start, Movement.created_at < end,
+            User.is_service.is_(False),
+        )
+        .group_by(Unit.article_id, Movement.to_site_id)
+    ).all()
+    return {(int(a), int(s)): int(n) for a, s, n in rows if s is not None}
+
+
 def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
     """Собрать таблицу отгрузки за день в порядке строк TOP.xlsx."""
     sites = active_sites(session)
@@ -281,9 +302,9 @@ def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
         stock = stock_by_article_site(session)
     else:
         stock = stock_at(session, msk_day_bounds(day)[1])
-    morning = stock_at(session, msk_day_bounds(day)[0])
     plans = plan_sum_by_site(session, day=day)
     done = tasks_done_by_article_site(session, day=day)
+    made = made_by_assemblers(session, day=day)
     workers = task_workers(session, day=day)
     shipped: dict[tuple[int, int], int] = {}
     shipped_other: dict[tuple[int, int], int] = {}
@@ -320,13 +341,26 @@ def build_shipment_table(session: Session, *, day: date) -> ShipmentTable:
         all_shipped = sum(
             count for (article_id, _), count in shipped.items() if article_id == article.id
         )
+
+        def before(article_id: int, site: Site | None, site_shipped: int) -> int:
+            """«До отгрузок»: склад сейчас + отгружено за день − сдано сборщиками за день.
+
+            Не растёт, пока сборщики сдают зеркала, но сразу видит то, что завели днём:
+            старый остаток, ввод остатков, возвраты, исправления инвентаризации (2026-11-06).
+            Раньше бралось на 00:00 — загруженный днём остаток был нулём до завтра.
+            """
+            if site is None:
+                return 0
+            key = (article_id, site.id)
+            return max(0, stock.get(key, 0) + site_shipped - made.get(key, 0))
+
         rows.append(
             ShipmentRow(
                 name=article.name,
                 is_header=False,
                 color_hex=article.color_hex,
-                before_other=morning.get((article.id, other_site.id), 0) if other_site else 0,
-                before_ship=morning.get((article.id, ship_site.id), 0) if ship_site else 0,
+                before_other=before(article.id, other_site, other_shipped),
+                before_ship=before(article.id, ship_site, all_shipped),
                 available=(
                     (stock.get((article.id, other_site.id), 0) + other_shipped if other_site else 0)
                     + (stock.get((article.id, ship_site.id), 0) + all_shipped if ship_site else 0)

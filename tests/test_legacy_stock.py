@@ -282,3 +282,14 @@ def test_preview_warns_about_bad_rows(client: TestClient, db: Session) -> None:
                        files={"file": ("ost.xlsx", _xlsx([("Zerkalo_60x16", KOM, 3)]))}).text
     assert "Ошибки в файле: 1 строка не запишется" in page and "Zerkalo_60x16 — нет в справочнике" in page
     assert "Применять нечего: исправьте красные строки" in page and "Всё совпадает" not in page
+
+
+def test_old_stock_loaded_today_shows_before_shipments(db: Session) -> None:
+    """Старый остаток, загруженный днём, сразу в «До отгрузок»; сданное сборщиками сегодня — нет."""
+    from app.services.shipment_report import build_shipment_table
+
+    site, admin, _, a, _ = _world(db)  # 2 новых сдал сборщик сегодня
+    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 3)]), actor=admin)
+    db.commit()
+    row = next(r for r in build_shipment_table(db, day=today_msk()).rows if r.name == "Zerkalo_60x160")
+    assert row.before_ship == 3
