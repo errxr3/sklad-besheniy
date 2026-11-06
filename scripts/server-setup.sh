@@ -46,7 +46,8 @@ else
 fi
 # Домен можно поменять повторным запуском установки
 if [ -n "${SITE_DOMAIN:-}" ]; then
-	sed -i -e "s|^SITE_ADDRESS=.*|SITE_ADDRESS=$SITE_DOMAIN|" -e "s|^SESSION_COOKIE_SECURE=.*|SESSION_COOKIE_SECURE=1|" .env
+	# Несколько адресов через «, » (переезд на новый домен без простоя) — в кавычках
+	sed -i -e "s|^SITE_ADDRESS=.*|SITE_ADDRESS=\"$SITE_DOMAIN\"|" -e "s|^SESSION_COOKIE_SECURE=.*|SESSION_COOKIE_SECURE=1|" .env
 	echo "сайт: https://$SITE_DOMAIN"
 else
 	sed -i -e "s|^SITE_ADDRESS=.*|SITE_ADDRESS=:80|" -e "s|^SESSION_COOKIE_SECURE=.*|SESSION_COOKIE_SECURE=0|" .env
