@@ -5,6 +5,7 @@
 одна «отгрузка канала» = одна запись (решение владельца 2026-10-20).
 """
 
+import logging
 import re
 from dataclasses import dataclass
 from datetime import timedelta
@@ -47,6 +48,8 @@ from app.statuses import (
 )
 from app.timeutil import fmt_dt, now_utc, to_moscow, today_msk
 from app.transitions import TransitionError, apply_transition, lock_unit
+
+logger = logging.getLogger(__name__)
 
 
 class ShippingError(Exception):
@@ -660,8 +663,9 @@ def scan_batch(
                 )
             return _ship_by_item(session, unit=unit, item=item, code=value, pallet=pallet,
                                  actor=actor, shift_id=shift_id)
+        logger.warning("Наклейки нет в партиях", extra={"status": f"{value} · канал {pallet.title}"})
         return LoadResult(
-            True, UNKNOWN_CODE, UNKNOWN_HINT, await_unit=True, ship_code=value, unknown=True,
+            True, f"{UNKNOWN_CODE}: {value}", UNKNOWN_HINT, await_unit=True, ship_code=value, unknown=True,
             pallet_count=pallet_count(session, pallet.id),
         )
     problem = _item_problem(item, value, pallet)
@@ -685,18 +689,12 @@ def scan_batch(
         from app.services.legacy_stock import pick_legacy_unit
 
         repeat = bool(ship_code) and clean_ship_code(ship_code) == clean_ship_code(value)
-        has_new = repeat or session.scalar(
-            select(Unit.id)
-            .where(
-                Unit.article_id == item.article_id, Unit.site_id == pallet.site_id,
-                Unit.status == IN_STOCK, Unit.unlabeled.is_(False),
-            )
-            .limit(1)
-        ) is not None
         old = pick_legacy_unit(session, article_id=item.article_id, site_id=pallet.site_id)
-        if old is not None and has_new and not repeat:
+        # Старое — всегда пик-пиком: наклейка второй раз подряд (решение владельца 2026-11-06).
+        # Одним сканом старое не уходит, даже если новых этого артикула нет
+        if old is not None and not repeat:
             return LoadResult(
-                True, f"Нужно: {article}", "нашу этикетку или эту наклейку ещё раз",
+                True, f"Нужно: {article}", "нашу этикетку или эту наклейку ещё раз (старое)",
                 article=article, await_unit=True, ship_code=value,
                 pallet_count=pallet_count(session, pallet.id),
             )

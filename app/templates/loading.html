@@ -154,7 +154,11 @@
 			// Канал закрыл другой грузчик — возвращаемся к выбору канала
 			if (data.closed) setTimeout(function () { window.location.href = '/loading'; }, 2500);
 			// Ошибка на втором скане: начинаем зеркало заново с любой этикетки
-			if (!data.ok) { pendingUnit = null; pendingCode = null; input.placeholder = basePlaceholder; }
+			if (!data.ok) {
+				pendingUnit = null; pendingCode = null; input.placeholder = basePlaceholder;
+				var failBox = document.getElementById('unknown-box');
+				if (failBox) failBox.hidden = true;
+			}
 		},
 		onSuccess: function (data) {
 			if (data.await_mp) {

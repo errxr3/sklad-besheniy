@@ -90,17 +90,23 @@ def _labeled(db: Session, site, article) -> list[Unit]:  # type: ignore[no-untyp
                                               Unit.status == IN_STOCK).order_by(Unit.id)).all())
 
 
-def test_only_old_goes_with_one_scan(db: Session) -> None:
+def test_only_old_goes_with_double_pik(db: Session) -> None:
+    """Старое — всегда пик-пиком, даже если новых этого артикула нет (решение 2026-11-06)."""
     site, admin, loader, _, b = _world(db)  # у 70x200 новых нет
     apply_legacy(db, preview_legacy(db, [("Zerkalo_70x200", KOM, 1)]), actor=admin)
     _ozon_plan(db, 2, article="Zerkalo_70x200")
     pallet = join_channel(db, user=loader, site=site, channel="Ozon", truck="Озон1")
     db.commit()
-    done = scan_loading(db, code="%OZ1", pallet=pallet, actor=loader)
+    first = scan_loading(db, code="%OZ1", pallet=pallet, actor=loader)
+    db.commit()
+    assert first.ok and first.await_unit  # одним сканом не уходит
+    item = db.scalar(select(ShipItem).where(ShipItem.posting == "OZ-1"))
+    assert item is not None and item.state != SHIP_LOADED
+    done = scan_loading(db, code="%OZ1", pallet=pallet, actor=loader, ship_code="%OZ1")
     db.commit()
     assert done.ok and not done.await_unit and "Старое" in done.message
-    item = db.scalar(select(ShipItem).where(ShipItem.posting == "OZ-1"))
-    assert item is not None and item.state == SHIP_LOADED
+    db.refresh(item)
+    assert item.state == SHIP_LOADED
     assert db.get(Unit, item.unit_id).unlabeled  # type: ignore[union-attr]
     # Старых больше нет — склад просит нашу этикетку
     need = scan_loading(db, code="%OZ2", pallet=pallet, actor=loader)
