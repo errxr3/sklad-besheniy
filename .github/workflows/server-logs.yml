@@ -1,0 +1,34 @@
+# Журнал приложения на сервере — только чтение. Нужен, когда BLAGO пишет «Склад не ответил» и т.п.
+name: Журнал сервера
+
+on:
+  workflow_dispatch:
+    inputs:
+      grep:
+        description: "Что искать в журнале (необязательно)"
+        required: false
+        default: ""
+
+jobs:
+  logs:
+    name: Журнал
+    runs-on: ubuntu-latest
+    env:
+      HOST: ${{ secrets.SERVER_HOST }}
+      SSHPASS: ${{ secrets.SERVER_PASSWORD }}
+      USER_NAME: ${{ secrets.SERVER_USER || 'root' }}
+      GREP: ${{ github.event.inputs.grep }}
+    steps:
+      - name: Проверка ввода
+        run: |
+          if ! [[ "$GREP" =~ ^[A-Za-z0-9/_.\ -]*$ ]]; then echo "Только латиница, цифры, / _ . -"; exit 1; fi
+      - name: Журнал и нагрузка
+        run: |
+          sudo apt-get install -y -qq sshpass >/dev/null
+          SSH="sshpass -e ssh -o StrictHostKeyChecking=accept-new -o ConnectTimeout=20 $USER_NAME@$HOST"
+          $SSH "uptime; free -m | head -2; cd /opt/sklad && docker compose ps && docker stats --no-stream"
+          if [ -n "$GREP" ]; then
+            $SSH "cd /opt/sklad && docker compose logs --since 90m app 2>&1 | grep -iE '$GREP' | tail -80"
+          else
+            $SSH "cd /opt/sklad && docker compose logs --since 30m app 2>&1 | tail -120"
+          fi
