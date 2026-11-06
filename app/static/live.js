@@ -28,8 +28,14 @@
 	// Не трогаем, пока человек что-то выделяет, печатает или отмечает галочки.
 	var live = document.querySelectorAll('[data-live]');
 	if (!live.length) return;
+	// Пока человек крутит страницу или таблицу, не подменяем её: иначе прокрутка дёргается
+	var scrolledAt = 0;
+	window.addEventListener('scroll', function () { scrolledAt = Date.now(); }, { capture: true, passive: true });
+	window.addEventListener('wheel', function () { scrolledAt = Date.now(); }, { passive: true });
+	window.addEventListener('touchmove', function () { scrolledAt = Date.now(); }, { passive: true });
 	function busy() {
 		if (document.hidden) return true;
+		if (Date.now() - scrolledAt < 1500) return true;
 		if (window.getSelection && String(window.getSelection())) return true;
 		var active = document.activeElement;
 		for (var i = 0; i < live.length; i++) {

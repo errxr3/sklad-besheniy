@@ -610,20 +610,21 @@ th {
 }
 tbody tr:last-child td { border-bottom: 0; }
 /* Подсветка строки под курсором поверх любой заливки, цвет из TOP остаётся виден */
-tbody tr:hover > td { box-shadow: inset 0 0 0 9999px var(--tbl-hover); }
-tbody tr:hover > td.sticky { box-shadow: inset 0 0 0 9999px var(--tbl-hover), 1px 0 0 var(--line); }
+/* Подсветка — фоновой картинкой поверх заливки: дешевле огромной внутренней тени, скролл не тормозит */
+tbody tr:hover > td { background-image: linear-gradient(var(--tbl-hover), var(--tbl-hover)); }
 /* В цветных строках линии чуть темнее, чтобы строки не сливались */
 tr[style*="background"] > td { border-bottom-color: rgba(20, 23, 31, .08); }
 tr.header-row td {
 	background: var(--group-bg); font-size: 12px; font-weight: 700; letter-spacing: .06em;
 	text-transform: uppercase; box-shadow: inset 3px 0 0 var(--brand); border-bottom: 1px solid var(--line-strong);
 }
-tbody tr.header-row:hover > td { box-shadow: inset 3px 0 0 var(--brand); }
+tbody tr.header-row:hover > td { background-image: none; }
 td.zero { color: rgba(20, 23, 31, .45); }
 
 /* Таблица внутри карточки и в прокрутке — скруглённый блок с тенью */
 .table-wrap, .card:has(> table), .card:has(> .scroll > table) {
 	border: 1px solid var(--line); border-radius: var(--tbl-radius); box-shadow: var(--tbl-shadow);
+	contain: paint;
 }
 .card:has(> table) { padding: 0; overflow: hidden; }
 .card:has(> table) > :not(table) { margin-left: 14px; margin-right: 14px; }
