@@ -139,3 +139,16 @@ WRITE_OFF_REASONS: Final[tuple[str, ...]] = (
 END_USER: Final = "user"
 END_AUTO: Final = "auto"
 END_MANUAL: Final = "manual"
+
+
+def movement_label(movement: object) -> str:
+    """Название операции в истории и журнале.
+
+    Старое зеркало без этикетки склад заводит как обычное: «номер выдан» и сразу «на склад».
+    Для таких — «Старый остаток: заведён», чтобы не путать с печатью и изготовлением (2026-11-06).
+    """
+    kind = str(getattr(movement, "type", ""))
+    unit = getattr(movement, "unit", None)
+    if kind in (MV_PRINT, MV_ACCEPT) and unit is not None and getattr(unit, "unlabeled", False):
+        return "Старый остаток: номер выдан" if kind == MV_PRINT else "Старый остаток: заведён на склад"
+    return MOVEMENT_LABELS.get(kind, kind)

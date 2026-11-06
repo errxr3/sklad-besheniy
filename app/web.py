@@ -25,6 +25,7 @@ from app.statuses import (
     ROLE_SHIFT_LEAD,
     ROLES_NEED_SHIFT,
     STATUS_LABELS,
+    movement_label,
 )
 from app.timeutil import fmt_date, fmt_day_month, fmt_dt, fmt_hours, fmt_time, today_msk
 
@@ -46,6 +47,7 @@ templates.env.globals.update(
     STATUS_LABELS=STATUS_LABELS,
     ROLE_LABELS=ROLE_LABELS,
     MOVEMENT_LABELS=MOVEMENT_LABELS,
+    movement_label=movement_label,
     ROLE_ADMIN=ROLE_ADMIN,
     ROLE_SHIFT_LEAD=ROLE_SHIFT_LEAD,
     ROLE_ASSEMBLER=ROLE_ASSEMBLER,

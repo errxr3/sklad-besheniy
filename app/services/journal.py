@@ -11,7 +11,6 @@ from sqlalchemy.orm import Session, joinedload
 from app.models import Article, Movement, Unit, User
 from app.scan import clean_code
 from app.statuses import (
-    MOVEMENT_LABELS,
     MV_ACCEPT,
     MV_INVENTORY_FIX,
     MV_LABEL_VOID,
@@ -20,6 +19,7 @@ from app.statuses import (
     ROLE_ASSEMBLER,
     STATUS_LABELS,
     WRITTEN_OFF,
+    movement_label,
 )
 from app.timeutil import fmt_dt, msk_day_bounds
 
@@ -103,7 +103,7 @@ def journal_csv(session: Session, filters: JournalFilters, limit: int = 20000) -
                 fmt_dt(movement.created_at),
                 movement.unit.number if movement.unit else "",
                 movement.unit.article.name if movement.unit and movement.unit.article else "",
-                MOVEMENT_LABELS.get(movement.type, movement.type),
+                movement_label(movement),
                 STATUS_LABELS.get(movement.from_status or "", ""),
                 STATUS_LABELS.get(movement.to_status, movement.to_status),
                 movement.user.name if movement.user else "",

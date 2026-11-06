@@ -299,3 +299,15 @@ def test_old_stock_loaded_today_shows_before_shipments(db: Session) -> None:
     db.commit()
     row = next(r for r in build_shipment_table(db, day=today_msk()).rows if r.name == "Zerkalo_60x160")
     assert row.before_ship == 3
+
+
+def test_old_stock_history_says_old_not_made(client: TestClient, db: Session) -> None:
+    """Старое в истории — «Старый остаток: заведён», а не печать и приёмка после изготовления."""
+    site, admin, _, a, _ = _world(db)
+    apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 1)]), actor=admin)
+    db.commit()
+    old = db.scalar(select(Unit).where(Unit.unlabeled.is_(True)))
+    assert old is not None
+    login(client, admin)
+    page = client.get(f"/mirror/{old.number}").text
+    assert "Старый остаток: заведён на склад" in page and "Приёмка после изготовления" not in page

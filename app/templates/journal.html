@@ -48,7 +48,7 @@
 			<td>{{ m.created_at|dt }}</td>
 			<td><a href="/mirror/{{ m.unit.number }}">{{ m.unit.number }}</a></td>
 			<td>{{ m.unit.article.name if m.unit and m.unit.article else '' }}</td>
-			<td>{{ MOVEMENT_LABELS.get(m.type, m.type) }}</td>
+			<td>{{ movement_label(m) }}</td>
 			<td>{{ STATUS_LABELS.get(m.from_status, '—') }} → {{ STATUS_LABELS.get(m.to_status, m.to_status) }}</td>
 			<td>{{ m.user.name if m.user else '' }}</td>
 			<td>{{ m.note or '' }}</td>
