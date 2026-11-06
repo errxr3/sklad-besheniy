@@ -114,7 +114,7 @@
 	<table class="dense mt" id="stock-table">
 		<tr><th>Артикул</th>{% for s in stock_sites %}<th class="num">{{ s.name }}</th>{% endfor %}</tr>
 		{% for name, values in stock_rows %}
-		<tr><td>{{ name }}</td>{% for n, old in values %}<td class="num">{{ n or '' }}{% if old %}<span class="old-count" title="старых без этикетки">{{ old }}</span>{% endif %}</td>{% endfor %}</tr>
+		<tr><td>{{ name }}</td>{% for n, old in values %}<td class="num">{% if n - old > 0 %}{{ n - old }}{% endif %}{% if old %}<span class="old-count" title="старых без этикетки">{{ old }}</span>{% endif %}</td>{% endfor %}</tr>
 		{% endfor %}
 	</table>
 	{% else %}

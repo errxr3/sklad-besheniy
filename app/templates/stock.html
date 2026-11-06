@@ -29,6 +29,8 @@
 	</form>
 	<p class="hint">Данные на <b id="stock-time" data-live>{{ table.built_at }}</b> — обновляются сами после каждого скана
 		(пока вы выделяете текст, таблица не меняется). Строк: {{ table.row_count }}.</p>
+	{% if legacy %}<p class="hint">Чёрная цифра — новые с нашей этикеткой, <span class="old-count" style="margin:0">N</span> — старые без этикетки.
+		В XLSX и при копировании — общий остаток.</p>{% endif %}
 	<div class="row tight mt">
 		<button type="button" class="secondary" data-copy="both">Копировать обе площадки</button>
 		<a class="btn secondary" href="/stock.xlsx?day={{ day.isoformat() }}">Скачать XLSX</a>
@@ -64,7 +66,9 @@
 				</td>
 				{% for site in table.sites %}
 				{% set old = legacy.get((row.article_id, site.id), 0) %}
-				<td class="num {% if row.stock[loop.index0] == 0 %}zero{% endif %}">{{ row.stock_text(loop.index0) }}{% if old %}<span class="old-count" title="старых без этикетки">{{ old }}</span>{% endif %}</td>
+				{% set fresh = row.stock[loop.index0] - old %}
+				{# Обычная цифра — только новые с нашей этикеткой, оранжевая — только старые (решение 2026-11-06) #}
+				<td class="num {% if row.stock[loop.index0] == 0 %}zero{% endif %}">{% if fresh > 0 %}{{ fresh }}{% endif %}{% if old %}<span class="old-count" title="старых без этикетки">{{ old }}</span>{% endif %}</td>
 				{% endfor %}
 				{% for site in table.sites %}
 				<td class="num">{{ row.tasks_text(loop.index0) }}</td>

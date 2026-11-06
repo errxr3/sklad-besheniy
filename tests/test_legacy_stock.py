@@ -266,7 +266,9 @@ def test_stock_shows_old_part_until_gone(client: TestClient, db: Session) -> Non
     apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 3)]), actor=admin)
     db.commit()
     login(client, admin)
-    assert 'old-count" title="старых без этикетки">3<' in client.get("/stock").text
+    page = client.get("/stock").text
+    assert 'old-count" title="старых без этикетки">3<' in page
+    assert '>2<span class="old-count"' in page  # 2 новых отдельно от 3 старых, не сумма 5
     apply_legacy(db, preview_legacy(db, [("Zerkalo_60x160", KOM, 0)]), actor=admin)
     db.commit()
     assert "old-count" not in client.get("/stock").text
