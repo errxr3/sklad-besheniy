@@ -5,7 +5,7 @@ from datetime import date, datetime, time
 from urllib.parse import urlencode
 
 from fastapi import APIRouter, Depends, Form, Request
-from fastapi.responses import HTMLResponse, RedirectResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -22,13 +22,14 @@ from app.services.batches import (
     return_items,
 )
 from app.services.legacy_stock import add_found_legacy
+from app.services.not_on_shelf import not_on_shelf
 from app.services.ship_plan import STATE_LABELS, build_ship_plan, ship_plan_xlsx, visible_rows
 from app.services.shipping import ShippingError, manual_channels, plan_sites_channels, set_manual
 from app.services.tasks import TaskError, site_workers, task_sites, tasks_for_article, urgent_tasks
 from app.services.units import UnitError
 from app.statuses import PLAN_CHANNELS, REMOVE_REASONS, ROLE_SHIFT_LEAD, SHIP_STATE_LABELS
 from app.timeutil import MOSCOW, fmt_time, now_utc, today_msk
-from app.web import GuardedRoute, page
+from app.web import GuardedRoute, page, read_json
 
 logger = logging.getLogger(__name__)
 router = APIRouter(route_class=GuardedRoute)
@@ -222,8 +223,39 @@ async def batches_return(request: Request, db: Session = Depends(get_db)) -> Res
     """Вернуть снятое в отгрузку."""
     ids, _, day = await _ids(request)
     user = request.state.user
-    count = return_items(db, item_ids=ids, site_ids=lead_site_ids(db, user))
+    count = return_items(db, item_ids=ids, site_ids=lead_site_ids(db, user), actor_id=user.id)
     return _back("/shipments/batches", day=day, ok=f"Возвращено в отгрузку: {count}")
+
+
+@router.get("/shipments/not-on-shelf", response_class=HTMLResponse)
+def not_on_shelf_page(request: Request) -> Response:
+    """Скан этикеток маркетплейса, под которые зеркала нет (решение владельца 2026-11-06)."""
+    return page(
+        request,
+        "scan_op.html",
+        {
+            "title": "Нет на полке",
+            "hint": "Зеркала нет ни на полке, ни в задачах — сканируйте его этикетку Ozon, WB или СДЭК. "
+            "Этикетка снимется с отгрузки, а если такое зеркало числится на складе, одно спишется. "
+            "Ошиблись — «Вернуть в отгрузку» в «Партиях» вернёт и этикетку, и зеркало.",
+            "url": "/shipments/not-on-shelf/scan",
+            "button": "Снять",
+        },
+    )
+
+
+@router.post("/shipments/not-on-shelf/scan")
+async def not_on_shelf_scan(request: Request, db: Session = Depends(get_db)) -> JSONResponse:
+    """Снять этикетку «нет на полке» и списать зеркало-призрак."""
+    user = request.state.user
+    payload = await read_json(request)
+    code = str(payload.get("code") or "")
+    result = not_on_shelf(db, code=code, actor=user, site_ids=lead_site_ids(db, user))
+    if result.ok:
+        db.commit()
+        logger.info("Нет на полке", extra={"user_id": user.id, "status": f"{result.number} {result.detail}"})
+    return JSONResponse({"ok": result.ok, "message": result.message, "detail": result.detail,
+                         "number": result.number, "article": result.article, "stock": result.stock})
 
 
 @router.get("/ship/questions", response_class=HTMLResponse)

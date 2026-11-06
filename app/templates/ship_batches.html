@@ -3,6 +3,7 @@
 {% block content %}
 {% include "_warehouse_tabs.html" %}
 <h1>Партии BLAGO OTGRUZKI</h1>
+<p><a class="btn danger" href="/shipments/not-on-shelf">Нет на полке: снять сканом</a></p>
 {% if ok %}<p class="msg ok">{{ ok }}</p>{% endif %}
 {% if err %}<p class="msg err">{{ err }}</p>{% endif %}
 <div class="card">

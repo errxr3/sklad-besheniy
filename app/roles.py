@@ -173,6 +173,8 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("GET", "/shipments/batches"): LEADS,
     ("POST", "/shipments/batches/remove"): LEADS,
     ("POST", "/shipments/batches/return"): LEADS,
+    ("GET", "/shipments/not-on-shelf"): LEADS,
+    ("POST", "/shipments/not-on-shelf/scan"): LEADS,
     ("GET", "/ship/questions"): LEADS,
     ("POST", "/ship/questions/{question_id}/answer"): LEADS,
     ("POST", "/ship/questions/answer-all"): LEADS,

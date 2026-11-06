@@ -192,6 +192,8 @@ def receive_batch(
                 result.kept.append(f"{posting}: {where}")
                 continue
             item.batch_id = batch.id
+            if item.state == SHIP_REMOVED:
+                item.unit_id = None  # снятое по «нет на полке» — то зеркало осталось списанным
             item.state = SHIP_WAIT
             item.removed_reason = item.removed_by = item.removed_at = None
             result.updated += 1
@@ -719,8 +721,12 @@ def remove_items(
     return removed
 
 
-def return_items(session: Session, *, item_ids: list[int], site_ids: list[int] | None = None) -> int:
-    """Вернуть снятое обратно в отгрузку (сняли по ошибке)."""
+def return_items(
+    session: Session, *, item_ids: list[int], site_ids: list[int] | None = None, actor_id: int | None = None
+) -> int:
+    """Вернуть снятое обратно в отгрузку (сняли по ошибке). Списанное по «нет на полке» — тоже назад."""
+    from app.services.not_on_shelf import restore_written_off
+
     _lock(session)
     back = 0
     for item_id in item_ids:
@@ -729,6 +735,7 @@ def return_items(session: Session, *, item_ids: list[int], site_ids: list[int] |
             continue
         if site_ids is not None and item.site_id not in site_ids:
             continue
+        restore_written_off(session, item, actor_id=actor_id)
         item.state = SHIP_WAIT
         item.removed_reason = item.removed_by = item.removed_at = None
         back += 1
