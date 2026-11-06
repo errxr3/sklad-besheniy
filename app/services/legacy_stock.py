@@ -297,8 +297,8 @@ def legacy_template_xlsx(session: Session) -> bytes:
             for col in range(1, len(sites) + 2):
                 sheet.cell(row=sheet.max_row, column=col).fill = fill
     sheet.column_dimensions["A"].width = 40
-    for col in "BCDE"[: len(sites)]:
-        sheet.column_dimensions[col].width = 14
+    for letter in "BCDE"[: len(sites)]:
+        sheet.column_dimensions[letter].width = 14
     sheet.freeze_panes = "B2"
     out = BytesIO()
     book.save(out)
