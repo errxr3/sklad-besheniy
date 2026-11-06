@@ -648,3 +648,49 @@ td.zero { color: rgba(20, 23, 31, .45); }
 .old-count { border-radius: 999px; }
 .table-wrap thead tr + tr th { text-transform: none; letter-spacing: 0; }
 .table-wrap .mini { color: var(--text); }
+
+/* ---------- Большие таблицы: ровные строки, широкий и полноэкранный режим (2026-11-06) ---------- */
+/* Все строки одной высоты: текст не переносится, ячейка не растёт от «(сделано 20)» или «+1» */
+.table-wrap td, .table-wrap th { white-space: nowrap; }
+.table-wrap tbody td { height: 26px; line-height: 20px; padding-top: 2px; padding-bottom: 2px; vertical-align: middle; }
+.table-wrap tbody td * { line-height: inherit; }
+.shipments td.num, .shipments th.num { min-width: 56px; }
+/* Закреплённый столбец — рамкой, а не тенью: тень на сотнях ячеек перерисовывается на каждом кадре */
+.table-wrap td.sticky, .table-wrap th.sticky { box-shadow: none; border-right: 1px solid var(--line-strong); }
+.table-wrap { overscroll-behavior: contain; }
+
+/* Страница с большой таблицей — на всю ширину окна */
+body.wide main { max-width: none; }
+
+/* Кнопка над таблицей */
+.tbl-tools { display: flex; justify-content: flex-end; margin: 0 0 6px; }
+.tbl-tools button, .tbl-exit {
+	min-height: 32px; padding: 4px 12px; font-size: 13px; font-weight: 600; border-radius: 999px;
+	background: var(--card); color: var(--text); border: 1px solid var(--line-strong);
+}
+.tbl-tools button:hover, .tbl-exit:hover { background: var(--card-alt); border-color: var(--line-strong); }
+
+/* Полноэкранный режим: таблица поверх страницы, на всё окно */
+body.tbl-full-open { overflow: hidden; }
+.tbl-full {
+	position: fixed !important; inset: 0; z-index: 200; margin: 0 !important; max-height: none !important;
+	border-radius: 0 !important; border: 0 !important; overflow: auto !important; background: var(--card);
+	padding: 0 !important;
+}
+.card.tbl-full { padding: 12px !important; }
+.tbl-exit {
+	display: none; position: fixed; z-index: 210;
+	bottom: calc(16px + env(safe-area-inset-bottom, 0px)); right: calc(20px + env(safe-area-inset-right, 0px));
+	min-height: 40px; padding: 6px 16px; font-size: 14px;
+	box-shadow: 0 4px 14px rgba(0, 0, 0, .25);
+}
+body.tbl-full-open .tbl-exit { display: inline-flex; align-items: center; }
+
+/* Цветные строки (заливка из TOP) всегда светлые — линии в них тёмные в любой теме,
+   иначе в тёмной теме белёсые линии столбцов на светлой заливке не видны */
+tr[style*="background"] > td {
+	border-bottom-color: rgba(20, 23, 31, .14);
+	border-right-color: rgba(20, 23, 31, .14);
+}
+.shipments tbody td { border-right-color: rgba(127, 140, 160, .35); }
+.shipments tr[style*="background"] > td { border-right-color: rgba(20, 23, 31, .16); }
