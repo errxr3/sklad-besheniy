@@ -43,7 +43,7 @@
 				{% for site in table.sites %}<th class="num">{{ site.name }}</th>{% endfor %}
 				{% for site in table.sites %}<th class="num">Задачи на {{ site.name|locative }} <span class="muted">{{ day|day_month }}</span></th>{% endfor %}
 			</tr>
-			<tr>
+			<tr class="copy-row">
 				<th class="sticky"><span class="muted">копировать столбец →</span></th>
 				{% for site in table.sites %}
 				<th class="num"><button type="button" class="secondary mini" data-copy="stock" data-index="{{ loop.index0 }}">копировать</button></th>
@@ -60,7 +60,7 @@
 			{% else %}
 			<tr {% if row.color_hex %}style="background:{{ row.color_hex }}"{% endif %}>
 				<td class="sticky" {% if row.color_hex %}style="background:{{ row.color_hex }}"{% endif %}>
-					{{ row.name }}{% if not row.active %} <span class="badge">откл.</span>{% endif %}
+					<span class="name-clip">{{ row.name }}{% if not row.active %} <span class="badge">откл.</span>{% endif %}</span>
 				</td>
 				{% for site in table.sites %}
 				{% set old = legacy.get((row.article_id, site.id), 0) %}

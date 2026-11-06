@@ -81,7 +81,7 @@
 			<tr class="header-row"><td colspan="{{ 7 + channels|length }}"><span class="group-name">{{ row.name }}</span></td></tr>
 			{% else %}
 			<tr {% if row.color_hex %}style="background:{{ row.color_hex }}"{% endif %}>
-				<td class="sticky" {% if row.color_hex %}style="background:{{ row.color_hex }}"{% endif %}>{{ row.name }}</td>
+				<td class="sticky" {% if row.color_hex %}style="background:{{ row.color_hex }}"{% endif %}><span class="name-clip">{{ row.name }}</span></td>
 				<td class="num {% if row.before_other == 0 %}zero{% endif %}">{{ row.before_other }}</td>
 				<td class="num {% if row.before_ship == 0 %}zero{% endif %}">{{ row.before_ship }}</td>
 				<td class="num {% if row.tasks_other_who %}who{% endif %}" {% if row.tasks_other_who %}data-who="Делают: {{ row.tasks_other_who }}" tabindex="0"{% endif %}>{{ row.tasks_other or '' }}{% if row.tasks_other_done %} <span class="muted">(сделано {{ row.tasks_other_done }})</span>{% endif %}</td>

@@ -68,7 +68,7 @@
 			{% else %}
 			{% set state = row.state %}
 			<tr class="plan-{{ state }}">
-				<td class="sticky" {% if row.color_hex %}style="background:{{ row.color_hex }}"{% endif %}>{{ row.name }}</td>
+				<td class="sticky" {% if row.color_hex %}style="background:{{ row.color_hex }}"{% endif %}><span class="name-clip">{{ row.name }}</span></td>
 				{% for value in row.stock %}<td class="num {% if value == 0 %}zero{% endif %}">{{ value }}</td>{% endfor %}
 				<td class="num">{{ row.in_work or '' }}</td>
 				{% for need in row.need %}
