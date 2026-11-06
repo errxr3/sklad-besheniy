@@ -4,6 +4,7 @@
 """
 
 import logging
+import time
 from datetime import date as DateType
 
 from fastapi import APIRouter, Depends, Request
@@ -59,6 +60,7 @@ async def api_demand(request: Request, db: Session = Depends(get_db)) -> JSONRes
         for x in payload.get("drop") or []
         if isinstance(x, dict) and x.get("market") and x.get("posting")
     ]
+    started = time.perf_counter()
     try:
         lines = receive_demand(
             db, day=_day(payload.get("day")), lines=[x for x in payload["lines"] if isinstance(x, dict)],
@@ -67,7 +69,10 @@ async def api_demand(request: Request, db: Session = Depends(get_db)) -> JSONRes
     except BatchError as exc:
         return JSONResponse({"ok": False, "error": str(exc)}, status_code=400)
     questions = db.scalars(select(ShipQuestion).where(ShipQuestion.day == _day(payload.get("day")))).all()
-    logger.info("Приняты заказы дня", extra={"status": f"{len(lines)} строк"})
+    logger.info(
+        "Приняты заказы дня",
+        extra={"status": f"{len(lines)} строк, убрано {len(drop)}, {time.perf_counter() - started:.1f} с"},
+    )
     return JSONResponse(
         {
             "ok": True,

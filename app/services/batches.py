@@ -14,7 +14,9 @@ BLAGO OTGRUZKI отдаёт складу две вещи:
 этикетки (их не отбираем), потом остальные по правилу выше.
 """
 
+import logging
 import re
+import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
@@ -48,6 +50,8 @@ from app.statuses import (
     SHIPPED,
 )
 from app.timeutil import MOSCOW, msk_day_bounds, now_utc, to_moscow, today_msk
+
+logger = logging.getLogger(__name__)
 
 GO, ASK, NO = "go", "ask", "no"
 # Едет, но вечером: обещанное начальником доделывают к вечеру, оно уезжает в Озон 3 (решение владельца
@@ -436,8 +440,22 @@ def _lock(session: Session) -> None:
 
 def allocate(session: Session, *, day: date | None = None) -> None:
     """Пересчитать, что едет: решения заказов и вопросы начальникам."""
+    started = time.perf_counter()
+    try:
+        _allocate(session, day=day)
+    finally:
+        spent = time.perf_counter() - started
+        if spent > 3:  # BLAGO ждёт ответа — долгий пересчёт видно в журнале (2026-11-06)
+            logger.warning("Пересчёт «что едет» долгий", extra={"status": f"{spent:.1f} с"})
+
+
+def _allocate(session: Session, *, day: date | None = None) -> None:
     day = day or today_msk()
+    started = time.perf_counter()
     _lock(session)
+    waited = time.perf_counter() - started
+    if waited > 1:
+        logger.warning("Пересчёт ждал другой пересчёт", extra={"status": f"{waited:.1f} с"})
     items = _items_by_order(session, since=day - HISTORY)
     lines = [
         line
