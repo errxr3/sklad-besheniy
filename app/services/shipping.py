@@ -5,6 +5,7 @@
 одна «отгрузка канала» = одна запись (решение владельца 2026-10-20).
 """
 
+import re
 from dataclasses import dataclass
 from datetime import timedelta
 
@@ -510,7 +511,7 @@ def learn_code(session: Session, *, code: str, pallet: Pallet, article_id: int) 
     и запоминает код. Зеркала одного артикула одинаковые — какому заказу какое, не важно.
     """
     clean = clean_ship_code(code)
-    if not clean or session.get(ShipCode, clean) is not None:
+    if not is_ozon_sticker(clean) or session.get(ShipCode, clean) is not None:
         return None
     truck = pallet_truck(pallet)
     candidates = list(session.scalars(
@@ -532,6 +533,12 @@ def learn_code(session: Session, *, code: str, pallet: Pallet, article_id: int) 
     session.add(ShipCode(code=clean, item_id=item.id))
     session.flush()
     return item
+
+
+def is_ozon_sticker(code: str) -> bool:
+    """Код с наклейки КГТ Ozon: «ii» и цифры. Только такие склад запоминает сам —
+    заводской штрихкод товара или чужая наклейка по-прежнему дают красный экран."""
+    return bool(re.fullmatch(r"II\d{8,}", clean_ship_code(code)))
 
 
 UNKNOWN_CODE = "Код наклейки новый"
@@ -638,7 +645,7 @@ def scan_batch(
         )
 
     item = find_ship_item(session, value)
-    if item is None and not is_own_label(value):
+    if item is None and is_ozon_sticker(value):
         if unit_number:
             unit = lock_unit(session, clean_code(unit_number))
             problem = _unit_problem(session, unit, unit_number, pallet)
