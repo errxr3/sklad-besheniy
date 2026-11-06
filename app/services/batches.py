@@ -128,6 +128,33 @@ def clean_ship_code(raw: object) -> str:
     return re.sub(r"\s+", "", str(raw or "")).upper()[:80]
 
 
+# Под одной этикеткой бывает несколько зеркал (СДЭК: один трек на заказ из двух зеркал).
+# Тогда у каждого зеркала своё место: «трек», «трек#2», «трек#3» (решение владельца 2026-11-06).
+PIECE_MARK = "#"
+
+
+def base_posting(posting: str) -> str:
+    """Номер заказа без номера места: «123#2» → «123»."""
+    return posting.split(PIECE_MARK, 1)[0]
+
+
+def piece_posting(posting: str, piece: int) -> str:
+    """Номер места в заказе: первое — сам номер, следующие — «номер#2»…"""
+    return posting if piece <= 1 else f"{posting[:60]}{PIECE_MARK}{piece}"
+
+
+def order_pieces(session: Session, item: ShipItem) -> list[ShipItem]:
+    """Все места заказа этой этикетки, по порядку."""
+    base = base_posting(item.posting)
+    rows = session.scalars(
+        select(ShipItem).where(
+            ShipItem.market == item.market,
+            (ShipItem.posting == base) | ShipItem.posting.startswith(base + PIECE_MARK, autoescape=True),
+        )
+    ).all()
+    return sorted(rows, key=lambda row: (len(row.posting), row.posting))
+
+
 # ---------- приём партии ----------
 
 
@@ -172,11 +199,16 @@ def receive_batch(
             batch.source = source[:160]
     catalog = Catalog(session)
     result = BatchResult(batch=batch)
+    pieces: dict[str, int] = defaultdict(int)
     for raw in items:
-        posting = str(raw.get("posting") or "").strip()[:64]
+        posting = base_posting(str(raw.get("posting") or "").strip()[:64])
         article_name = str(raw.get("article") or "").strip()[:200]
         if not posting or not article_name:
             continue
+        # Та же этикетка ещё раз в партии — ещё одно зеркало этого заказа
+        pieces[posting] += 1
+        piece = pieces[posting]
+        posting = piece_posting(posting, piece)
         article = catalog.article(article_name)
         if article is None:
             result.unknown.append(f"{posting} {article_name}")
@@ -208,6 +240,8 @@ def receive_batch(
         origin = str(raw.get("origin") or "").strip()[:64]
         item.origin = origin if origin and origin != posting else None
         session.flush()
+        if piece > 1:
+            continue  # коды этикетки ведут на первое место, следующее склад берёт сам
         codes = {clean_ship_code(posting)}
         codes.update(clean_ship_code(code) for code in (raw.get("codes") or [])[:MAX_CODES])
         for code in codes - {""}:
@@ -329,7 +363,7 @@ def _items_by_order(session: Session, *, since: date) -> dict[tuple[str, str], S
     found: dict[tuple[str, str], ShipItem] = {}
     query = select(ShipItem).join(ShipBatch, ShipBatch.id == ShipItem.batch_id).where(ShipBatch.day >= since)
     for item in session.scalars(query).all():
-        keys = {(item.market, item.posting)}
+        keys = {(item.market, item.posting), (item.market, base_posting(item.posting))}
         if item.origin:
             keys.add((item.market, item.origin))
         for key in keys:
@@ -412,6 +446,14 @@ def allocate(session: Session, *, day: date | None = None) -> None:
         return (0 if committed else 1, *_priority(min(postings[key], key=_priority)))
 
     free = dict(stock_by_article_site(session))
+    # Заказ из нескольких зеркал, часть уже погружена: держим только остальные
+    loaded_pieces: dict[tuple[str, str, int, int], int] = defaultdict(int)
+    for piece in session.scalars(
+        select(ShipItem).join(ShipBatch, ShipBatch.id == ShipItem.batch_id)
+        .where(ShipBatch.day >= day - HISTORY, ShipItem.state == SHIP_LOADED)
+    ).all():
+        if piece.site_id is not None and piece.article_id is not None:
+            loaded_pieces[(piece.market, base_posting(piece.posting), piece.site_id, piece.article_id)] += 1
     # Этикетки, скачанные без утреннего заказа (заказ не присылали), тоже держат свои зеркала
     ordered = {
         (line.market, line.posting)
@@ -420,7 +462,8 @@ def allocate(session: Session, *, day: date | None = None) -> None:
     for item in session.scalars(select(ShipItem).where(ShipItem.state == SHIP_WAIT)).all():
         if item.article_id is None or item.site_id is None:
             continue
-        if (item.market, item.posting) in ordered or (item.market, item.origin) in ordered:
+        if ((item.market, item.posting) in ordered or (item.market, item.origin) in ordered
+                or (item.market, base_posting(item.posting)) in ordered):
             continue
         free[(item.article_id, item.site_id)] = free.get((item.article_id, item.site_id), 0) - 1
     work = in_work_by_article_site(session, day=day)
@@ -464,7 +507,7 @@ def allocate(session: Session, *, day: date | None = None) -> None:
         if committed:
             for stock_key, qty in wanted.items():
                 ak = (stock_key[1], stock_key[0])
-                free[ak] = free.get(ak, 0) - qty
+                free[ak] = free.get(ak, 0) - max(0, qty - loaded_pieces.get((*key, *stock_key), 0))
             _decide(group, GO, "этикетки скачаны")
             continue
         shorts = {k: max(0, q - max(0, free.get((k[1], k[0]), 0))) for k, q in wanted.items()}

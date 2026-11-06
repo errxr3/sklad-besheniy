@@ -26,7 +26,7 @@ from app.models import (
     User,
 )
 from app.scan import clean_code, is_own_label
-from app.services.batches import clean_ship_code
+from app.services.batches import PIECE_MARK, clean_ship_code, order_pieces
 from app.services.units import ScanResult, stock_count
 from app.settings_store import get_int
 from app.statuses import (
@@ -452,10 +452,31 @@ NO_PLAN_MESSAGE = "Плана нет"
 NO_PLAN_HINT = "позовите начальника смены"
 
 
-def find_ship_item(session: Session, code: str) -> ShipItem | None:
-    """Строка партии по любому коду с этикетки маркетплейса."""
+def find_ship_item(session: Session, code: str, article_id: int | None = None) -> ShipItem | None:
+    """Строка партии по любому коду с этикетки маркетплейса.
+
+    Под одной этикеткой бывает несколько зеркал (заказ СДЭК из двух): берём первое ещё не
+    погруженное место заказа, лучше с тем же артикулом, что зеркало в руках.
+    """
     owner = session.get(ShipCode, clean_ship_code(code))
-    return session.get(ShipItem, owner.item_id) if owner else None
+    item = session.get(ShipItem, owner.item_id) if owner else None
+    if item is None:
+        return None
+    pieces = order_pieces(session, item)
+    if len(pieces) < 2:
+        return item
+    waiting = [p for p in pieces if p.state == SHIP_WAIT]
+    same = [p for p in waiting if article_id is not None and p.article_id == article_id]
+    return (same or waiting or [item])[0]
+
+
+def piece_note(session: Session, item: ShipItem) -> str:
+    """«заказ из 2 зеркал: погружено 1» — для экрана погрузки."""
+    pieces = order_pieces(session, item)
+    if len(pieces) < 2:
+        return ""
+    loaded = sum(1 for p in pieces if p.state == SHIP_LOADED)
+    return f"заказ из {len(pieces)} зеркал: погружено {loaded}"
 
 
 @dataclass
@@ -528,9 +549,12 @@ def scan_batch(
             return problem
         assert unit is not None
         if ship_code:
-            item = find_ship_item(session, ship_code)
+            item = find_ship_item(session, ship_code, article_id=unit.article_id)
             if item is None:
                 return LoadResult(False, "Этикетка маркетплейса потерялась", "отсканируйте обе ещё раз")
+            problem = _item_problem(item, ship_code, pallet)
+            if problem is not None:
+                return problem
             return _ship_by_item(session, unit=unit, item=item, code=ship_code, pallet=pallet,
                                  actor=actor, shift_id=shift_id)
         return LoadResult(
@@ -551,6 +575,7 @@ def scan_batch(
         if problem is not None:
             return problem
         assert unit is not None
+        item = find_ship_item(session, value, article_id=unit.article_id) or item
         return _ship_by_item(session, unit=unit, item=item, code=value, pallet=pallet,
                              actor=actor, shift_id=shift_id)
     # Старые этого артикула (без нашей этикетки) уходят по наклейке маркетплейса (решение 2026-11-04):
@@ -582,8 +607,10 @@ def scan_batch(
                 result.message = f"Старое: {article}"
                 result.detail = f"старое · {result.detail}"
             return result
+    note = piece_note(session, item)
     return LoadResult(
-        True, f"Нужно: {article}", "пикните нашу этикетку. Нет её — позовите начальника смены",
+        True, f"Нужно: {article}",
+        (f"{note} · " if note else "") + "пикните нашу этикетку. Нет её — позовите начальника смены",
         article=article, await_unit=True, ship_code=value, pallet_count=pallet_count(session, pallet.id),
     )
 
@@ -657,8 +684,10 @@ def _ship_by_item(
     if item.batch.truck != truck or item.batch.day != today_msk():
         source = item.batch.title + ("" if item.batch.day == today_msk() else f" от {item.batch.day:%d.%m}")
         moved = f"{source} → {pallet.title}"
+    piece = item.posting.split(PIECE_MARK, 1)[1] if PIECE_MARK in item.posting else ""
+    barcode = clean_ship_code(code)[:60] + (PIECE_MARK + piece if piece else "")
     result = _do_ship(session, unit=unit, pallet=pallet, actor=actor, shift_id=shift_id,
-                      mp_barcode=clean_ship_code(code)[:64])
+                      mp_barcode=barcode[:64])
     if not result.ok:
         return result
     item.state = SHIP_LOADED
@@ -668,6 +697,9 @@ def _ship_by_item(
     item.loaded_by = actor.id
     item.moved_note = moved or None
     session.flush()
+    note = piece_note(session, item)
+    if note:
+        result.detail = f"{note} · {result.detail}"
     if moved:
         result.level = "warn"
         result.detail = f"{moved} · в канале: {result.pallet_count}"
