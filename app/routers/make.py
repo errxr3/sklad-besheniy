@@ -21,7 +21,7 @@ from app.services.units import (
     printed_older_than,
 )
 from app.settings_store import get_int
-from app.statuses import PRINTED, ROLE_ASSEMBLER
+from app.statuses import PRINTED, ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_SHIFT_LEAD
 from app.web import GuardedRoute, page, read_json
 
 logger = logging.getLogger(__name__)
@@ -87,7 +87,9 @@ async def scan_accept(request: Request, db: Session = Depends(get_db)) -> JSONRe
         return JSONResponse({"ok": False, "message": "Пустой скан"}, status_code=400)
     user = request.state.user
     site, shift_id = site_and_shift(db, user)
-    result = accept_unit(db, code=code, actor=user, shift_id=shift_id, site_id=site.id)
+    # Начальник смены принимает зеркало на площадку этикетки (сдача этикеток прошлого дня)
+    own_site = None if user.role in (ROLE_ADMIN, ROLE_SHIFT_LEAD) else site.id
+    result = accept_unit(db, code=code, actor=user, shift_id=shift_id, site_id=own_site)
     return JSONResponse(
         {
             "ok": result.ok,

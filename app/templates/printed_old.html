@@ -1,11 +1,36 @@
 {% extends "base.html" %}
-{% block title %}Напечатано больше суток назад{% endblock %}
+{% block title %}Напечатано больше суток назад<script src="/static/vendor/zxing-reader.min.js?v={{ STATIC_VERSION }}"></script>
+<script src="/static/scan.js?v={{ STATIC_VERSION }}"></script>
+<script>
+(function () {
+	var screen = new window.Sklad.ScanScreen({ url: '/scan/accept', csrf: '{{ csrf }}' });
+	var camera = new window.Sklad.CameraScan({ onCode: function (text) { screen.send(text); } });
+	document.getElementById('camera-btn').addEventListener('click', function () { camera.start(); });
+})();
+</script>
+{% endblock %}
 {% block content %}
 {% include "_warehouse_tabs.html" %}
 <h1>Напечатано больше суток назад</h1>
-<p class="muted">Эти этикетки выданы, но зеркала не приняты на склад. Примите их сканом или уберите,
-если зеркало не сделают — скан убранной этикетки больше не пройдёт.</p>
+<p class="muted">Эти этикетки выданы, но зеркала не приняты на склад. Сборщик этикетку прошлого дня
+сам не сдаст — проверьте, что зеркало есть, и примите его сканом здесь. Если зеркало не сделают —
+уберите этикетку: её скан больше не пройдёт.</p>
 {% include "admin/_msg.html" %}
+<div class="card">
+	<h2>Принять зеркало сканом</h2>
+	<p class="hint">Сканируйте этикетку на готовом зеркале. Сдано засчитается сборщику этикетки.</p>
+	<div id="scan-result" class="scan-result"></div>
+	<form id="scan-form">
+		<input type="text" id="scan-input" class="scan-input" placeholder="Отсканируйте этикетку"
+		       autocomplete="off" autocapitalize="characters" inputmode="text">
+		<div class="row tight mt">
+			<button type="submit">Принять</button>
+			<button type="button" class="secondary" id="camera-btn">Сканировать камерой</button>
+		</div>
+	</form>
+	<div id="camera-box" class="mt" hidden></div>
+	<ul class="scan-history" id="scan-history"></ul>
+</div>
 <div class="card">
 	{% if not units %}
 		<p class="msg ok">Все напечатанные этикетки приняты.</p>

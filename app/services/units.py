@@ -130,6 +130,24 @@ def future_task_error(task: Task | None) -> str:
     return f"Это задача на {when}: сдать её можно будет {when}"
 
 
+STALE_HOURS = 24  # этикетка без задачи старше суток — только через начальника смены
+
+
+def stale_label_error(unit: Unit, task: Task | None) -> str:
+    """Этикетка прошедшего дня: сборщик сам её не сдаёт, только начальник смены сканом.
+
+    Найденную или припрятанную этикетку нельзя «досдать» потом (решение владельца 2026-11-10).
+    Задача на сегодня или заранее напечатанная на завтра — свежая.
+    """
+    if task is not None:
+        if task.date < today_msk():
+            return f"задача {task.date:%d.%m} прошла — сдайте зеркало начальнику смены"
+        return ""
+    if unit.made_at is not None and unit.made_at < now_utc() - timedelta(hours=STALE_HOURS):
+        return "напечатана больше суток назад — сдайте зеркало начальнику смены"
+    return ""
+
+
 def accept_unit(
     session: Session,
     *,
@@ -175,9 +193,14 @@ def accept_unit(
             article=article_name,
         )
 
-    early = future_task_error(session.get(Task, unit.task_id) if unit.task_id else None)
+    task = session.get(Task, unit.task_id) if unit.task_id else None
+    early = future_task_error(task)
     if early:
         return ScanResult(False, "Задача ещё не началась", early, number=number, article=article_name)
+    if actor.role not in (ROLE_ADMIN, ROLE_SHIFT_LEAD):
+        stale = stale_label_error(unit, task)
+        if stale:
+            return ScanResult(False, "Этикетка прошлого дня", stale, number=number, article=article_name)
 
     target_site = site_id or unit.site_id
     try:

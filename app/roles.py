@@ -45,7 +45,7 @@ PRINTERS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_STOREKEEPER)  # начал�
 STOCK_ENTRY: Final[tuple[str, ...]] = (ROLE_ADMIN,)
 EXTRA_LABELS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_STOREKEEPER, ROLE_SHIFT_LEAD)
 # Приёмка сканом готового зеркала
-ACCEPTORS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_ASSEMBLER)
+ACCEPTORS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_ASSEMBLER, ROLE_SHIFT_LEAD)
 # Погрузка по каналам и перемещение между площадками
 LOADERS: Final[tuple[str, ...]] = (ROLE_ADMIN, ROLE_LOADER)
 # Возвраты от покупателей и печать ШК для зеркал без маркировки
