@@ -740,3 +740,6 @@ tr[style*="background"] > td { border-bottom-color: #d0d4db; border-right-color:
 	background: var(--top-bg); color: #fff; box-shadow: 0 6px 18px rgba(0, 0, 0, .25); pointer-events: none;
 }
 [data-tip]:not(.open-mark) { cursor: help; }
+
+/* Режим проверки сканов (2026-11-10) */
+.check-mode-banner { background: #f2b53b; color: #1a1405; font-weight: 700; text-align: center; padding: 8px 16px; }

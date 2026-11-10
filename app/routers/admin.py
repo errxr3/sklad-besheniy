@@ -26,7 +26,8 @@ from app.services.admin import (
     update_site,
     update_user,
 )
-from app.settings_store import get_int, set_value
+from app.services.scan_check import check_since
+from app.settings_store import get_int, scan_check_on, set_value
 from app.statuses import ALL_ROLES
 from app.web import GuardedRoute, page
 
@@ -330,9 +331,26 @@ def settings_page(request: Request, db: Session = Depends(get_db), ok: str = "",
             "label_width_mm": get_int(db, "label_width_mm"),
             "label_height_mm": get_int(db, "label_height_mm"),
             "ship_cancel_minutes": get_int(db, "ship_cancel_minutes"),
+            "scan_check": scan_check_on(db),
+            "scan_check_since": check_since(db),
             "ok": ok,
             "err": err,
         },
+    )
+
+
+@router.post("/scan-check/wipe")
+def scan_check_wipe(request: Request, db: Session = Depends(get_db)) -> Response:
+    """«Стереть проверку»: всё, что сделано в режиме проверки сканов, убирается, режим выключается."""
+    from app.services.scan_check import wipe_check
+
+    done = wipe_check(db, actor=request.state.user)
+    logger.warning("Проверка сканов стёрта", extra={"status": f"{done}"})
+    return _redirect(
+        "/admin/settings",
+        message=f"Проверка стёрта: отменено отгрузок {done.shipments}, удалено партий {done.batches} "
+        f"({done.items} этикеток), заказов дня {done.demand}, закрыто каналов {done.pallets}. "
+        f"Режим выключен.",
     )
 
 
@@ -342,6 +360,7 @@ def settings_save(
     label_width_mm: int = Form(58),
     label_height_mm: int = Form(40),
     ship_cancel_minutes: int = Form(10),
+    scan_check: str = Form(""),
     db: Session = Depends(get_db),
 ) -> Response:
     """Сохранить настройки."""
@@ -350,4 +369,8 @@ def settings_save(
     set_value(db, "label_width_mm", str(label_width_mm))
     set_value(db, "label_height_mm", str(label_height_mm))
     set_value(db, "ship_cancel_minutes", str(max(1, ship_cancel_minutes)))
+    from app.services.scan_check import set_check_mode
+
+    if set_check_mode(db, bool(scan_check)):
+        logger.warning("Режим проверки сканов", extra={"status": "включён" if scan_check else "выключен"})
     return _redirect("/admin/settings", message="Настройки сохранены")

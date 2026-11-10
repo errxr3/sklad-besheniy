@@ -88,6 +88,7 @@ ROUTE_ROLES: Final[dict[tuple[str, str], tuple[str, ...]]] = {
     ("POST", "/admin/articles/color"): ADMIN_ONLY,
     ("GET", "/admin/settings"): ADMIN_ONLY,
     ("POST", "/admin/settings"): ADMIN_ONLY,
+    ("POST", "/admin/scan-check/wipe"): ADMIN_ONLY,
     # Приёмка сканом и перепечатка этикетки
     ("POST", "/scan/accept"): ACCEPTORS,
     ("GET", "/make/reprint/{number}"): LEADS,

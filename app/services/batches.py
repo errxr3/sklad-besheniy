@@ -38,6 +38,7 @@ from app.models import (
     User,
 )
 from app.services.stock import active_sites, stock_by_article_site
+from app.settings_store import scan_check_on
 from app.statuses import (
     CHANNEL_PRIORITY,
     CHANNELS,
@@ -523,11 +524,16 @@ def _allocate(session: Session, *, day: date | None = None) -> None:
     stock_seen: dict[tuple[int, int], int] = {}
     where: dict[tuple[int, int], set[str]] = defaultdict(set)
 
+    check_mode = scan_check_on(session)
     for key in sorted(postings, key=order):
         group = postings[key]
         committed = key in items and items[key].state == SHIP_WAIT
         if not committed and any(line.excluded for line in group):
             _decide(group, NO, EXCLUDED_REASON)  # покрашено владельцем — зеркала не держим
+            continue
+        if check_mode:
+            # Режим проверки сканов: остатки не смотрим, едет всё присланное (покраска владельца — как есть)
+            _decide(group, GO, CHECK_REASON)
             continue
         wanted: dict[tuple[int, int], int] = defaultdict(int)
         broken = ""
@@ -599,6 +605,9 @@ def _allocate(session: Session, *, day: date | None = None) -> None:
     _sync_questions(session, day=day, questions=questions, asked=asked, covered=covered,
                     need=need, stock=stock_seen, work=work, where=where)
     session.flush()
+
+
+CHECK_REASON = "режим проверки сканов: едет всё присланное"
 
 
 def _decide(group: list[ShipDemand], decision: str, reason: str) -> None:

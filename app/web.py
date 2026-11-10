@@ -271,6 +271,16 @@ def _ship_question_count(user: User | None) -> int:
         return count_open_questions(session, site_ids=site_ids)
 
 
+def _scan_check_mode(user: User | None) -> bool:
+    """Включён режим проверки сканов — жёлтая плашка у всех вошедших."""
+    if user is None:
+        return False
+    from app.settings_store import scan_check_on
+
+    with get_session_factory()() as session:
+        return scan_check_on(session)
+
+
 def page(request: Request, template: str, context: dict[str, Any] | None = None) -> HTMLResponse:
     """Отрисовать страницу с общими переменными."""
     user = getattr(request.state, "user", None) or load_user(request)
@@ -286,6 +296,7 @@ def page(request: Request, template: str, context: dict[str, Any] | None = None)
         "can": lambda path, method="GET": can(user.role if user else None, path, method),
         # Вопросы по нехватке для отгрузки — красная плашка у начальника на всех страницах
         "ship_questions": lambda: _ship_question_count(user),
+        "scan_check_mode": lambda: _scan_check_mode(user),
     }
     data.update(context or {})
     return templates.TemplateResponse(request, template, data)

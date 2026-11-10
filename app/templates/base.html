@@ -44,6 +44,9 @@
 <a class="ship-alert" href="/ship/questions">Вопросы по отгрузке: {{ ship_q }} — не хватает зеркал, нужен ваш ответ</a>
 {% endif %}
 {% endif %}
+{% if user and scan_check_mode is defined and scan_check_mode() %}
+<div class="check-mode-banner">РЕЖИМ ПРОВЕРКИ СКАНОВ — склад не решает по остаткам, едет всё присланное</div>
+{% endif %}
 <main>
 	{% block content %}{% endblock %}
 </main>

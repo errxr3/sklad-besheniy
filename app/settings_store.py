@@ -8,7 +8,15 @@ DEFAULTS: dict[str, str] = {
     "label_width_mm": "58",
     "label_height_mm": "40",
     "ship_cancel_minutes": "10",
+    "scan_check_mode": "0",
 }
+
+SCAN_CHECK_KEY = "scan_check_mode"
+
+
+def scan_check_on(session: Session) -> bool:
+    """Режим проверки сканов: склад не решает по остаткам, всё присланное едет (решение 2026-11-10)."""
+    return get_value(session, SCAN_CHECK_KEY) == "1"
 
 
 def get_value(session: Session, key: str) -> str:
