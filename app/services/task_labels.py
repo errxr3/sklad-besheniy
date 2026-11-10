@@ -16,8 +16,8 @@ from sqlalchemy.sql.elements import ColumnElement
 
 from app.models import Task, Unit, User
 from app.services.tasks import done_count
-from app.services.units import MAX_PRINT_QTY, UnitError, create_printed_units, future_task_error
-from app.statuses import IN_STOCK, MV_ACCEPT, MV_LABEL_VOID, PRINTED, ROLE_ADMIN, WRITTEN_OFF
+from app.services.units import MAX_PRINT_QTY, UnitError, create_printed_units
+from app.statuses import MV_LABEL_VOID, PRINTED, WRITTEN_OFF
 from app.transitions import apply_transition, lock_unit_by_id
 
 VOID_NOTE = "этикетка не использована — зеркало не сделано"
@@ -231,41 +231,3 @@ def upcoming_tasks(session: Session, *, user_id: int, day: date) -> list[Task]:
             .order_by(Task.id)
         ).all()
     )
-
-
-def submit_task(
-    session: Session, *, task_id: int, actor: User, shift_id: int | None = None
-) -> int:
-    """«Собрал всё»: все висящие этикетки задачи — на склад без скана.
-
-    Если сделано не всё, неиспользованные этикетки потом сканируются в «Убрать лишние
-    этикетки» — так на складе остаются ровно наклеенные.
-    """
-    task = session.get(Task, task_id)
-    if task is None or task.kind != "article":
-        raise UnitError("Задача не найдена")
-    if actor.role != ROLE_ADMIN and task.user_id != actor.id:
-        raise UnitError("Это задача другого сборщика")
-    early = future_task_error(task)
-    if early:
-        raise UnitError(early)
-    units = hanging_units(session, task_ids=[task.id])
-    if not units:
-        raise UnitError("По этой задаче нет напечатанных этикеток — возьмите их у кладовщицы")
-    accepted = 0
-    for candidate in units:
-        unit = lock_unit_by_id(session, candidate.id)
-        if unit is None or unit.status != PRINTED:
-            continue
-        apply_transition(
-            session,
-            unit,
-            IN_STOCK,
-            movement_type=MV_ACCEPT,
-            user_id=actor.id,
-            shift_id=shift_id,
-            to_site_id=task.site_id,
-            note=BUTTON_ACCEPT_NOTE,
-        )
-        accepted += 1
-    return accepted

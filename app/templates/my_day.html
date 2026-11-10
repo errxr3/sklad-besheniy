@@ -58,20 +58,13 @@
 			<span class="muted">план {{ item.task.qty_plan }}{% if item.task.date != today %} · {{ item.task.date|day_month }}{% endif %}</span>
 		</div>
 		<p class="muted">Сдано на склад: <b>{{ item.done }}</b> · этикеток на руках: <b>{{ item.hanging }}</b></p>
-		{% if item.hanging and shift %}
-		<form method="post" action="/tasks/submit"
-		      onsubmit="return confirm('Собрал всё: записать на склад {{ item.hanging }} шт. «{{ item.task.article.name }}»? Неиспользованные этикетки отдайте кладовщице.')">
-			<input type="hidden" name="csrf_token" value="{{ csrf }}">
-			<input type="hidden" name="task_id" value="{{ item.task.id }}">
-			<button type="submit" class="big">Собрал всё ({{ item.hanging }} шт.)</button>
-		</form>
-		{% elif item.hanging %}
+		{% if item.hanging and not shift %}
 		<p class="hint">Чтобы сдать, начните смену.</p>
 		{% endif %}
 	</div>
 	{% endfor %}
-	{% if tasks %}<p class="hint">Сделали меньше, чем этикеток? Всё равно нажмите «Собрал всё», а лишние этикетки
-		отдайте кладовщице — она уберёт их со склада сканом.</p>{% endif %}
+	{% if tasks %}<p class="hint">Сдавайте каждое зеркало сканом его этикетки. Лишние этикетки отдайте
+		кладовщице — она уберёт их сканом.</p>{% endif %}
 	{% if upcoming %}
 	<h2 class="mt">Завтра</h2>
 	<p class="hint">Только посмотреть: сдавать эти задачи можно будет завтра.</p>
@@ -153,7 +146,7 @@
 	var screen = new window.Sklad.ScanScreen({
 		url: '/scan/accept',
 		csrf: '{{ csrf }}',
-		// После скана карточка «Мои задачи» обновляется: «сдано» растёт, «Собрал всё» уменьшается
+		// После скана карточка «Мои задачи» обновляется: «сдано» растёт, «на руках» уменьшается
 		onSuccess: refreshTasks
 	});
 	function refreshTasks() {

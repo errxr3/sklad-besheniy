@@ -30,11 +30,8 @@ def test_tomorrow_task_is_visible_but_not_accepted(client: TestClient, db: Sessi
 
     page = client.get("/").text
     assert "Завтра" in page and "Ambient warm 100 krug multi" in page
-    assert "Собрал всё (" not in page  # сдать завтрашнюю задачу кнопкой нельзя
 
     token = get_csrf(client, "/")
-    response = client.post("/tasks/submit", data={"csrf_token": token, "task_id": str(task.id)})
-    assert "сдать её можно будет" in response.text
 
     result = client.post(
         "/scan/accept",
