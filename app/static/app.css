@@ -743,3 +743,248 @@ tr[style*="background"] > td { border-bottom-color: #d0d4db; border-right-color:
 
 /* Режим проверки сканов (2026-11-10) */
 .check-mode-banner { background: #f2b53b; color: #1a1405; font-weight: 700; text-align: center; padding: 8px 16px; }
+
+/* =====================================================================
+ * Новый вид (2026-11-12), в духе современных WMS: светлый фон, белые карточки
+ * с мягкой тенью, скругления, индиго-акцент. На компьютере меню — слева, на телефоне —
+ * шапка и лента меню сверху, как раньше. Расположение кнопок на страницах не меняется.
+ * ТАБЛИЦЫ НЕ ТРОГАЕМ: их цвета и линии — на прежних переменных (--line, --tbl-*, --th-bg …),
+ * новый слой использует только свои --ui-*.
+ * ===================================================================== */
+:root {
+	--ui-bg: #f4f6fb;
+	--ui-card: #ffffff;
+	--ui-text: #1b2037;
+	--ui-muted: #6b7285;
+	--ui-line: #e6e9f1;
+	--ui-field: #ffffff;
+	--ui-field-line: #d9deea;
+	--ui-accent: #4c5fd5;
+	--ui-accent-dark: #3d4fc2;
+	--ui-accent-soft: #eef0fd;
+	--ui-on-accent: #ffffff;
+	--ui-side: #ffffff;
+	--ui-shadow: 0 1px 2px rgba(23, 31, 66, .04), 0 6px 20px rgba(23, 31, 66, .06);
+	--ui-shadow-hover: 0 2px 4px rgba(23, 31, 66, .06), 0 12px 28px rgba(23, 31, 66, .10);
+	--ui-radius: 14px;
+	--ui-radius-sm: 10px;
+}
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		--ui-bg: #0e1220;
+		--ui-card: #161b2c;
+		--ui-text: #e8ebf5;
+		--ui-muted: #98a1b8;
+		--ui-line: #252c42;
+		--ui-field: #11162a;
+		--ui-field-line: #2c3450;
+		--ui-accent: #7c8cff;
+		--ui-accent-dark: #95a2ff;
+		--ui-accent-soft: #232a4d;
+		--ui-on-accent: #0e1220;
+		--ui-side: #121728;
+		--ui-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 22px rgba(0, 0, 0, .25);
+		--ui-shadow-hover: 0 2px 4px rgba(0, 0, 0, .35), 0 12px 28px rgba(0, 0, 0, .35);
+	}
+}
+:root[data-theme="dark"] {
+	--ui-bg: #0e1220;
+	--ui-card: #161b2c;
+	--ui-text: #e8ebf5;
+	--ui-muted: #98a1b8;
+	--ui-line: #252c42;
+	--ui-field: #11162a;
+	--ui-field-line: #2c3450;
+	--ui-accent: #7c8cff;
+	--ui-accent-dark: #95a2ff;
+	--ui-accent-soft: #232a4d;
+	--ui-on-accent: #0e1220;
+	--ui-side: #121728;
+	--ui-shadow: 0 1px 2px rgba(0, 0, 0, .3), 0 8px 22px rgba(0, 0, 0, .25);
+	--ui-shadow-hover: 0 2px 4px rgba(0, 0, 0, .35), 0 12px 28px rgba(0, 0, 0, .35);
+}
+
+body { background: var(--ui-bg); color: var(--ui-text); }
+a { color: var(--ui-accent); }
+table a { color: var(--accent); }   /* ссылки в таблицах — прежнего цвета */
+.muted, .hint { color: var(--ui-muted); }
+.ico { flex-shrink: 0; }
+
+/* ---------- Логотип ---------- */
+.logo-mark {
+	display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px;
+	border-radius: 10px; background: var(--ui-accent); color: var(--ui-on-accent);
+	font-weight: 800; font-size: 17px; letter-spacing: 0;
+}
+
+/* ---------- Телефон и планшет: шапка + лента меню (прежние места) ---------- */
+aside.side { display: none; }
+header.top {
+	background: var(--ui-card); color: var(--ui-text); border-bottom: 1px solid var(--ui-line);
+	padding: 10px 16px; box-shadow: 0 1px 0 var(--ui-line);
+}
+header.top a { color: var(--ui-text); }
+header.top .brand { align-items: center; gap: 8px; }
+header.top .brand b { font-size: 18px; font-weight: 800; letter-spacing: .08em; color: var(--ui-text); }
+header.top .brand span { font-size: 13px; color: var(--ui-muted); opacity: 1; letter-spacing: 0; }
+header.top .who { color: var(--ui-text); }
+header.top .who small { color: var(--ui-muted); opacity: 1; }
+header.top button.exit, header.top button.theme {
+	background: var(--ui-card); color: var(--ui-text); border: 1px solid var(--ui-line);
+	border-radius: var(--ui-radius-sm); min-height: 38px;
+}
+header.top button.exit:hover, header.top button.theme:hover { background: var(--ui-accent-soft); }
+
+nav.menu {
+	background: var(--ui-card); border-bottom: 1px solid var(--ui-line); gap: 6px; padding: 8px 14px;
+}
+nav.menu a {
+	gap: 8px; border: 0; border-radius: 999px; padding: 8px 14px; min-height: 40px;
+	color: var(--ui-muted); background: transparent; font-size: 15px;
+}
+nav.menu a .ico { width: 18px; height: 18px; }
+nav.menu a:hover { background: var(--ui-accent-soft); color: var(--ui-text); }
+nav.menu a.active { background: var(--ui-accent-soft); color: var(--ui-accent); border: 0; }
+
+/* ---------- Компьютер: меню слева ---------- */
+@media (min-width: 1024px) {
+	body.has-shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
+	body.has-shell > header.top, body.has-shell .page > header.top, body.has-shell .page > nav.menu { display: none; }
+	aside.side {
+		display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; overflow-y: auto;
+		background: var(--ui-side); border-right: 1px solid var(--ui-line); padding: 20px 14px 14px;
+	}
+	.side-brand { display: flex; align-items: center; gap: 10px; padding: 2px 10px 22px; text-decoration: none; color: var(--ui-text); }
+	.side-brand b { font-size: 19px; font-weight: 800; letter-spacing: .08em; }
+	.side-brand span:last-child { font-size: 13px; color: var(--ui-muted); margin-top: 3px; }
+	.side-nav { display: flex; flex-direction: column; gap: 2px; }
+	.side-nav a {
+		display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: var(--ui-radius-sm);
+		color: var(--ui-muted); text-decoration: none; font-size: 16px; font-weight: 600;
+	}
+	.side-nav a:hover { background: var(--ui-accent-soft); color: var(--ui-text); }
+	.side-nav a.active { background: var(--ui-accent-soft); color: var(--ui-accent); }
+	.side-user {
+		margin-top: auto; padding: 14px 8px 4px; border-top: 1px solid var(--ui-line);
+		display: grid; grid-template-columns: auto 1fr; gap: 6px 10px; align-items: center;
+	}
+	.side-user .avatar {
+		width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center;
+		background: var(--ui-accent-soft); color: var(--ui-accent); font-weight: 700; font-size: 14px;
+	}
+	.side-user .who-text { min-width: 0; line-height: 1.25; }
+	.side-user .who-text b { display: block; font-size: 15px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+	.side-user .who-text small { color: var(--ui-muted); font-size: 13px; }
+	.side-actions { grid-column: 1 / -1; display: flex; gap: 8px; }
+	.side-actions form { margin: 0; flex: 1; }
+	.side-actions button {
+		min-height: 36px; padding: 4px 10px; font-size: 14px; width: 100%;
+		background: var(--ui-card); color: var(--ui-text); border: 1px solid var(--ui-line); border-radius: var(--ui-radius-sm);
+	}
+	.side-actions button.theme { width: 40px; flex: 0 0 40px; padding: 4px; }
+	.side-actions button:hover { background: var(--ui-accent-soft); }
+	.page { min-width: 0; }
+	main { padding: 26px 32px 40px; max-width: 1280px; }
+}
+
+/* ---------- Заголовки и карточки ---------- */
+h1 { font-size: 26px; font-weight: 750; letter-spacing: -.02em; margin: 2px 0 16px; color: var(--ui-text); }
+h2 { font-size: 18px; font-weight: 700; letter-spacing: -.01em; color: var(--ui-text); }
+.card {
+	background: var(--ui-card); border: 1px solid var(--ui-line); border-radius: var(--ui-radius);
+	box-shadow: var(--ui-shadow); padding: 18px 20px; margin-bottom: 14px;
+}
+a.card:hover { border-color: var(--ui-line); box-shadow: var(--ui-shadow-hover); }
+a.card.tile { border-left: 1px solid var(--ui-line); position: relative; padding: 18px 20px; }
+a.card.tile h2, a.card.tile h3 { color: var(--ui-text); margin: 0; }
+a.card.tile::after {
+	content: "›"; position: absolute; right: 18px; top: 50%; transform: translateY(-50%);
+	font-size: 26px; color: var(--ui-muted); line-height: 1;
+}
+a.card.tile:hover::after { color: var(--ui-accent); }
+.grid2, .grid3 { gap: 14px; }
+
+/* ---------- Поля ---------- */
+input[type=text], input[type=number], input[type=password], input[type=search],
+input[type=date], input[type=time], select, textarea {
+	background: var(--ui-field); color: var(--ui-text); border: 1px solid var(--ui-field-line);
+	border-radius: var(--ui-radius-sm); font-size: 17px; min-height: 48px;
+}
+input:focus, select:focus, textarea:focus {
+	outline: none; border-color: var(--ui-accent); box-shadow: 0 0 0 4px var(--ui-accent-soft);
+}
+label { font-size: 15px; color: var(--ui-text); }
+
+/* ---------- Кнопки ---------- */
+button, .btn {
+	border-radius: var(--ui-radius-sm); background: var(--ui-accent); border-color: var(--ui-accent);
+	color: var(--ui-on-accent); font-size: 17px; box-shadow: 0 1px 2px rgba(23, 31, 66, .08);
+}
+button:hover, .btn:hover { background: var(--ui-accent-dark); border-color: var(--ui-accent-dark); }
+button.secondary, .btn.secondary {
+	background: var(--ui-card); color: var(--ui-text); border-color: var(--ui-field-line); box-shadow: none;
+}
+button.secondary:hover, .btn.secondary:hover { background: var(--ui-accent-soft); border-color: var(--ui-field-line); }
+button.big, .btn.big { border-radius: var(--ui-radius); min-height: 64px; font-size: 20px; }
+button.big.secondary, .btn.big.secondary { background: var(--ui-card); }
+button.danger, .btn.danger { background: var(--err); border-color: var(--err); color: #fff; }
+
+/* ---------- Сообщения, метки ---------- */
+.msg { border-radius: var(--ui-radius-sm); border-left-width: 4px; }
+.badge, .chip { border-radius: 999px; }
+
+/* ---------- Сканирование ---------- */
+.scan-result { border-radius: var(--ui-radius); }
+.scan-result.ok::before, .scan-result.err::before, .scan-result.warn::before { border-radius: 50%; }
+.scan-input { border-radius: var(--ui-radius); }
+.scan-history li { border-radius: 8px; margin-bottom: 4px; background: var(--ui-card); border: 1px solid var(--ui-line); }
+.scan-mode { border-radius: 999px; border-color: var(--ui-field-line); }
+.scan-mode button.active { background: var(--ui-accent); color: var(--ui-on-accent); }
+
+/* ---------- Погрузка: каналы ---------- */
+.channel-btn { border-radius: var(--ui-radius); min-height: 96px; }
+.choice { border-radius: var(--ui-radius-sm); border-color: var(--ui-line); background: var(--ui-card); }
+.choice:has(input:checked) { border-color: var(--ui-accent); background: var(--ui-accent-soft); }
+
+/* ---------- Задачи сборщика ---------- */
+.task { border-radius: var(--ui-radius); background: var(--ui-card); border-color: var(--ui-line); padding: 14px 16px; }
+.task .name { font-size: 18px; }
+.progress { height: 8px; border-radius: 999px; background: var(--ui-accent-soft); }
+.progress > span { border-radius: 999px; }
+
+/* ---------- Подвкладки «Склада» ---------- */
+.subtabs { border-bottom-color: var(--ui-line); gap: 4px; }
+.subtabs a { color: var(--ui-muted); border-radius: 8px 8px 0 0; }
+.subtabs a.active { color: var(--ui-accent); border-bottom-color: var(--ui-accent); }
+
+/* ---------- Кабинет администратора ---------- */
+.admin-section h1::before, .admin-section h2::before { border-radius: 4px; }
+.grid3 .card { padding: 16px 18px; }
+.grid3 h3 { font-size: 16px; }
+
+/* ---------- Плашки сверху ---------- */
+.ship-alert { border-bottom: 0; margin: 12px 16px 0; border-radius: var(--ui-radius-sm); }
+.check-mode-banner { border-radius: 0; }
+@media (min-width: 1024px) {
+	.ship-alert { margin: 16px 32px 0; }
+}
+
+/* ---------- Вход ---------- */
+.login-hero { background: var(--ui-card); color: var(--ui-text); border: 1px solid var(--ui-line); border-radius: var(--ui-radius); box-shadow: var(--ui-shadow); }
+.login-logo { color: var(--ui-accent); }
+.login-hero p { color: var(--ui-muted); opacity: 1; }
+
+/* ---------- Таблицы — как были: карточка с таблицей не получает новую тень и отступы ---------- */
+.card:has(> table), .card:has(> .scroll > table) { padding: 0; background: var(--card); }
+
+@media (max-width: 600px) {
+	h1 { font-size: 22px; }
+	.card { padding: 14px 14px; border-radius: 12px; }
+	nav.menu { padding: 8px 10px; }
+	header.top .brand b { font-size: 16px; }
+	header.top .brand span { display: none; }
+	header.top .logo-mark { width: 28px; height: 28px; font-size: 15px; border-radius: 8px; }
+}
+/* На телефоне прятался значок логотипа (старое правило прятало все span в .brand) */
+header.top .brand .logo-mark { display: inline-flex; }
+header.top .brand .logo-mark { opacity: 1; font-size: 15px; color: var(--ui-on-accent); letter-spacing: 0; }

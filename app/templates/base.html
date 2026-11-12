@@ -4,7 +4,7 @@
 	<meta charset="utf-8">
 	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 	<title>{% block title %}Склад{% endblock %} · BLAGO</title>
-	<meta name="theme-color" content="#12151c">
+	<meta name="theme-color" content="#f4f6fb">
 	<script>
 	// Тема выбирается до отрисовки, чтобы страница не мигала белым
 	try { var t = localStorage.getItem('sklad-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
@@ -13,10 +13,33 @@
 	<link rel="icon" href="data:,">
 	<script>window.SKLAD_STATIC_VERSION = '{{ STATIC_VERSION }}';</script>
 </head>
-<body>
+<body class="{% if user %}has-shell{% endif %}">
+{% from "_icons.html" import icon %}
 {% if user %}
+{#- Компьютер: меню слева, как в WMS (2026-11-12). Телефон: шапка и меню-лента сверху — на прежних местах. -#}
+{%- set initials = (user.name.split()|map('first')|list)[:2]|join -%}
+<aside class="side">
+	<a class="side-brand" href="/"><span class="logo-mark">B</span><b>BLAGO</b><span>склад</span></a>
+	<nav class="side-nav">
+		{% for item in menu %}
+			<a href="{{ item.url }}" {% if item.url == active_url %}class="active"{% endif %}>{{ icon(item.url) }}<span>{{ item.title }}</span></a>
+		{% endfor %}
+	</nav>
+	<div class="side-user">
+		<span class="avatar">{{ initials }}</span>
+		<div class="who-text"><b>{{ user.name }}</b><small>{{ ROLE_LABELS[user.role] }}</small></div>
+		<div class="side-actions">
+			<button type="button" class="theme" data-theme-toggle title="Светлая / тёмная тема" aria-label="Светлая или тёмная тема"><svg width="18" height="18" viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="8" fill="none" stroke="currentColor" stroke-width="2"/><path d="M10 2a8 8 0 0 1 0 16z" fill="currentColor"/></svg></button>
+			<form method="post" action="/logout">
+				<input type="hidden" name="csrf_token" value="{{ csrf }}">
+				<button type="submit" class="exit">Выйти</button>
+			</form>
+		</div>
+	</div>
+</aside>
+<div class="page">
 <header class="top">
-	<a class="brand" href="/"><b>BLAGO</b><span>склад</span></a>
+	<a class="brand" href="/"><span class="logo-mark">B</span><b>BLAGO</b><span>склад</span></a>
 	<div class="who">
 		{{ user.name }}
 		<small>{{ ROLE_LABELS[user.role] }}</small>
@@ -29,14 +52,16 @@
 </header>
 <nav class="menu">
 	{% for item in menu %}
-		<a href="{{ item.url }}" {% if item.url == active_url %}class="active"{% endif %}>{{ item.title }}</a>
+		<a href="{{ item.url }}" {% if item.url == active_url %}class="active"{% endif %}>{{ icon(item.url) }}<span>{{ item.title }}</span></a>
 	{% endfor %}
 </nav>
 <script>
 (function () {
 	// На телефоне меню прокручивается вбок — показываем выбранный пункт
 	var active = document.querySelector('nav.menu a.active');
-	if (active && active.scrollIntoView) active.scrollIntoView({ block: 'nearest', inline: 'center' });
+	if (active && active.scrollIntoView && window.matchMedia('(max-width: 1023px)').matches) {
+		active.scrollIntoView({ block: 'nearest', inline: 'center' });
+	}
 })();
 </script>
 {% set ship_q = ship_questions() if (user and ship_questions is defined) else 0 %}
@@ -50,6 +75,7 @@
 <main>
 	{% block content %}{% endblock %}
 </main>
+{% if user %}</div>{% endif %}
 <script>
 (function () {
 	// Кнопка темы: переключает светлую и тёмную, выбор запоминается на этом телефоне
