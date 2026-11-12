@@ -52,12 +52,12 @@ def test_admin_toggles_mode_and_plan_is_recalculated(client: TestClient, db: Ses
     db.expire_all()
     assert scan_check_on(db)
     assert {line.decision for line in db.query(ShipDemand)} == {"go"}
-    assert "РЕЖИМ ПРОВЕРКИ СКАНОВ" in client.get("/admin/settings").text
+    assert "check-dot" in client.get("/admin/settings").text
     client.post("/admin/settings", data=form)
     db.expire_all()
     assert not scan_check_on(db)
     assert {line.decision for line in db.query(ShipDemand)} == {"no"}
-    assert "РЕЖИМ ПРОВЕРКИ СКАНОВ" not in client.get("/admin/settings").text
+    assert "check-dot" not in client.get("/admin/settings").text
 
 
 def test_loader_sees_banner(client: TestClient, db: Session) -> None:
@@ -65,7 +65,7 @@ def test_loader_sees_banner(client: TestClient, db: Session) -> None:
     loader = make_user(db, name="Грузчик Проверки", role=ROLE_LOADER)
     db.commit()
     login(client, loader)
-    assert "РЕЖИМ ПРОВЕРКИ СКАНОВ" in client.get("/").text
+    assert "check-dot" in client.get("/").text
 
 
 def test_wipe_removes_everything_done_during_check(client: TestClient, db: Session) -> None:

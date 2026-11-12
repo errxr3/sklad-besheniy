@@ -988,3 +988,20 @@ button.danger, .btn.danger { background: var(--err); border-color: var(--err); c
 /* На телефоне прятался значок логотипа (старое правило прятало все span в .brand) */
 header.top .brand .logo-mark { display: inline-flex; }
 header.top .brand .logo-mark { opacity: 1; font-size: 15px; color: var(--ui-on-accent); letter-spacing: 0; }
+
+/* Логотип без значка: «BLAGO» цветом текста, «склад» — синим (2026-11-12) */
+.side-brand b, header.top .brand b { color: var(--ui-text); }
+.side-brand .brand-sub, header.top .brand .brand-sub {
+	display: inline; color: var(--ui-accent); opacity: 1; font-weight: 700; font-size: 14px; letter-spacing: .02em;
+}
+.side-brand { align-items: baseline; gap: 8px; }
+header.top .brand { align-items: baseline; }
+/* Режим проверки сканов — жёлтый кружок у названия, подробности при наведении */
+.check-dot {
+	display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #f2b53b;
+	box-shadow: 0 0 0 3px rgba(242, 181, 59, .25); align-self: center; margin-left: 2px; cursor: help;
+}
+@media (max-width: 600px) {
+	header.top .brand .brand-sub { display: inline; font-size: 13px; }
+}
+header.top .brand .check-dot { display: inline-block; }

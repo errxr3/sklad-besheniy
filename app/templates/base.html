@@ -18,8 +18,10 @@
 {% if user %}
 {#- Компьютер: меню слева, как в WMS (2026-11-12). Телефон: шапка и меню-лента сверху — на прежних местах. -#}
 {%- set initials = (user.name.split()|map('first')|list)[:2]|join -%}
+{%- set check_on = scan_check_mode is defined and scan_check_mode() -%}
+{%- set check_dot = '<span class="check-dot" data-tip="Режим проверки сканов: склад не решает по остаткам, едет всё присланное" aria-label="Режим проверки сканов"></span>' if check_on else '' -%}
 <aside class="side">
-	<a class="side-brand" href="/"><span class="logo-mark">B</span><b>BLAGO</b><span>склад</span></a>
+	<a class="side-brand" href="/"><b>BLAGO</b><span class="brand-sub">склад</span>{{ check_dot|safe }}</a>
 	<nav class="side-nav">
 		{% for item in menu %}
 			<a href="{{ item.url }}" {% if item.url == active_url %}class="active"{% endif %}>{{ icon(item.url) }}<span>{{ item.title }}</span></a>
@@ -39,7 +41,7 @@
 </aside>
 <div class="page">
 <header class="top">
-	<a class="brand" href="/"><span class="logo-mark">B</span><b>BLAGO</b><span>склад</span></a>
+	<a class="brand" href="/"><b>BLAGO</b><span class="brand-sub">склад</span>{{ check_dot|safe }}</a>
 	<div class="who">
 		{{ user.name }}
 		<small>{{ ROLE_LABELS[user.role] }}</small>
@@ -68,9 +70,6 @@
 {% if ship_q %}
 <a class="ship-alert" href="/ship/questions">Вопросы по отгрузке: {{ ship_q }} — не хватает зеркал, нужен ваш ответ</a>
 {% endif %}
-{% endif %}
-{% if user and scan_check_mode is defined and scan_check_mode() %}
-<div class="check-mode-banner">РЕЖИМ ПРОВЕРКИ СКАНОВ — склад не решает по остаткам, едет всё присланное</div>
 {% endif %}
 <main>
 	{% block content %}{% endblock %}
