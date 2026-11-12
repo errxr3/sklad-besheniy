@@ -60,6 +60,8 @@ ADMIN_SECTIONS: tuple[AdminSection, ...] = (
         ("/tasks", "Задачи", "Задачи сборщикам на день"),
         ("/stock", "Остатки", "Как в гугл-таблице, CSV и XLSX"),
         ("/shipments", "Отгрузка", "Остатки, задачи и отгрузки по каналам за день, XLSX"),
+        ("/shipments/plan", "План отгрузки", "Хватит ли зеркал на заказы дня"),
+        ("/ship/questions", "Вопросы и срочное", "Не хватает зеркал: ответ начальника"),
         ("/mirror", "Найти зеркало", "По номеру этикетки: история, перепечатка"),
         ("/warehouse/in-transit", "Застряли в пути", "Перемещения, которые не приняли больше суток"),
         ("/warehouse/printed-old", "Этикетки без зеркал", "Напечатаны больше суток назад, зеркал нет"),
@@ -69,7 +71,7 @@ ADMIN_SECTIONS: tuple[AdminSection, ...] = (
         ("/reports/plan-fact", "Задачи: план и факт", "Сделано против плана"),
     ), groups=(
         ("Смена", ("/board", "/tasks", "/reports/plan-fact", "/reports/timesheet")),
-        ("Склад", ("/stock", "/shipments", "/mirror", "/journal")),
+        ("Склад", ("/stock", "/shipments", "/shipments/plan", "/ship/questions", "/mirror", "/journal")),
         ("Расхождения", ("/warehouse/in-transit", "/warehouse/printed-old", "/stock-entry/remove")),
     )),
     AdminSection("keeper", "Кладовщица", (

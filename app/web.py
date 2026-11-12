@@ -281,6 +281,9 @@ def _scan_check_mode(user: User | None) -> bool:
         return scan_check_on(session)
 
 
+from app.services.alerts import menu_badge  # noqa: E402
+
+
 def _once(fn: Any) -> Any:
     """Вызвать fn один раз за страницу, дальше отдавать запомненное."""
     box: list[Any] = []
@@ -293,13 +296,14 @@ def _once(fn: Any) -> Any:
 
 
 def _alerts(user: User | None) -> dict[str, int]:
-    """Счётчики «Расхождений» для админа и начальника смены: {адрес: сколько висит}."""
+    """Счётчики уведомлений для админа и начальника смены: {адрес: сколько висит}."""
     if user is None or user.role not in (ROLE_ADMIN, ROLE_SHIFT_LEAD):
         return {}
-    from app.services.alerts import discrepancy_counts
+    from app.services.alerts import lead_alerts
 
     with get_session_factory()() as session:
-        return discrepancy_counts(session)
+        site_ids = [user.home_site_id] if user.role == ROLE_SHIFT_LEAD and user.home_site_id else None
+        return lead_alerts(session, site_ids=site_ids)
 
 
 def page(request: Request, template: str, context: dict[str, Any] | None = None) -> HTMLResponse:
@@ -320,6 +324,7 @@ def page(request: Request, template: str, context: dict[str, Any] | None = None)
         "scan_check_mode": lambda: _scan_check_mode(user),
         # Счётчики «Расхождений» — считаются один раз за страницу, при первом обращении
         "alerts": _once(lambda: _alerts(user)),
+        "menu_badge": menu_badge,
     }
     data.update(context or {})
     return templates.TemplateResponse(request, template, data)
