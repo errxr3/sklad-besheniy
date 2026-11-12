@@ -10,7 +10,9 @@
 	try { var t = localStorage.getItem('sklad-theme'); if (t) document.documentElement.dataset.theme = t; } catch (e) {}
 	</script>
 	<link rel="stylesheet" href="/static/app.css?v={{ STATIC_VERSION }}">
-	<link rel="icon" href="data:,">
+	<link rel="icon" href="/static/favicon.svg?v={{ STATIC_VERSION }}" type="image/svg+xml">
+	<link rel="icon" href="/static/favicon-32.png?v={{ STATIC_VERSION }}" sizes="32x32" type="image/png">
+	<link rel="apple-touch-icon" href="/static/apple-touch-icon.png?v={{ STATIC_VERSION }}">
 	<script>window.SKLAD_STATIC_VERSION = '{{ STATIC_VERSION }}';</script>
 </head>
 <body class="{% if user %}has-shell{% endif %}">
