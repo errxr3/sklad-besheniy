@@ -281,6 +281,27 @@ def _scan_check_mode(user: User | None) -> bool:
         return scan_check_on(session)
 
 
+def _once(fn: Any) -> Any:
+    """Вызвать fn один раз за страницу, дальше отдавать запомненное."""
+    box: list[Any] = []
+
+    def call() -> Any:
+        if not box:
+            box.append(fn())
+        return box[0]
+    return call
+
+
+def _alerts(user: User | None) -> dict[str, int]:
+    """Счётчики «Расхождений» для админа и начальника смены: {адрес: сколько висит}."""
+    if user is None or user.role not in (ROLE_ADMIN, ROLE_SHIFT_LEAD):
+        return {}
+    from app.services.alerts import discrepancy_counts
+
+    with get_session_factory()() as session:
+        return discrepancy_counts(session)
+
+
 def page(request: Request, template: str, context: dict[str, Any] | None = None) -> HTMLResponse:
     """Отрисовать страницу с общими переменными."""
     user = getattr(request.state, "user", None) or load_user(request)
@@ -297,6 +318,8 @@ def page(request: Request, template: str, context: dict[str, Any] | None = None)
         # Вопросы по нехватке для отгрузки — красная плашка у начальника на всех страницах
         "ship_questions": lambda: _ship_question_count(user),
         "scan_check_mode": lambda: _scan_check_mode(user),
+        # Счётчики «Расхождений» — считаются один раз за страницу, при первом обращении
+        "alerts": _once(lambda: _alerts(user)),
     }
     data.update(context or {})
     return templates.TemplateResponse(request, template, data)

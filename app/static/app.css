@@ -1005,3 +1005,15 @@ header.top .brand { align-items: baseline; }
 	header.top .brand .brand-sub { display: inline; font-size: 13px; }
 }
 header.top .brand .check-dot { display: inline-block; }
+
+/* Уведомления «Расхождений»: красный счётчик (2026-11-12) */
+.alert-badge {
+	display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 20px;
+	padding: 0 6px; margin-left: 6px; border-radius: 999px; background: var(--err); color: #fff;
+	font-size: 12px; font-weight: 700; line-height: 1; vertical-align: 2px; letter-spacing: 0; text-transform: none;
+}
+.side-nav a .alert-badge, nav.menu a .alert-badge { margin-left: auto; }
+nav.menu a .alert-badge { margin-left: 4px; }
+h2.tile-group { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--ui-muted); margin: 20px 0 10px; }
+h2.tile-group::before { display: none; }
+a.card.tile.has-alert { border-color: var(--err); }

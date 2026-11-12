@@ -40,6 +40,17 @@ class AdminSection:
     key: str
     title: str
     links: tuple[tuple[str, str, str], ...]  # (адрес, название, пояснение)
+    # Группы плиток: (заголовок, адреса). Пусто — плитки одним списком (2026-11-12)
+    groups: tuple[tuple[str, tuple[str, ...]], ...] = ()
+
+    def grouped(self) -> list[tuple[str, list[tuple[str, str, str]]]]:
+        """Плитки по группам; то, что не попало ни в одну группу, — в конце без заголовка."""
+        if not self.groups:
+            return [("", list(self.links))]
+        by_url = {link[0]: link for link in self.links}
+        out = [(title, [by_url[u] for u in urls if u in by_url]) for title, urls in self.groups]
+        rest = [link for link in self.links if not any(link[0] in urls for _, urls in self.groups)]
+        return out + ([("", rest)] if rest else [])
 
 
 # Все действия системы, разложенные по ролям — кнопки верхнего меню администратора
@@ -56,6 +67,10 @@ ADMIN_SECTIONS: tuple[AdminSection, ...] = (
         ("/journal", "Журнал", "Все движения зеркал, CSV"),
         ("/reports/timesheet", "Табель", "Смены и часы"),
         ("/reports/plan-fact", "Задачи: план и факт", "Сделано против плана"),
+    ), groups=(
+        ("Смена", ("/board", "/tasks", "/reports/plan-fact", "/reports/timesheet")),
+        ("Склад", ("/stock", "/shipments", "/mirror", "/journal")),
+        ("Расхождения", ("/warehouse/in-transit", "/warehouse/printed-old", "/stock-entry/remove")),
     )),
     AdminSection("keeper", "Кладовщица", (
         ("/labels", "Печать этикеток", "Этикетки каждому сборщику в коробку с комплектующими"),

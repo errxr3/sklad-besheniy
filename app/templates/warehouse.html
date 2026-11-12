@@ -7,7 +7,7 @@
 	<a class="card tile" href="/stock"><h2>Остатки</h2></a>
 	<a class="card tile" href="/shipments"><h2>Отгрузка</h2></a>
 	<a class="card tile" href="/warehouse/in-transit"><h2>В пути больше суток</h2><p class="muted">{{ in_transit }} зеркал</p></a>
-	<a class="card tile" href="/warehouse/printed-old"><h2>Напечатано больше суток</h2></a>
+	{% set al = alerts() if alerts is defined else {} %}<a class="card tile" href="/warehouse/printed-old"><h2>Напечатано больше суток{% if al.get('/warehouse/printed-old') %} <span class="alert-badge">{{ al['/warehouse/printed-old'] }}</span>{% endif %}</h2></a>
 	{% if can('/inventory') %}
 	<a class="card tile" href="/inventory"><h2>Инвентаризация</h2></a>
 	<a class="card tile" href="/writeoff"><h2>Списание</h2></a>

@@ -1,12 +1,19 @@
 {% extends "base.html" %}
 {% block title %}{{ section.title }}{% endblock %}
 {% block content %}
+{% set al = alerts() if alerts is defined else {} %}
 <section class="admin-section {{ section.key }}">
 	<h1>{{ section.title }}</h1>
+	{% for group, links in section.grouped() %}
+	{% if group %}
+	{% set ns = namespace(total=0) %}{% for url, _n, _h in links %}{% set ns.total = ns.total + (al.get(url) or 0) %}{% endfor %}{% set group_total = ns.total %}
+	<h2 class="tile-group">{{ group }}{% if group_total %} <span class="alert-badge" title="Висит: {{ group_total }}">{{ group_total }}</span>{% endif %}</h2>
+	{% endif %}
 	<div class="grid3">
-		{% for url, name, hint in section.links %}
-		<a class="card tile" href="{{ url }}"><h3>{{ name }}</h3></a>
+		{% for url, name, hint in links %}
+		<a class="card tile{% if al.get(url) %} has-alert{% endif %}" href="{{ url }}"><h3>{{ name }}{% if al.get(url) %} <span class="alert-badge">{{ al[url] }}</span>{% endif %}</h3></a>
 		{% endfor %}
 	</div>
+	{% endfor %}
 </section>
 {% endblock %}

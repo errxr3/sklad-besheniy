@@ -20,13 +20,16 @@
 {% if user %}
 {#- Компьютер: меню слева, как в WMS (2026-11-12). Телефон: шапка и меню-лента сверху — на прежних местах. -#}
 {%- set initials = (user.name.split()|map('first')|list)[:2]|join -%}
+{%- set al = alerts() if alerts is defined else {} -%}
+{%- set al_total = al.values()|sum -%}
+{%- set al_url = '/admin/section/lead' if user.role == 'admin' else '/warehouse' -%}
 {%- set check_on = scan_check_mode is defined and scan_check_mode() -%}
 {%- set check_dot = '<span class="check-dot" data-tip="Режим проверки сканов: склад не решает по остаткам, едет всё присланное" aria-label="Режим проверки сканов"></span>' if check_on else '' -%}
 <aside class="side">
 	<a class="side-brand" href="/"><b>BLAGO</b><span class="brand-sub">склад</span>{{ check_dot|safe }}</a>
 	<nav class="side-nav">
 		{% for item in menu %}
-			<a href="{{ item.url }}" {% if item.url == active_url %}class="active"{% endif %}>{{ icon(item.url) }}<span>{{ item.title }}</span></a>
+			<a href="{{ item.url }}" {% if item.url == active_url %}class="active"{% endif %}>{{ icon(item.url) }}<span>{{ item.title }}</span>{% if item.url == al_url and al_total %}<span class="alert-badge" title="Расхождения: {{ al_total }}">{{ al_total }}</span>{% endif %}</a>
 		{% endfor %}
 	</nav>
 	<div class="side-user">
@@ -56,7 +59,7 @@
 </header>
 <nav class="menu">
 	{% for item in menu %}
-		<a href="{{ item.url }}" {% if item.url == active_url %}class="active"{% endif %}>{{ icon(item.url) }}<span>{{ item.title }}</span></a>
+		<a href="{{ item.url }}" {% if item.url == active_url %}class="active"{% endif %}>{{ icon(item.url) }}<span>{{ item.title }}</span>{% if item.url == al_url and al_total %}<span class="alert-badge" title="Расхождения: {{ al_total }}">{{ al_total }}</span>{% endif %}</a>
 	{% endfor %}
 </nav>
 <script>
