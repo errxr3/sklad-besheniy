@@ -1017,3 +1017,8 @@ nav.menu a .alert-badge { margin-left: 4px; }
 h2.tile-group { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--ui-muted); margin: 20px 0 10px; }
 h2.tile-group::before { display: none; }
 a.card.tile.has-alert { border-color: var(--err); }
+/* Группы плиток начальника — колонками, плитки внутри друг под другом */
+.tile-columns { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 16px 20px; align-items: start; }
+.tile-columns h2.tile-group { margin-top: 4px; }
+.tile-stack { display: flex; flex-direction: column; gap: 10px; }
+.tile-stack .card.tile { margin: 0; }
