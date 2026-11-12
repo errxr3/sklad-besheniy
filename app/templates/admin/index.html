@@ -5,7 +5,7 @@
 	<h1>{{ section.title }}</h1>
 	<div class="grid3">
 		{% for url, name, hint in section.links %}
-		<a class="card tile" href="{{ url }}"><h3>{{ name }}</h3><p class="muted">{{ hint }}</p></a>
+		<a class="card tile" href="{{ url }}"><h3>{{ name }}</h3></a>
 		{% endfor %}
 	</div>
 </section>

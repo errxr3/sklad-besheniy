@@ -5,7 +5,7 @@
 {% include "admin/_msg.html" %}
 
 <div class="card">
-	<h2>Импорт TOP.xlsx</h2>
+	<h2>Импорт артикулов</h2>
 	<form method="post" action="/admin/articles/import" enctype="multipart/form-data" class="row tight">
 		<input type="hidden" name="csrf_token" value="{{ csrf }}">
 		<input type="file" name="file" accept=".xlsx" required>
